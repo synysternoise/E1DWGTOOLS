@@ -1,0 +1,13 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Preview temporário gerado pela captura do CATIA
+dgw_sheet_preview.*
+_shot.png
+
+# Config local do Claude Code
+.claude/

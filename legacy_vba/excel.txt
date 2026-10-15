@@ -1,0 +1,1742 @@
+Option Explicit
+
+Private Const PLANILHA_DESTINO As String = "Dados_Callouts"
+Private Const PLANILHA_ORIGEM As String = "COMPONENT"
+
+' Primeira linha com dados no arquivo SAP
+Private Const PRIMEIRA_LINHA_SAP As Long = 5
+
+' Primeira linha com dados no template
+Private Const PRIMEIRA_LINHA_DESTINO As Long = 4
+
+' Colunas da aba COMPONENT
+Private Const ORIGEM_PN As Long = 2
+Private Const ORIGEM_POSICAO As Long = 13
+Private Const ORIGEM_ZONA As Long = 14
+Private Const ORIGEM_QUANTIDADE As Long = 20
+
+' Colunas do template
+Private Const DESTINO_PN As Long = 18
+Private Const DESTINO_POSICAO As Long = 19
+Private Const DESTINO_ZONA As Long = 20
+Private Const DESTINO_QUANTIDADE As Long = 21
+
+' Colunas do Drawing
+Private Const DRAWING_POSICAO As Long = 1
+Private Const DRAWING_ZONA As Long = 2
+Private Const DRAWING_QUANTIDADE As Long = 3
+
+' ========================================================================
+' IMPORTAÇÃO PRINCIPAL
+' ========================================================================
+
+Public Sub ImportarDadosSAP()
+
+    Dim arquivosSelecionados As Variant
+
+    Dim wsDestino As Worksheet
+    Dim dictSAP As Object
+    Dim ordemChaves As Collection
+
+    Dim indiceArquivo As Long
+    Dim quantidadeArquivos As Long
+    Dim quantidadeLinhasLidas As Long
+    Dim quantidadeRegistrosConsolidados As Long
+
+    Dim linhaDestino As Long
+    Dim ultimaLinhaDestino As Long
+
+    Dim chave As Variant
+    Dim dadosRegistro As Variant
+
+    Dim nomesArquivos As String
+    Dim mensagemFinal As String
+
+    On Error GoTo TrataErro
+
+    Set wsDestino = ThisWorkbook.Worksheets(PLANILHA_DESTINO)
+
+    arquivosSelecionados = Application.GetOpenFilename( _
+        FileFilter:="Arquivos Excel (*.xlsx;*.xlsm;*.xls)," & _
+                    "*.xlsx;*.xlsm;*.xls", _
+        Title:="Selecione um ou dois arquivos extraídos do SAP", _
+        MultiSelect:=True)
+
+    If VarType(arquivosSelecionados) = vbBoolean Then
+        Exit Sub
+    End If
+
+    quantidadeArquivos = _
+        UBound(arquivosSelecionados) - _
+        LBound(arquivosSelecionados) + 1
+
+    If quantidadeArquivos > 2 Then
+
+        MsgBox _
+            "Selecione no máximo dois arquivos de Part List." & _
+            vbCrLf & vbCrLf & _
+            "Quantidade selecionada: " & quantidadeArquivos, _
+            vbExclamation, _
+            "Muitos arquivos selecionados"
+
+        Exit Sub
+
+    End If
+
+    For indiceArquivo = LBound(arquivosSelecionados) _
+                        To UBound(arquivosSelecionados)
+
+        If StrComp( _
+                CStr(arquivosSelecionados(indiceArquivo)), _
+                ThisWorkbook.FullName, _
+                vbTextCompare) = 0 Then
+
+            MsgBox _
+                "Selecione somente os arquivos extraídos do SAP." & _
+                vbCrLf & vbCrLf & _
+                "O template atual não pode ser utilizado como origem.", _
+                vbExclamation, _
+                "Arquivo inválido"
+
+            Exit Sub
+
+        End If
+
+    Next indiceArquivo
+
+    Application.ScreenUpdating = False
+    Application.EnableEvents = False
+    Application.DisplayAlerts = False
+    Application.StatusBar = _
+        "Preparando a importação dos Part Lists..."
+
+    Set dictSAP = CreateObject("Scripting.Dictionary")
+    Set ordemChaves = New Collection
+
+    dictSAP.CompareMode = vbTextCompare
+
+    ' --------------------------------------------------------------------
+    ' LÊ UM OU DOIS ARQUIVOS SAP
+    ' --------------------------------------------------------------------
+
+    For indiceArquivo = LBound(arquivosSelecionados) _
+                        To UBound(arquivosSelecionados)
+
+        Application.StatusBar = _
+            "Lendo Part List " & _
+            CStr(indiceArquivo - _
+                 LBound(arquivosSelecionados) + 1) & _
+            " de " & CStr(quantidadeArquivos) & ": " & _
+            Dir$(CStr(arquivosSelecionados(indiceArquivo)))
+
+        ImportarArquivoSAPParaDicionario _
+            CStr(arquivosSelecionados(indiceArquivo)), _
+            dictSAP, _
+            ordemChaves, _
+            quantidadeLinhasLidas
+
+        If Len(nomesArquivos) > 0 Then
+            nomesArquivos = nomesArquivos & vbCrLf
+        End If
+
+        nomesArquivos = _
+            nomesArquivos & _
+            ChrW$(8226) & " " & _
+            Dir$(CStr(arquivosSelecionados(indiceArquivo)))
+
+    Next indiceArquivo
+
+    ' --------------------------------------------------------------------
+    ' LIMPA OS DADOS SAP ANTERIORES
+    ' --------------------------------------------------------------------
+
+    ultimaLinhaDestino = Application.Max( _
+        wsDestino.Cells( _
+            wsDestino.Rows.Count, _
+            DESTINO_PN).End(xlUp).Row, _
+        wsDestino.Cells( _
+            wsDestino.Rows.Count, _
+            DESTINO_POSICAO).End(xlUp).Row, _
+        wsDestino.Cells( _
+            wsDestino.Rows.Count, _
+            DESTINO_ZONA).End(xlUp).Row, _
+        wsDestino.Cells( _
+            wsDestino.Rows.Count, _
+            DESTINO_QUANTIDADE).End(xlUp).Row)
+
+    If ultimaLinhaDestino < PRIMEIRA_LINHA_DESTINO Then
+        ultimaLinhaDestino = PRIMEIRA_LINHA_DESTINO
+    End If
+
+    With wsDestino.Range( _
+        wsDestino.Cells( _
+            PRIMEIRA_LINHA_DESTINO, _
+            DESTINO_PN), _
+        wsDestino.Cells( _
+            ultimaLinhaDestino, _
+            DESTINO_QUANTIDADE))
+
+        .ClearContents
+        .Interior.Pattern = xlNone
+        .Font.Color = RGB(0, 0, 0)
+        .Font.Bold = False
+
+    End With
+
+    wsDestino.Columns(DESTINO_PN).NumberFormat = "@"
+    wsDestino.Columns(DESTINO_POSICAO).NumberFormat = "@"
+    wsDestino.Columns(DESTINO_ZONA).NumberFormat = "@"
+    wsDestino.Columns(DESTINO_QUANTIDADE).NumberFormat = "0"
+
+    ' --------------------------------------------------------------------
+    ' GRAVA OS DADOS CONSOLIDADOS
+    ' --------------------------------------------------------------------
+
+    linhaDestino = PRIMEIRA_LINHA_DESTINO
+    quantidadeRegistrosConsolidados = 0
+
+    Application.StatusBar = _
+        "Gravando e consolidando os dados dos Part Lists..."
+
+    For Each chave In ordemChaves
+
+        If dictSAP.Exists(CStr(chave)) Then
+
+            dadosRegistro = dictSAP(CStr(chave))
+
+            wsDestino.Cells( _
+                linhaDestino, _
+                DESTINO_PN).Value = dadosRegistro(0)
+
+            wsDestino.Cells( _
+                linhaDestino, _
+                DESTINO_POSICAO).Value = dadosRegistro(1)
+
+            wsDestino.Cells( _
+                linhaDestino, _
+                DESTINO_ZONA).Value = dadosRegistro(2)
+
+            wsDestino.Cells( _
+                linhaDestino, _
+                DESTINO_QUANTIDADE).Value = dadosRegistro(3)
+
+            FormatarLinhaSAP wsDestino, linhaDestino
+
+            linhaDestino = linhaDestino + 1
+
+            quantidadeRegistrosConsolidados = _
+                quantidadeRegistrosConsolidados + 1
+
+        End If
+
+    Next chave
+
+    ' --------------------------------------------------------------------
+    ' ORDENA E FORMATA
+    ' --------------------------------------------------------------------
+
+    If quantidadeRegistrosConsolidados > 1 Then
+        OrdenarDadosSAP wsDestino, linhaDestino - 1
+    End If
+
+    If quantidadeRegistrosConsolidados > 0 Then
+
+        FormatarTabelaSAP _
+            wsDestino, _
+            PRIMEIRA_LINHA_DESTINO, _
+            linhaDestino - 1
+
+    End If
+
+    ' Compara automaticamente após importar.
+    CompararPosicaoZona wsDestino
+
+    RestaurarEstadoExcel
+
+    mensagemFinal = _
+        CStr(quantidadeArquivos) & _
+        " arquivo(s) de Part List processado(s)." & _
+        vbCrLf & vbCrLf & _
+        "Linhas válidas lidas: " & _
+        CStr(quantidadeLinhasLidas) & vbCrLf & _
+        "Registros consolidados: " & _
+        CStr(quantidadeRegistrosConsolidados) & vbCrLf & _
+        "Destino: colunas R até U" & _
+        vbCrLf & vbCrLf & _
+        "Arquivos:" & vbCrLf & _
+        nomesArquivos
+
+    MsgBox _
+        mensagemFinal, _
+        vbInformation, _
+        "Importação SAP concluída"
+
+    Exit Sub
+
+TrataErro:
+
+    Dim numeroErro As Long
+    Dim descricaoErro As String
+
+    numeroErro = Err.Number
+    descricaoErro = Err.Description
+
+    RestaurarEstadoExcel
+
+    MsgBox _
+        "Não foi possível importar os dados do SAP." & _
+        vbCrLf & vbCrLf & _
+        "Erro " & CStr(numeroErro) & ": " & descricaoErro, _
+        vbCritical, _
+        "Erro na importação"
+
+End Sub
+
+' ========================================================================
+' LEITURA DE UM ARQUIVO SAP
+' ========================================================================
+
+Private Sub ImportarArquivoSAPParaDicionario( _
+    ByVal caminhoArquivo As String, _
+    ByRef dictSAP As Object, _
+    ByRef ordemChaves As Collection, _
+    ByRef quantidadeLinhasLidas As Long)
+
+    Dim wbSAP As Workbook
+    Dim wsSAP As Worksheet
+
+    Dim ultimaLinhaSAP As Long
+    Dim linhaSAP As Long
+
+    Dim valorPN As String
+    Dim valorPosicao As String
+    Dim valorZona As String
+    Dim valorQuantidade As Variant
+
+    Dim quantidadeNumerica As Double
+
+    Dim posicaoNormalizada As String
+    Dim zonaNormalizada As String
+    Dim pnNormalizado As String
+    Dim chaveComposta As String
+
+    Dim dadosRegistro As Variant
+
+    On Error GoTo TrataErroArquivo
+
+    Set wbSAP = Workbooks.Open( _
+        Filename:=caminhoArquivo, _
+        UpdateLinks:=False, _
+        ReadOnly:=True, _
+        AddToMru:=False)
+
+    Set wsSAP = Nothing
+
+    On Error Resume Next
+
+    Set wsSAP = wbSAP.Worksheets(PLANILHA_ORIGEM)
+
+    If wsSAP Is Nothing Then
+        Set wsSAP = wbSAP.Worksheets("PSA")
+    End If
+
+    On Error GoTo TrataErroArquivo
+
+    If wsSAP Is Nothing Then
+
+        Err.Raise _
+            vbObjectError + 1000, _
+            "ImportarArquivoSAPParaDicionario", _
+            "As abas 'COMPONENT' e 'PSA' não foram encontradas em: " & _
+            Dir$(caminhoArquivo)
+
+    End If
+
+    ultimaLinhaSAP = wsSAP.Cells( _
+        wsSAP.Rows.Count, _
+        ORIGEM_POSICAO).End(xlUp).Row
+
+    If ultimaLinhaSAP < PRIMEIRA_LINHA_SAP Then
+
+        Err.Raise _
+            vbObjectError + 1001, _
+            "ImportarArquivoSAPParaDicionario", _
+            "Nenhum registro foi encontrado em: " & _
+            Dir$(caminhoArquivo)
+
+    End If
+
+    For linhaSAP = PRIMEIRA_LINHA_SAP To ultimaLinhaSAP
+
+        valorPosicao = ObterTextoExibido( _
+            wsSAP.Cells( _
+                linhaSAP, _
+                ORIGEM_POSICAO))
+
+        If Len(valorPosicao) > 0 Then
+
+            valorPN = Trim$(CStr( _
+                wsSAP.Cells( _
+                    linhaSAP, _
+                    ORIGEM_PN).Value2))
+
+            valorZona = ObterTextoExibido( _
+                wsSAP.Cells( _
+                    linhaSAP, _
+                    ORIGEM_ZONA))
+
+            valorQuantidade = wsSAP.Cells( _
+                linhaSAP, _
+                ORIGEM_QUANTIDADE).Value2
+
+            quantidadeNumerica = _
+                ConverterQuantidadeParaNumero(valorQuantidade)
+
+            posicaoNormalizada = _
+                NormalizarPosicao(valorPosicao)
+
+            zonaNormalizada = _
+                NormalizarZona(valorZona)
+
+            pnNormalizado = _
+                UCase$(Trim$(valorPN))
+
+            If Len(posicaoNormalizada) > 0 Then
+
+                ' Consolidação da importação:
+                ' PN + posição + zona.
+                chaveComposta = _
+                    pnNormalizado & "|" & _
+                    posicaoNormalizada & "|" & _
+                    zonaNormalizada
+
+                If dictSAP.Exists(chaveComposta) Then
+
+                    dadosRegistro = dictSAP(chaveComposta)
+
+                    dadosRegistro(3) = _
+                        CDbl(dadosRegistro(3)) + _
+                        quantidadeNumerica
+
+                    dictSAP(chaveComposta) = dadosRegistro
+
+                Else
+
+                    dadosRegistro = Array( _
+                        valorPN, _
+                        valorPosicao, _
+                        valorZona, _
+                        quantidadeNumerica)
+
+                    dictSAP.Add _
+                        chaveComposta, _
+                        dadosRegistro
+
+                    ordemChaves.Add chaveComposta
+
+                End If
+
+                quantidadeLinhasLidas = _
+                    quantidadeLinhasLidas + 1
+
+            End If
+
+        End If
+
+    Next linhaSAP
+
+    wbSAP.Close SaveChanges:=False
+
+    Set wbSAP = Nothing
+    Set wsSAP = Nothing
+
+    Exit Sub
+
+TrataErroArquivo:
+
+    Dim numeroErro As Long
+    Dim descricaoErro As String
+
+    numeroErro = Err.Number
+    descricaoErro = Err.Description
+
+    On Error Resume Next
+
+    If Not wbSAP Is Nothing Then
+        wbSAP.Close SaveChanges:=False
+    End If
+
+    On Error GoTo 0
+
+    Err.Raise _
+        numeroErro, _
+        "ImportarArquivoSAPParaDicionario", _
+        descricaoErro
+
+End Sub
+
+' ========================================================================
+' CONVERSÃO DE QUANTIDADE IMPORTADA
+' ========================================================================
+
+Private Function ConverterQuantidadeParaNumero( _
+    ByVal valor As Variant) As Double
+
+    ConverterQuantidadeParaNumero = 0#
+
+    If IsError(valor) Then Exit Function
+    If IsEmpty(valor) Then Exit Function
+
+    If Len(Trim$(CStr(valor))) = 0 Then
+        Exit Function
+    End If
+
+    If IsNumeric(valor) Then
+        ConverterQuantidadeParaNumero = CDbl(valor)
+    End If
+
+End Function
+
+' ========================================================================
+' BOTÃO COMPARE
+' ========================================================================
+
+Public Sub ExecutarComparacao()
+
+    Dim ws As Worksheet
+
+    On Error GoTo TrataErro
+
+    Set ws = ThisWorkbook.Worksheets(PLANILHA_DESTINO)
+
+    Application.ScreenUpdating = False
+    Application.EnableEvents = False
+    Application.StatusBar = _
+        "Comparando posição, zona e quantidade..."
+
+    CompararPosicaoZona ws
+
+    RestaurarEstadoExcel
+
+    Exit Sub
+
+TrataErro:
+
+    Dim numeroErro As Long
+    Dim descricaoErro As String
+
+    numeroErro = Err.Number
+    descricaoErro = Err.Description
+
+    RestaurarEstadoExcel
+
+    MsgBox _
+        "Não foi possível executar a comparação." & _
+        vbCrLf & vbCrLf & _
+        "Erro " & CStr(numeroErro) & ": " & descricaoErro, _
+        vbCritical, _
+        "Erro no comparativo"
+
+End Sub
+
+' ========================================================================
+' COMPARAÇÃO DRAWING X SAP
+'
+' DRAWING:
+' A = Posição
+' B = Zona
+' C = Quantidade
+'
+' SAP:
+' R = PN
+' S = Posição
+' T = Zona
+' U = Quantidade
+'
+' A comparação consolida por posição + zona e compara a soma das
+' quantidades dos dois lados.
+' ========================================================================
+
+Private Sub CompararPosicaoZona(ByVal ws As Worksheet)
+
+    Dim dictPosicoesDrawing As Object
+    Dim dictPosicoesSAP As Object
+
+    Dim dictZonaDrawingPorPosicao As Object
+    Dim dictZonaSAPPorPosicao As Object
+
+    Dim dictQtdDrawingPorZona As Object
+    Dim dictQtdSAPPorPosicao As Object
+
+    Dim dictQtdInvalidaDrawing As Object
+    Dim dictQtdInvalidaSAP As Object
+
+    Dim ultimaLinhaDrawing As Long
+    Dim ultimaLinhaSAP As Long
+
+    Dim linha As Long
+
+    Dim posicaoNormalizada As String
+    Dim zonaNormalizada As String
+
+    Dim zonaCorrespondente As String
+
+    Dim quantidade As Double
+    Dim quantidadeValida As Boolean
+
+    Dim posicaoCorreta As Boolean
+    Dim zonaCorreta As Boolean
+    Dim quantidadeCorreta As Boolean
+
+    Set dictPosicoesDrawing = _
+        CreateObject("Scripting.Dictionary")
+
+    Set dictPosicoesSAP = _
+        CreateObject("Scripting.Dictionary")
+
+    Set dictZonaDrawingPorPosicao = _
+        CreateObject("Scripting.Dictionary")
+
+    Set dictZonaSAPPorPosicao = _
+        CreateObject("Scripting.Dictionary")
+
+    Set dictQtdDrawingPorZona = _
+        CreateObject("Scripting.Dictionary")
+
+    Set dictQtdSAPPorPosicao = _
+        CreateObject("Scripting.Dictionary")
+
+    Set dictQtdInvalidaDrawing = _
+        CreateObject("Scripting.Dictionary")
+
+    Set dictQtdInvalidaSAP = _
+        CreateObject("Scripting.Dictionary")
+
+    dictPosicoesDrawing.CompareMode = vbTextCompare
+    dictPosicoesSAP.CompareMode = vbTextCompare
+
+    dictZonaDrawingPorPosicao.CompareMode = vbTextCompare
+    dictZonaSAPPorPosicao.CompareMode = vbTextCompare
+
+    dictQtdDrawingPorZona.CompareMode = vbTextCompare
+    dictQtdSAPPorPosicao.CompareMode = vbTextCompare
+
+    dictQtdInvalidaDrawing.CompareMode = vbTextCompare
+    dictQtdInvalidaSAP.CompareMode = vbTextCompare
+
+    ' ====================================================================
+    ' LOCALIZA AS ÚLTIMAS LINHAS
+    ' ====================================================================
+
+    ultimaLinhaDrawing = Application.Max( _
+        ws.Cells( _
+            ws.Rows.Count, _
+            DRAWING_POSICAO).End(xlUp).Row, _
+        ws.Cells( _
+            ws.Rows.Count, _
+            DRAWING_ZONA).End(xlUp).Row, _
+        ws.Cells( _
+            ws.Rows.Count, _
+            DRAWING_QUANTIDADE).End(xlUp).Row)
+
+    ultimaLinhaSAP = Application.Max( _
+        ws.Cells( _
+            ws.Rows.Count, _
+            DESTINO_PN).End(xlUp).Row, _
+        ws.Cells( _
+            ws.Rows.Count, _
+            DESTINO_POSICAO).End(xlUp).Row, _
+        ws.Cells( _
+            ws.Rows.Count, _
+            DESTINO_ZONA).End(xlUp).Row, _
+        ws.Cells( _
+            ws.Rows.Count, _
+            DESTINO_QUANTIDADE).End(xlUp).Row)
+
+    ' ====================================================================
+    ' REMOVE AS CORES DA COMPARAÇÃO ANTERIOR
+    ' ====================================================================
+
+    If ultimaLinhaDrawing >= PRIMEIRA_LINHA_DESTINO Then
+
+        With ws.Range( _
+            ws.Cells( _
+                PRIMEIRA_LINHA_DESTINO, _
+                DRAWING_POSICAO), _
+            ws.Cells( _
+                ultimaLinhaDrawing, _
+                DRAWING_QUANTIDADE))
+
+            .Interior.Pattern = xlNone
+            .Font.Color = RGB(0, 0, 0)
+
+        End With
+
+    End If
+
+    If ultimaLinhaSAP >= PRIMEIRA_LINHA_DESTINO Then
+
+        With ws.Range( _
+            ws.Cells( _
+                PRIMEIRA_LINHA_DESTINO, _
+                DESTINO_PN), _
+            ws.Cells( _
+                ultimaLinhaSAP, _
+                DESTINO_QUANTIDADE))
+
+            .Interior.Color = RGB(255, 255, 255)
+            .Font.Color = RGB(0, 0, 0)
+
+        End With
+
+    End If
+
+    ' ====================================================================
+    ' INDEXA O DRAWING
+    '
+    ' 1. Registra cada posição existente.
+    ' 2. Registra a zona correspondente a cada posição.
+    ' 3. Soma a quantidade total de cada zona.
+    ' ====================================================================
+
+    For linha = PRIMEIRA_LINHA_DESTINO _
+                To ultimaLinhaDrawing
+
+        posicaoNormalizada = NormalizarPosicao( _
+            ws.Cells( _
+                linha, _
+                DRAWING_POSICAO).Value2)
+
+        zonaNormalizada = NormalizarZona( _
+            ws.Cells( _
+                linha, _
+                DRAWING_ZONA).Value2)
+
+        If Len(posicaoNormalizada) > 0 Then
+
+            If Not dictPosicoesDrawing.Exists( _
+                    posicaoNormalizada) Then
+
+                dictPosicoesDrawing.Add _
+                    posicaoNormalizada, _
+                    True
+
+            End If
+
+            If Not dictZonaDrawingPorPosicao.Exists( _
+                    posicaoNormalizada) Then
+
+                dictZonaDrawingPorPosicao.Add _
+                    posicaoNormalizada, _
+                    zonaNormalizada
+
+            End If
+
+        End If
+
+        If Len(zonaNormalizada) > 0 Then
+
+            quantidadeValida = _
+                TentarObterQuantidadeComparacao( _
+                    ws.Cells( _
+                        linha, _
+                        DRAWING_QUANTIDADE).Value2, _
+                    quantidade)
+
+            If quantidadeValida Then
+
+                If dictQtdDrawingPorZona.Exists( _
+                        zonaNormalizada) Then
+
+                    dictQtdDrawingPorZona(zonaNormalizada) = _
+                        CDbl( _
+                            dictQtdDrawingPorZona( _
+                                zonaNormalizada)) + _
+                        quantidade
+
+                Else
+
+                    dictQtdDrawingPorZona.Add _
+                        zonaNormalizada, _
+                        quantidade
+
+                End If
+
+            Else
+
+                If Not dictQtdDrawingPorZona.Exists( _
+                        zonaNormalizada) Then
+
+                    dictQtdDrawingPorZona.Add _
+                        zonaNormalizada, _
+                        0#
+
+                End If
+
+                If Not dictQtdInvalidaDrawing.Exists( _
+                        zonaNormalizada) Then
+
+                    dictQtdInvalidaDrawing.Add _
+                        zonaNormalizada, _
+                        True
+
+                End If
+
+            End If
+
+        End If
+
+    Next linha
+
+    ' ====================================================================
+    ' INDEXA O SAP
+    '
+    ' 1. Registra cada posição existente.
+    ' 2. Registra a zona correspondente a cada posição.
+    ' 3. Registra a quantidade SAP de cada posição.
+    ' ====================================================================
+
+    For linha = PRIMEIRA_LINHA_DESTINO _
+                To ultimaLinhaSAP
+
+        posicaoNormalizada = NormalizarPosicao( _
+            ws.Cells( _
+                linha, _
+                DESTINO_POSICAO).Value2)
+
+        zonaNormalizada = NormalizarZona( _
+            ws.Cells( _
+                linha, _
+                DESTINO_ZONA).Value2)
+
+        If Len(posicaoNormalizada) > 0 Then
+
+            If Not dictPosicoesSAP.Exists( _
+                    posicaoNormalizada) Then
+
+                dictPosicoesSAP.Add _
+                    posicaoNormalizada, _
+                    True
+
+            End If
+
+            If Not dictZonaSAPPorPosicao.Exists( _
+                    posicaoNormalizada) Then
+
+                dictZonaSAPPorPosicao.Add _
+                    posicaoNormalizada, _
+                    zonaNormalizada
+
+            End If
+
+            quantidadeValida = _
+                TentarObterQuantidadeComparacao( _
+                    ws.Cells( _
+                        linha, _
+                        DESTINO_QUANTIDADE).Value2, _
+                    quantidade)
+
+            If quantidadeValida Then
+
+                If dictQtdSAPPorPosicao.Exists( _
+                        posicaoNormalizada) Then
+
+                    dictQtdSAPPorPosicao(posicaoNormalizada) = _
+                        CDbl( _
+                            dictQtdSAPPorPosicao( _
+                                posicaoNormalizada)) + _
+                        quantidade
+
+                Else
+
+                    dictQtdSAPPorPosicao.Add _
+                        posicaoNormalizada, _
+                        quantidade
+
+                End If
+
+            Else
+
+                If Not dictQtdSAPPorPosicao.Exists( _
+                        posicaoNormalizada) Then
+
+                    dictQtdSAPPorPosicao.Add _
+                        posicaoNormalizada, _
+                        0#
+
+                End If
+
+                If Not dictQtdInvalidaSAP.Exists( _
+                        posicaoNormalizada) Then
+
+                    dictQtdInvalidaSAP.Add _
+                        posicaoNormalizada, _
+                        True
+
+                End If
+
+            End If
+
+        End If
+
+    Next linha
+
+    ' ====================================================================
+    ' COMPARA O LADO DRAWING
+    '
+    ' A = posição, resultado independente
+    ' B = zona, resultado independente
+    ' C = quantidade, resultado independente
+    ' ====================================================================
+
+    For linha = PRIMEIRA_LINHA_DESTINO _
+                To ultimaLinhaDrawing
+
+        posicaoNormalizada = NormalizarPosicao( _
+            ws.Cells( _
+                linha, _
+                DRAWING_POSICAO).Value2)
+
+        zonaNormalizada = NormalizarZona( _
+            ws.Cells( _
+                linha, _
+                DRAWING_ZONA).Value2)
+
+        posicaoCorreta = False
+        zonaCorreta = False
+        quantidadeCorreta = False
+
+        ' --------------------------------------------------------------
+        ' POSIÇÃO
+        ' --------------------------------------------------------------
+
+        If Len(posicaoNormalizada) > 0 Then
+
+            posicaoCorreta = _
+                dictPosicoesSAP.Exists( _
+                    posicaoNormalizada)
+
+        End If
+
+        ' --------------------------------------------------------------
+        ' ZONA
+        '
+        ' A zona é comparada na posição correspondente.
+        ' --------------------------------------------------------------
+
+        If posicaoCorreta Then
+
+            If dictZonaSAPPorPosicao.Exists( _
+                    posicaoNormalizada) Then
+
+                zonaCorrespondente = CStr( _
+                    dictZonaSAPPorPosicao( _
+                        posicaoNormalizada))
+
+                zonaCorreta = _
+                    (StrComp( _
+                        zonaNormalizada, _
+                        zonaCorrespondente, _
+                        vbTextCompare) = 0)
+
+            End If
+
+        End If
+
+        ' --------------------------------------------------------------
+        ' QUANTIDADE
+        '
+        ' Compara o total da zona no Drawing com a quantidade SAP
+        ' da posição correspondente.
+        ' --------------------------------------------------------------
+
+        If posicaoCorreta And zonaCorreta Then
+
+            If dictQtdDrawingPorZona.Exists( _
+                    zonaNormalizada) And _
+               dictQtdSAPPorPosicao.Exists( _
+                    posicaoNormalizada) Then
+
+                If Not dictQtdInvalidaDrawing.Exists( _
+                            zonaNormalizada) And _
+                   Not dictQtdInvalidaSAP.Exists( _
+                            posicaoNormalizada) Then
+
+                    quantidadeCorreta = _
+                        QuantidadesSaoIguais( _
+                            CDbl( _
+                                dictQtdDrawingPorZona( _
+                                    zonaNormalizada)), _
+                            CDbl( _
+                                dictQtdSAPPorPosicao( _
+                                    posicaoNormalizada)))
+
+                End If
+
+            End If
+
+        End If
+
+        ' --------------------------------------------------------------
+        ' APLICA AS CORES SEPARADAMENTE
+        ' --------------------------------------------------------------
+
+        If posicaoCorreta Then
+
+            AplicarCorCorreto ws.Cells( _
+                linha, _
+                DRAWING_POSICAO)
+
+        Else
+
+            AplicarCorErro ws.Cells( _
+                linha, _
+                DRAWING_POSICAO)
+
+        End If
+
+        If zonaCorreta Then
+
+            AplicarCorCorreto ws.Cells( _
+                linha, _
+                DRAWING_ZONA)
+
+        Else
+
+            AplicarCorErro ws.Cells( _
+                linha, _
+                DRAWING_ZONA)
+
+        End If
+
+        If quantidadeCorreta Then
+
+            AplicarCorCorreto ws.Cells( _
+                linha, _
+                DRAWING_QUANTIDADE)
+
+        Else
+
+            AplicarCorErro ws.Cells( _
+                linha, _
+                DRAWING_QUANTIDADE)
+
+        End If
+
+    Next linha
+
+    ' ====================================================================
+    ' COMPARA O LADO SAP
+    '
+    ' R = PN, segue o resultado da posição
+    ' S = posição, resultado independente
+    ' T = zona, resultado independente
+    ' U = quantidade, resultado independente
+    ' ====================================================================
+
+    For linha = PRIMEIRA_LINHA_DESTINO _
+                To ultimaLinhaSAP
+
+        posicaoNormalizada = NormalizarPosicao( _
+            ws.Cells( _
+                linha, _
+                DESTINO_POSICAO).Value2)
+
+        zonaNormalizada = NormalizarZona( _
+            ws.Cells( _
+                linha, _
+                DESTINO_ZONA).Value2)
+
+        posicaoCorreta = False
+        zonaCorreta = False
+        quantidadeCorreta = False
+
+        ' --------------------------------------------------------------
+        ' POSIÇÃO
+        ' --------------------------------------------------------------
+
+        If Len(posicaoNormalizada) > 0 Then
+
+            posicaoCorreta = _
+                dictPosicoesDrawing.Exists( _
+                    posicaoNormalizada)
+
+        End If
+
+        ' --------------------------------------------------------------
+        ' ZONA
+        ' --------------------------------------------------------------
+
+        If posicaoCorreta Then
+
+            If dictZonaDrawingPorPosicao.Exists( _
+                    posicaoNormalizada) Then
+
+                zonaCorrespondente = CStr( _
+                    dictZonaDrawingPorPosicao( _
+                        posicaoNormalizada))
+
+                zonaCorreta = _
+                    (StrComp( _
+                        zonaNormalizada, _
+                        zonaCorrespondente, _
+                        vbTextCompare) = 0)
+
+            End If
+
+        End If
+
+        ' --------------------------------------------------------------
+        ' QUANTIDADE
+        ' --------------------------------------------------------------
+
+        If posicaoCorreta And zonaCorreta Then
+
+            If dictQtdDrawingPorZona.Exists( _
+                    zonaNormalizada) And _
+               dictQtdSAPPorPosicao.Exists( _
+                    posicaoNormalizada) Then
+
+                If Not dictQtdInvalidaDrawing.Exists( _
+                            zonaNormalizada) And _
+                   Not dictQtdInvalidaSAP.Exists( _
+                            posicaoNormalizada) Then
+
+                    quantidadeCorreta = _
+                        QuantidadesSaoIguais( _
+                            CDbl( _
+                                dictQtdDrawingPorZona( _
+                                    zonaNormalizada)), _
+                            CDbl( _
+                                dictQtdSAPPorPosicao( _
+                                    posicaoNormalizada)))
+
+                End If
+
+            End If
+
+        End If
+
+        ' --------------------------------------------------------------
+        ' APLICA AS CORES SEPARADAMENTE
+        ' --------------------------------------------------------------
+
+        ' PN acompanha a existência da posição.
+        If posicaoCorreta Then
+
+            AplicarCorCorreto ws.Cells( _
+                linha, _
+                DESTINO_PN)
+
+        Else
+
+            AplicarCorErro ws.Cells( _
+                linha, _
+                DESTINO_PN)
+
+        End If
+
+        If posicaoCorreta Then
+
+            AplicarCorCorreto ws.Cells( _
+                linha, _
+                DESTINO_POSICAO)
+
+        Else
+
+            AplicarCorErro ws.Cells( _
+                linha, _
+                DESTINO_POSICAO)
+
+        End If
+
+        If zonaCorreta Then
+
+            AplicarCorCorreto ws.Cells( _
+                linha, _
+                DESTINO_ZONA)
+
+        Else
+
+            AplicarCorErro ws.Cells( _
+                linha, _
+                DESTINO_ZONA)
+
+        End If
+
+        If quantidadeCorreta Then
+
+            AplicarCorCorreto ws.Cells( _
+                linha, _
+                DESTINO_QUANTIDADE)
+
+        Else
+
+            AplicarCorErro ws.Cells( _
+                linha, _
+                DESTINO_QUANTIDADE)
+
+        End If
+
+    Next linha
+
+End Sub
+
+' ========================================================================
+' SOMA UMA QUANTIDADE AO DICIONÁRIO
+' ========================================================================
+
+Private Sub AdicionarQuantidadeAoDicionario( _
+    ByVal chaveComposta As String, _
+    ByVal quantidade As Double, _
+    ByVal quantidadeValida As Boolean, _
+    ByVal dictQuantidades As Object, _
+    ByVal dictInvalidos As Object)
+
+    If dictQuantidades Is Nothing Then Exit Sub
+    If dictInvalidos Is Nothing Then Exit Sub
+
+    If quantidadeValida Then
+
+        If dictQuantidades.Exists(chaveComposta) Then
+
+            dictQuantidades(chaveComposta) = _
+                CDbl(dictQuantidades(chaveComposta)) + _
+                quantidade
+
+        Else
+
+            dictQuantidades.Add _
+                chaveComposta, _
+                quantidade
+
+        End If
+
+    Else
+
+        If Not dictQuantidades.Exists(chaveComposta) Then
+
+            dictQuantidades.Add _
+                chaveComposta, _
+                0#
+
+        End If
+
+        If Not dictInvalidos.Exists(chaveComposta) Then
+
+            dictInvalidos.Add _
+                chaveComposta, _
+                True
+
+        End If
+
+    End If
+
+End Sub
+
+' ========================================================================
+' VALIDA UMA CHAVE COMPLETA
+' ========================================================================
+
+Private Function ComparacaoDaChaveEstaCorreta( _
+    ByVal chaveComposta As String, _
+    ByVal dictQtdDrawing As Object, _
+    ByVal dictQtdSAP As Object, _
+    ByVal dictInvalidoDrawing As Object, _
+    ByVal dictInvalidoSAP As Object) As Boolean
+
+    ComparacaoDaChaveEstaCorreta = False
+
+    If dictQtdDrawing Is Nothing Then Exit Function
+    If dictQtdSAP Is Nothing Then Exit Function
+
+    If dictInvalidoDrawing Is Nothing Then Exit Function
+    If dictInvalidoSAP Is Nothing Then Exit Function
+
+    If Not dictQtdDrawing.Exists(chaveComposta) Then
+        Exit Function
+    End If
+
+    If Not dictQtdSAP.Exists(chaveComposta) Then
+        Exit Function
+    End If
+
+    If dictInvalidoDrawing.Exists(chaveComposta) Then
+        Exit Function
+    End If
+
+    If dictInvalidoSAP.Exists(chaveComposta) Then
+        Exit Function
+    End If
+
+    ComparacaoDaChaveEstaCorreta = _
+        QuantidadesSaoIguais( _
+            CDbl(dictQtdDrawing(chaveComposta)), _
+            CDbl(dictQtdSAP(chaveComposta)))
+
+End Function
+
+' ========================================================================
+' VALIDA A QUANTIDADE
+' ========================================================================
+
+Private Function TentarObterQuantidadeComparacao( _
+    ByVal valor As Variant, _
+    ByRef quantidade As Double) As Boolean
+
+    quantidade = 0#
+    TentarObterQuantidadeComparacao = False
+
+    If IsError(valor) Then Exit Function
+    If IsEmpty(valor) Then Exit Function
+
+    If Len(Trim$(CStr(valor))) = 0 Then
+        Exit Function
+    End If
+
+    If Not IsNumeric(valor) Then
+        Exit Function
+    End If
+
+    quantidade = CDbl(valor)
+
+    TentarObterQuantidadeComparacao = True
+
+End Function
+
+Private Function QuantidadesSaoIguais( _
+    ByVal quantidadeDrawing As Double, _
+    ByVal quantidadeSAP As Double) As Boolean
+
+    Const TOLERANCIA As Double = 0.000001
+
+    QuantidadesSaoIguais = _
+        (Abs(quantidadeDrawing - quantidadeSAP) <= TOLERANCIA)
+
+End Function
+
+' ========================================================================
+' LIMPA OS DADOS SAP
+' ========================================================================
+
+Public Sub LimparDadosSAP()
+
+    Dim ws As Worksheet
+    Dim ultimaLinhaSAP As Long
+    Dim ultimaLinhaDrawing As Long
+    Dim resposta As VbMsgBoxResult
+
+    On Error GoTo TrataErro
+
+    Set ws = ThisWorkbook.Worksheets(PLANILHA_DESTINO)
+
+    resposta = MsgBox( _
+        "Deseja limpar os dados importados do SAP?" & _
+        vbCrLf & vbCrLf & _
+        "Os dados do Drawing serão mantidos.", _
+        vbQuestion + vbYesNo + vbDefaultButton2, _
+        "Clean SAP")
+
+    If resposta <> vbYes Then Exit Sub
+
+    Application.ScreenUpdating = False
+    Application.EnableEvents = False
+
+    ultimaLinhaSAP = Application.Max( _
+        ws.Cells( _
+            ws.Rows.Count, _
+            DESTINO_PN).End(xlUp).Row, _
+        ws.Cells( _
+            ws.Rows.Count, _
+            DESTINO_POSICAO).End(xlUp).Row, _
+        ws.Cells( _
+            ws.Rows.Count, _
+            DESTINO_ZONA).End(xlUp).Row, _
+        ws.Cells( _
+            ws.Rows.Count, _
+            DESTINO_QUANTIDADE).End(xlUp).Row)
+
+    ultimaLinhaDrawing = Application.Max( _
+        ws.Cells( _
+            ws.Rows.Count, _
+            DRAWING_POSICAO).End(xlUp).Row, _
+        ws.Cells( _
+            ws.Rows.Count, _
+            DRAWING_ZONA).End(xlUp).Row, _
+        ws.Cells( _
+            ws.Rows.Count, _
+            DRAWING_QUANTIDADE).End(xlUp).Row)
+
+    If ultimaLinhaSAP >= PRIMEIRA_LINHA_DESTINO Then
+
+        With ws.Range( _
+            ws.Cells( _
+                PRIMEIRA_LINHA_DESTINO, _
+                DESTINO_PN), _
+            ws.Cells( _
+                ultimaLinhaSAP, _
+                DESTINO_QUANTIDADE))
+
+            .ClearContents
+            .Interior.Pattern = xlNone
+            .Font.Color = RGB(0, 0, 0)
+            .Font.Bold = False
+
+        End With
+
+    End If
+
+    ' Remove as cores de A:C no lado Drawing.
+    If ultimaLinhaDrawing >= PRIMEIRA_LINHA_DESTINO Then
+
+        With ws.Range( _
+            ws.Cells( _
+                PRIMEIRA_LINHA_DESTINO, _
+                DRAWING_POSICAO), _
+            ws.Cells( _
+                ultimaLinhaDrawing, _
+                DRAWING_QUANTIDADE))
+
+            .Interior.Pattern = xlNone
+            .Font.Color = RGB(0, 0, 0)
+
+        End With
+
+    End If
+
+    RestaurarEstadoExcel
+
+    Exit Sub
+
+TrataErro:
+
+    Dim numeroErro As Long
+    Dim descricaoErro As String
+
+    numeroErro = Err.Number
+    descricaoErro = Err.Description
+
+    RestaurarEstadoExcel
+
+    MsgBox _
+        "Não foi possível limpar os dados do SAP." & _
+        vbCrLf & vbCrLf & _
+        "Erro " & CStr(numeroErro) & ": " & descricaoErro, _
+        vbCritical, _
+        "Erro no Clean SAP"
+
+End Sub
+Private Function NormalizarPosicao( _
+    ByVal valor As Variant) As String
+
+    Dim texto As String
+    Dim resultado As String
+    Dim caractere As String
+    Dim i As Long
+
+    NormalizarPosicao = vbNullString
+
+    If IsError(valor) Then Exit Function
+    If IsEmpty(valor) Then Exit Function
+
+    texto = CStr(valor)
+
+    texto = Replace(texto, Chr$(160), "")
+    texto = Replace(texto, vbTab, "")
+    texto = Replace(texto, vbCr, "")
+    texto = Replace(texto, vbLf, "")
+    texto = Replace(texto, " ", "")
+    texto = Trim$(texto)
+
+    If Len(texto) = 0 Then Exit Function
+
+    Do While Len(texto) > 0 And _
+             Left$(texto, 1) = "'"
+
+        texto = Mid$(texto, 2)
+
+    Loop
+
+    If Len(texto) = 0 Then Exit Function
+
+    resultado = vbNullString
+
+    For i = 1 To Len(texto)
+
+        caractere = Mid$(texto, i, 1)
+
+        If caractere >= "0" And _
+           caractere <= "9" Then
+
+            resultado = resultado & caractere
+
+        Else
+
+            NormalizarPosicao = UCase$(texto)
+            Exit Function
+
+        End If
+
+    Next i
+
+    Do While Len(resultado) > 1 And _
+             Left$(resultado, 1) = "0"
+
+        resultado = Mid$(resultado, 2)
+
+    Loop
+
+    NormalizarPosicao = resultado
+
+End Function
+
+Private Function NormalizarZona( _
+    ByVal valor As Variant) As String
+
+    Dim texto As String
+
+    If IsError(valor) Or IsEmpty(valor) Then
+
+        NormalizarZona = vbNullString
+        Exit Function
+
+    End If
+
+    texto = UCase$(Trim$(CStr(valor)))
+
+    texto = Replace(texto, Chr$(160), "")
+    texto = Replace(texto, " ", "")
+    texto = Replace(texto, "-", "")
+    texto = Replace(texto, vbTab, "")
+
+    NormalizarZona = texto
+
+End Function
+
+' ========================================================================
+' CORES
+' ========================================================================
+
+Private Sub AplicarCorCorreto(ByVal intervalo As Range)
+
+    If intervalo Is Nothing Then Exit Sub
+
+    With intervalo
+
+        .Interior.Pattern = xlSolid
+        .Interior.Color = RGB(198, 239, 206)
+        .Font.Color = RGB(0, 97, 0)
+
+    End With
+
+End Sub
+
+Private Sub AplicarCorErro(ByVal intervalo As Range)
+
+    If intervalo Is Nothing Then Exit Sub
+
+    With intervalo
+
+        .Interior.Pattern = xlSolid
+        .Interior.Color = RGB(255, 199, 206)
+        .Font.Color = RGB(156, 0, 6)
+
+    End With
+
+End Sub
+
+' ========================================================================
+' TEXTO EXIBIDO
+' ========================================================================
+
+Private Function ObterTextoExibido( _
+    ByVal celula As Range) As String
+
+    Dim texto As String
+    Dim valor As Variant
+
+    valor = celula.Value2
+
+    If IsError(valor) Or IsEmpty(valor) Then
+
+        ObterTextoExibido = vbNullString
+        Exit Function
+
+    End If
+
+    texto = Trim$(CStr(celula.Text))
+
+    If Len(texto) = 0 Or _
+       InStr( _
+            1, _
+            texto, _
+            "####", _
+            vbBinaryCompare) > 0 Then
+
+        texto = Trim$(CStr(valor))
+
+    End If
+
+    ObterTextoExibido = texto
+
+End Function
+
+' ========================================================================
+' FORMATAÇÃO
+' ========================================================================
+
+Private Sub FormatarLinhaSAP( _
+    ByVal ws As Worksheet, _
+    ByVal linha As Long)
+
+    With ws.Range( _
+        ws.Cells( _
+            linha, _
+            DESTINO_PN), _
+        ws.Cells( _
+            linha, _
+            DESTINO_QUANTIDADE))
+
+        .Font.Name = "Aptos Narrow"
+        .Font.Size = 11
+        .VerticalAlignment = xlCenter
+        .HorizontalAlignment = xlCenter
+
+    End With
+
+End Sub
+
+Private Sub FormatarTabelaSAP( _
+    ByVal ws As Worksheet, _
+    ByVal primeiraLinha As Long, _
+    ByVal ultimaLinha As Long)
+
+    Dim intervalo As Range
+
+    If ultimaLinha < primeiraLinha Then Exit Sub
+
+    Set intervalo = ws.Range( _
+        ws.Cells( _
+            primeiraLinha, _
+            DESTINO_PN), _
+        ws.Cells( _
+            ultimaLinha, _
+            DESTINO_QUANTIDADE))
+
+    With intervalo
+
+        .Font.Name = "Segoe UI"
+        .Font.Size = 10
+        .Font.Bold = False
+        .Font.Color = RGB(0, 0, 0)
+
+        .Interior.Color = RGB(255, 255, 255)
+
+        .HorizontalAlignment = xlCenter
+        .VerticalAlignment = xlCenter
+
+        .Borders(xlEdgeLeft).LineStyle = xlContinuous
+        .Borders(xlEdgeTop).LineStyle = xlContinuous
+        .Borders(xlEdgeBottom).LineStyle = xlContinuous
+        .Borders(xlEdgeRight).LineStyle = xlContinuous
+        .Borders(xlInsideVertical).LineStyle = xlContinuous
+        .Borders(xlInsideHorizontal).LineStyle = xlContinuous
+
+        .Borders.Color = RGB(217, 217, 217)
+        .Borders.Weight = xlThin
+
+    End With
+
+    ws.Range( _
+        ws.Cells( _
+            primeiraLinha, _
+            DESTINO_PN), _
+        ws.Cells( _
+            ultimaLinha, _
+            DESTINO_PN)).NumberFormat = "@"
+
+    ws.Range( _
+        ws.Cells( _
+            primeiraLinha, _
+            DESTINO_POSICAO), _
+        ws.Cells( _
+            ultimaLinha, _
+            DESTINO_POSICAO)).NumberFormat = "@"
+
+    ws.Range( _
+        ws.Cells( _
+            primeiraLinha, _
+            DESTINO_ZONA), _
+        ws.Cells( _
+            ultimaLinha, _
+            DESTINO_ZONA)).NumberFormat = "@"
+
+    ws.Range( _
+        ws.Cells( _
+            primeiraLinha, _
+            DESTINO_QUANTIDADE), _
+        ws.Cells( _
+            ultimaLinha, _
+            DESTINO_QUANTIDADE)).NumberFormat = "0"
+
+End Sub
+
+' ========================================================================
+' ORDENAÇÃO
+' ========================================================================
+
+Private Sub OrdenarDadosSAP( _
+    ByVal ws As Worksheet, _
+    ByVal ultimaLinha As Long)
+
+    If ultimaLinha < PRIMEIRA_LINHA_DESTINO Then
+        Exit Sub
+    End If
+
+    With ws.Sort
+
+        .SortFields.Clear
+
+        .SortFields.Add _
+            Key:=ws.Range( _
+                ws.Cells( _
+                    PRIMEIRA_LINHA_DESTINO, _
+                    DESTINO_POSICAO), _
+                ws.Cells( _
+                    ultimaLinha, _
+                    DESTINO_POSICAO)), _
+            SortOn:=xlSortOnValues, _
+            Order:=xlAscending, _
+            DataOption:=xlSortTextAsNumbers
+
+        .SetRange ws.Range( _
+            ws.Cells(3, DESTINO_PN), _
+            ws.Cells(ultimaLinha, DESTINO_QUANTIDADE))
+
+        .Header = xlYes
+        .MatchCase = False
+        .Orientation = xlTopToBottom
+        .Apply
+
+    End With
+
+End Sub
+
+' ========================================================================
+' RESTAURA O ESTADO DO EXCEL
+' ========================================================================
+
+Private Sub RestaurarEstadoExcel()
+
+    On Error Resume Next
+
+    Application.DisplayAlerts = True
+    Application.EnableEvents = True
+    Application.ScreenUpdating = True
+    Application.StatusBar = False
+
+    On Error GoTo 0
+
+End Sub
+
+

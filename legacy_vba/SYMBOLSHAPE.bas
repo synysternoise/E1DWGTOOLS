@@ -1,0 +1,795 @@
+Attribute VB_Name = "SYMBOLSHAPE"
+Option Explicit
+
+' ============================================================
+' APIs DE ESTILO, REGIAO, POSICIONAMENTO E CURSOR
+' ============================================================
+#If VBA7 Then
+
+    Private Declare PtrSafe Function GetActiveWindow _
+        Lib "user32" () As LongPtr
+
+    Private Declare PtrSafe Function GetWindowLongPtr _
+        Lib "user32" _
+        Alias "GetWindowLongPtrA" ( _
+        ByVal hWnd As LongPtr, _
+        ByVal nIndex As Long) As LongPtr
+
+    Private Declare PtrSafe Function SetWindowLongPtr _
+        Lib "user32" _
+        Alias "SetWindowLongPtrA" ( _
+        ByVal hWnd As LongPtr, _
+        ByVal nIndex As Long, _
+        ByVal dwNewLong As LongPtr) As LongPtr
+
+    Private Declare PtrSafe Function SetLayeredWindowAttributes _
+        Lib "user32" ( _
+        ByVal hWnd As LongPtr, _
+        ByVal crKey As Long, _
+        ByVal bAlpha As Byte, _
+        ByVal dwFlags As Long) As Long
+
+    Private Declare PtrSafe Function SetWindowPos _
+        Lib "user32" ( _
+        ByVal hWnd As LongPtr, _
+        ByVal hWndInsertAfter As LongPtr, _
+        ByVal x As Long, _
+        ByVal y As Long, _
+        ByVal cX As Long, _
+        ByVal cY As Long, _
+        ByVal uFlags As Long) As Long
+
+    Private Declare PtrSafe Function DrawMenuBar _
+        Lib "user32" ( _
+        ByVal hWnd As LongPtr) As Long
+
+    ' APIs de recorte da janela.
+    Private Declare PtrSafe Function CreateRectRgn _
+        Lib "gdi32" ( _
+        ByVal x1 As Long, _
+        ByVal y1 As Long, _
+        ByVal x2 As Long, _
+        ByVal y2 As Long) As LongPtr
+
+    Private Declare PtrSafe Function SetWindowRgn _
+        Lib "user32" ( _
+        ByVal hWnd As LongPtr, _
+        ByVal hRgn As LongPtr, _
+        ByVal bRedraw As Long) As Long
+
+    ' APIs para arrastar a janela.
+    Private Declare PtrSafe Function ReleaseCapture _
+        Lib "user32" () As Long
+
+    Private Declare PtrSafe Function SendMessage _
+        Lib "user32" _
+        Alias "SendMessageA" ( _
+        ByVal hWnd As LongPtr, _
+        ByVal wMsg As Long, _
+        ByVal wParam As LongPtr, _
+        ByVal lParam As LongPtr) As LongPtr
+
+    ' APIs para controle nativo do cursor.
+    Private Declare PtrSafe Function LoadCursor _
+        Lib "user32" _
+        Alias "LoadCursorA" ( _
+        ByVal hInstance As LongPtr, _
+        ByVal lpCursorName As Long) As LongPtr
+
+    Private Declare PtrSafe Function SetCursor _
+        Lib "user32" ( _
+        ByVal hCursor As LongPtr) As LongPtr
+
+#Else
+
+    Private Declare Function GetActiveWindow _
+        Lib "user32" () As Long
+
+    Private Declare Function GetWindowLong _
+        Lib "user32" _
+        Alias "GetWindowLongA" ( _
+        ByVal hWnd As Long, _
+        ByVal nIndex As Long) As Long
+
+    Private Declare Function SetWindowLong _
+        Lib "user32" _
+        Alias "SetWindowLongA" ( _
+        ByVal hWnd As Long, _
+        ByVal nIndex As Long, _
+        ByVal dwNewLong As Long) As Long
+
+    Private Declare Function SetLayeredWindowAttributes _
+        Lib "user32" ( _
+        ByVal hWnd As Long, _
+        ByVal crKey As Long, _
+        ByVal bAlpha As Byte, _
+        ByVal dwFlags As Long) As Long
+
+    Private Declare Function SetWindowPos _
+        Lib "user32" ( _
+        ByVal hWnd As Long, _
+        ByVal hWndInsertAfter As Long, _
+        ByVal x As Long, _
+        ByVal y As Long, _
+        ByVal cX As Long, _
+        ByVal cY As Long, _
+        ByVal uFlags As Long) As Long
+
+    Private Declare Function DrawMenuBar _
+        Lib "user32" ( _
+        ByVal hWnd As Long) As Long
+
+    Private Declare Function CreateRectRgn _
+        Lib "gdi32" ( _
+        ByVal x1 As Long, _
+        ByVal y1 As Long, _
+        ByVal x2 As Long, _
+        ByVal y2 As Long) As Long
+
+    Private Declare Function SetWindowRgn _
+        Lib "user32" ( _
+        ByVal hWnd As Long, _
+        ByVal hRgn As Long, _
+        ByVal bRedraw As Long) As Long
+
+    Private Declare Function ReleaseCapture _
+        Lib "user32" () As Long
+
+    Private Declare Function SendMessage _
+        Lib "user32" _
+        Alias "SendMessageA" ( _
+        ByVal hWnd As Long, _
+        ByVal wMsg As Long, _
+        ByVal wParam As Long, _
+        ByVal lParam As Long) As Long
+
+    Private Declare Function LoadCursor _
+        Lib "user32" _
+        Alias "LoadCursorA" ( _
+        ByVal hInstance As Long, _
+        ByVal lpCursorName As Long) As Long
+
+    Private Declare Function SetCursor _
+        Lib "user32" ( _
+        ByVal hCursor As Long) As Long
+
+#End If
+
+' ============================================================
+' CONSTANTES DO WINDOWS
+' ============================================================
+Private Const GWL_STYLE As Long = -16
+Private Const GWL_EXSTYLE As Long = -20
+
+Private Const WS_CAPTION As Long = &HC00000
+Private Const WS_BORDER As Long = &H800000
+Private Const WS_DLGFRAME As Long = &H400000
+Private Const WS_THICKFRAME As Long = &H40000
+
+Private Const WS_EX_LAYERED As Long = &H80000
+Private Const LWA_COLORKEY As Long = &H1
+
+Private Const SWP_NOSIZE As Long = &H1
+Private Const SWP_NOMOVE As Long = &H2
+Private Const SWP_FRAMECHANGED As Long = &H20
+
+' Constantes para arrastar a janela.
+Private Const WM_NCLBUTTONDOWN As Long = &HA1
+Private Const HTCAPTION As Long = 2
+
+' Cursor nativo de mão do Windows.
+Private Const IDC_HAND As Long = 32649
+
+#If VBA7 Then
+    Private Const HWND_TOPMOST As LongPtr = -1
+    Private m_hwnd As LongPtr
+#Else
+    Private Const HWND_TOPMOST As Long = -1
+    Private m_hwnd As Long
+#End If
+
+' Impede duas conversões simultâneas.
+Private mConvertendo As Boolean
+
+' Impede tentativa duplicada de fechamento.
+Private mEncerrando As Boolean
+
+' ============================================================
+' UPDATE TEMPLATE
+' ============================================================
+Private Sub Label1_Click()
+
+    ExecutarConversaoTemplate
+
+End Sub
+
+Private Sub Label7_Click()
+
+    ExecutarConversaoTemplate
+
+End Sub
+' ============================================================
+' EXECUTA A CONVERSAO E RESTAURA O PAINEL
+' ============================================================
+' ============================================================
+' EXECUTA A CONVERSAO E RESTAURA O PAINEL
+' ============================================================
+Private Sub ExecutarConversaoTemplate()
+
+    On Error GoTo ErrorHandler
+
+    ' Impede clique duplo ou duas execucoes simultaneas.
+    If mConvertendo Then
+        Exit Sub
+    End If
+
+    mConvertendo = True
+
+    ' Esconde temporariamente o painel para permitir
+    ' a exibicao da janela Definicao de Formato.
+    Me.Hide
+    DoEvents
+
+    ' Executa a macro de conversao.
+    ' Se o usuario confirmar, cancelar, fechar ou pressionar ESC,
+    ' a execucao retorna para este ponto.
+    ConvertTemplate
+
+CleanExit:
+
+    On Error Resume Next
+
+    ' Garante que o CATIA nunca permaneca bloqueado.
+    CATIA.Interactive = True
+    CATIA.DisplayFileAlerts = True
+
+    mConvertendo = False
+    mEncerrando = False
+
+    ' Restaura o painel principal independentemente
+    ' de conversao concluida, cancelamento ou fechamento.
+    Me.Show vbModeless
+
+    DoEvents
+
+    On Error GoTo 0
+    Exit Sub
+
+ErrorHandler:
+
+    Dim savedNumber As Long
+    Dim savedSource As String
+    Dim savedDescription As String
+
+    savedNumber = Err.number
+    savedSource = Err.source
+    savedDescription = Err.Description
+
+    On Error Resume Next
+
+    CATIA.Interactive = True
+    CATIA.DisplayFileAlerts = True
+
+    On Error GoTo 0
+
+    MsgBox _
+        "Falha ao executar a conversao." & _
+        vbCrLf & vbCrLf & _
+        "Erro numero: " & CStr(savedNumber) & vbCrLf & _
+        "Origem: " & savedSource & vbCrLf & _
+        "Descricao: " & savedDescription, _
+        vbCritical, _
+        "Drawing Tools"
+
+    Resume CleanExit
+
+End Sub
+
+' ============================================================
+' FECHAMENTO DO PAINEL
+' ============================================================
+Private Sub Label2_Click()
+
+    FecharDrawingTools
+
+End Sub
+
+Private Sub Label6_Click()
+
+    FecharDrawingTools
+
+End Sub
+
+Private Sub FecharDrawingTools()
+
+    On Error Resume Next
+
+    If mEncerrando Then
+        Exit Sub
+    End If
+
+    mEncerrando = True
+
+    CATIA.Interactive = True
+    CATIA.DisplayFileAlerts = True
+
+    mConvertendo = False
+    m_hwnd = 0
+
+    Dim targetDocument As Object
+    Dim sourceDocument As Object
+
+    Set targetDocument = gTargetDrawing
+    Set sourceDocument = gSourceDrawing
+
+    ' Encerra o formulário dentro do contexto do drawing
+    ' que originalmente iniciou a ferramenta.
+    If Not sourceDocument Is Nothing Then
+        sourceDocument.Activate
+        DoEvents
+    End If
+
+    Unload Me
+
+    ' Depois que o formulário foi encerrado, retorna ao
+    ' template novo sem perder o contexto da ferramenta.
+    If Not targetDocument Is Nothing Then
+        targetDocument.Activate
+        DoEvents
+    End If
+
+    Set gSourceDrawing = Nothing
+    Set gTargetDrawing = Nothing
+
+    Set sourceDocument = Nothing
+    Set targetDocument = Nothing
+
+    On Error GoTo 0
+
+End Sub
+' ============================================================
+' PROTECAO DURANTE O ENCERRAMENTO DO USERFORM
+' ============================================================
+Private Sub UserForm_QueryClose( _
+    Cancel As Integer, _
+    CloseMode As Integer)
+
+    On Error Resume Next
+
+    ' Permite o fechamento normal do formulário.
+    Cancel = False
+
+    CATIA.Interactive = True
+    CATIA.DisplayFileAlerts = True
+
+    mConvertendo = False
+    mEncerrando = True
+    m_hwnd = 0
+
+    On Error GoTo 0
+
+End Sub
+
+Private Sub UserForm_Terminate()
+
+    On Error Resume Next
+
+    ' Última proteção para qualquer forma de encerramento.
+    CATIA.Interactive = True
+    CATIA.DisplayFileAlerts = True
+
+    mConvertendo = False
+    mEncerrando = False
+    m_hwnd = 0
+
+    DoEvents
+
+    On Error GoTo 0
+
+End Sub
+
+' ============================================================
+' CURSOR DE MAO NOS BOTOES INVISIVEIS
+' ============================================================
+Private Sub Label1_MouseMove( _
+    ByVal Button As Integer, _
+    ByVal Shift As Integer, _
+    ByVal x As Single, _
+    ByVal y As Single)
+
+    AplicarCursorMao
+
+End Sub
+
+Private Sub Label2_MouseMove( _
+    ByVal Button As Integer, _
+    ByVal Shift As Integer, _
+    ByVal x As Single, _
+    ByVal y As Single)
+
+    AplicarCursorMao
+
+End Sub
+
+Private Sub Label3_MouseMove( _
+    ByVal Button As Integer, _
+    ByVal Shift As Integer, _
+    ByVal x As Single, _
+    ByVal y As Single)
+
+    AplicarCursorMao
+
+End Sub
+
+Private Sub Label4_MouseMove( _
+    ByVal Button As Integer, _
+    ByVal Shift As Integer, _
+    ByVal x As Single, _
+    ByVal y As Single)
+
+    AplicarCursorMao
+
+End Sub
+
+Private Sub Label5_MouseMove( _
+    ByVal Button As Integer, _
+    ByVal Shift As Integer, _
+    ByVal x As Single, _
+    ByVal y As Single)
+
+    AplicarCursorMao
+
+End Sub
+
+Private Sub Label6_MouseMove( _
+    ByVal Button As Integer, _
+    ByVal Shift As Integer, _
+    ByVal x As Single, _
+    ByVal y As Single)
+
+    AplicarCursorMao
+
+End Sub
+
+Private Sub Label7_MouseMove( _
+    ByVal Button As Integer, _
+    ByVal Shift As Integer, _
+    ByVal x As Single, _
+    ByVal y As Single)
+
+    AplicarCursorMao
+
+End Sub
+
+Private Sub AplicarCursorMao()
+
+#If VBA7 Then
+
+    Dim hCursor As LongPtr
+
+#Else
+
+    Dim hCursor As Long
+
+#End If
+
+    hCursor = LoadCursor(0, IDC_HAND)
+
+    If hCursor <> 0 Then
+        SetCursor hCursor
+    End If
+
+End Sub
+
+' ============================================================
+' POSITION AND ZONE CHECK
+' ============================================================
+Private Sub Label3_Click()
+
+    On Error GoTo ErrorHandler
+
+    MapearCalloutsTodasAsFolhas121
+    Exit Sub
+
+ErrorHandler:
+
+    MsgBox _
+        "Falha ao executar Position and Zone Check." & _
+        vbCrLf & vbCrLf & _
+        "Erro nº: " & CStr(Err.number) & vbCrLf & _
+        "Descrição: " & Err.Description, _
+        vbCritical, _
+        "Drawing Tools"
+
+End Sub
+
+' ============================================================
+' FONT SIZE CHECK
+' ============================================================
+Private Sub Label4_Click()
+
+    On Error GoTo ErrorHandler
+
+    ' Esconde temporariamente o painel principal.
+    Me.Hide
+    DoEvents
+
+    ' Abre a janela secundária.
+    SIZEDEC.Show vbModal
+
+CleanExit:
+
+    On Error Resume Next
+
+    ' Se o painel principal ainda estiver carregado,
+    ' reapresenta como modeless.
+    If Not mEncerrando Then
+        Me.Show vbModeless
+    End If
+
+    DoEvents
+
+    On Error GoTo 0
+    Exit Sub
+
+ErrorHandler:
+
+    Dim savedNumber As Long
+    Dim savedDescription As String
+
+    savedNumber = Err.number
+    savedDescription = Err.Description
+
+    On Error Resume Next
+    Unload SIZEDEC
+    On Error GoTo 0
+
+    MsgBox _
+        "Falha ao abrir Font Size Check." & _
+        vbCrLf & vbCrLf & _
+        "Erro nº: " & CStr(savedNumber) & vbCrLf & _
+        "Descrição: " & savedDescription, _
+        vbCritical, _
+        "Drawing Tools"
+
+    Resume CleanExit
+
+End Sub
+
+' ============================================================
+' SYMBOL SHAPE CONVERTER
+' ============================================================
+Private Sub Label5_Click()
+
+    On Error GoTo ErrorHandler
+
+    CATMain11
+    Exit Sub
+
+ErrorHandler:
+
+    MsgBox _
+        "Falha ao executar Symbol Shape Converter." & _
+        vbCrLf & vbCrLf & _
+        "Erro nº: " & CStr(Err.number) & vbCrLf & _
+        "Descrição: " & Err.Description, _
+        vbCritical, _
+        "Drawing Tools"
+
+End Sub
+
+' ============================================================
+' FIX FLAGS
+' ============================================================
+Private Sub Label9_Click()
+
+    On Error GoTo ErrorHandler
+
+    CorrigirFlagNotes
+    Exit Sub
+
+ErrorHandler:
+
+    MsgBox _
+        "Falha ao executar Fix Flags." & _
+        vbCrLf & vbCrLf & _
+        "Erro nº: " & CStr(Err.number) & vbCrLf & _
+        "Descrição: " & Err.Description, _
+        vbCritical, _
+        "Drawing Tools"
+
+End Sub
+
+' ============================================================
+' ATIVACAO E RENDERIZACAO DO FORMULARIO
+' ============================================================
+Private Sub UserForm_Activate()
+
+    On Error GoTo SafeExit
+
+#If VBA7 Then
+
+    Dim currentStyle As LongPtr
+    Dim currentExStyle As LongPtr
+    Dim hRgn As LongPtr
+
+#Else
+
+    Dim currentStyle As Long
+    Dim currentExStyle As Long
+    Dim hRgn As Long
+
+#End If
+
+    Dim widthInPixels As Long
+    Dim heightInPixels As Long
+
+    ' Captura o identificador da janela ativa.
+    m_hwnd = GetActiveWindow()
+
+    If m_hwnd = 0 Then
+        GoTo SafeExit
+    End If
+
+    ' Remove os estilos de moldura e barra de título.
+#If VBA7 Then
+
+    currentStyle = GetWindowLongPtr(m_hwnd, GWL_STYLE)
+
+#Else
+
+    currentStyle = GetWindowLong(m_hwnd, GWL_STYLE)
+
+#End If
+
+    currentStyle = currentStyle And Not WS_CAPTION
+    currentStyle = currentStyle And Not WS_BORDER
+    currentStyle = currentStyle And Not WS_DLGFRAME
+    currentStyle = currentStyle And Not WS_THICKFRAME
+
+#If VBA7 Then
+
+    SetWindowLongPtr m_hwnd, GWL_STYLE, currentStyle
+
+#Else
+
+    SetWindowLong m_hwnd, GWL_STYLE, currentStyle
+
+#End If
+
+    ' Configura transparência por chave de cor.
+#If VBA7 Then
+
+    currentExStyle = GetWindowLongPtr(m_hwnd, GWL_EXSTYLE)
+
+    SetWindowLongPtr _
+        m_hwnd, _
+        GWL_EXSTYLE, _
+        currentExStyle Or WS_EX_LAYERED
+
+#Else
+
+    currentExStyle = GetWindowLong(m_hwnd, GWL_EXSTYLE)
+
+    SetWindowLong _
+        m_hwnd, _
+        GWL_EXSTYLE, _
+        currentExStyle Or WS_EX_LAYERED
+
+#End If
+
+    SetLayeredWindowAttributes _
+        m_hwnd, _
+        RGB(255, 0, 255), _
+        0, _
+        LWA_COLORKEY
+
+    ' Converte aproximadamente Points do VBA para Pixels.
+    widthInPixels = CLng(Me.width * 1.333)
+    heightInPixels = CLng(Me.height * 1.333)
+
+    ' Cria a região exata da janela.
+    hRgn = CreateRectRgn( _
+        3, _
+        3, _
+        widthInPixels - 3, _
+        heightInPixels - 3)
+
+    If hRgn <> 0 Then
+        SetWindowRgn m_hwnd, hRgn, 1
+    End If
+
+    ' Atualiza a janela e mantém o painel no topo.
+    DrawMenuBar m_hwnd
+
+    SetWindowPos _
+        m_hwnd, _
+        HWND_TOPMOST, _
+        0, _
+        0, _
+        0, _
+        0, _
+        SWP_NOMOVE Or _
+        SWP_NOSIZE Or _
+        SWP_FRAMECHANGED
+
+SafeExit:
+
+    Err.Clear
+
+End Sub
+
+' ============================================================
+' MOVIMENTACAO DO FORMULARIO POR ARRASTE
+' ============================================================
+Private Sub Image1_MouseDown( _
+    ByVal Button As Integer, _
+    ByVal Shift As Integer, _
+    ByVal x As Single, _
+    ByVal y As Single)
+
+    If Button <> 1 Then
+        Exit Sub
+    End If
+
+    If m_hwnd = 0 Then
+        Exit Sub
+    End If
+
+    ReleaseCapture
+
+    SendMessage _
+        m_hwnd, _
+        WM_NCLBUTTONDOWN, _
+        HTCAPTION, _
+        0
+
+End Sub
+
+' ============================================================
+' COMPARE DWG
+' ============================================================
+Private Sub Label8_Click()
+
+    On Error GoTo ErrorHandler
+
+    Dim caminhoExe As String
+    Dim resultadoShell As Variant
+
+    caminhoExe = _
+        "\\SJKFS17\Mezcal\Projects\OEM\EMB170-190\" & _
+        "05. Quality\09. Macros\Dwg Compare\" & _
+        "Drawing Compare.exe"
+
+    If Dir$(caminhoExe) = "" Then
+
+        MsgBox _
+            "Executável não encontrado:" & _
+            vbCrLf & vbCrLf & _
+            caminhoExe, _
+            vbExclamation, _
+            "Arquivo não encontrado"
+
+        Exit Sub
+
+    End If
+
+    resultadoShell = Shell( _
+        """" & caminhoExe & """", _
+        vbNormalFocus)
+
+    Exit Sub
+
+ErrorHandler:
+
+    MsgBox _
+        "Não foi possível abrir o executável." & _
+        vbCrLf & vbCrLf & _
+        "Erro " & CStr(Err.number) & ": " & _
+        Err.Description, _
+        vbCritical, _
+        "Erro ao abrir programa"
+
+End Sub
+
+
