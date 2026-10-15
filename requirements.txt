@@ -1,0 +1,10 @@
+# Dependências do E1DGWTOOLS (Python 3.10+ no Windows)
+# Instale com:  pip install -r requirements.txt
+#
+# Observação: o app controla o CATIA V5 via COM (pywin32), então só funciona
+# de verdade em um Windows com o CATIA V5 instalado e em execução.
+
+pycatia==0.10.1          # wrapper de automação do CATIA V5
+pywin32==312             # ponte COM com o CATIA (GetActiveObject, etc.)
+customtkinter==6.0.0     # interface gráfica (HUB)
+pillow==12.3.0           # exibição da captura do desenho no preview
