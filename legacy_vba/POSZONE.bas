@@ -24,6 +24,9 @@ Private Const QTY_DISTANCE_BASE As Double = 70#
 Private Const UNIT_DISTANCE_MIN As Double = 8#
 Private Const UNIT_DISTANCE_MAX As Double = 25#
 Private Const UNIT_DISTANCE_BASE As Double = 15#
+' Quantidade = numero junto de PL/PLS/PLCS/PLACES/REQD ("12 PL", "2PL", "(2) PL", "3 REQ'D").
+' Nao casa digitos de PN ("N11010", "171-54430-401") nem "PL" dentro de palavras (PLATE, PLACARD).
+Private Const QTY_PATTERN As String = "(?:^|[^A-Z0-9\-])(\d+)\)?\s*(?:PLACES|PLCS|PLS|PL|REQ'?D)\b"
 Private Const ZONE_MIN_ROWS As Long = 2
 Private Const ZONE_MIN_COLS As Long = 3
 Private Const ZONE_EDGE_RATIO As Double = 0.12
@@ -361,8 +364,7 @@ Private Sub AssociarQuantidadesDaVista(ByVal oSheet As DrawingSheet, ByVal oView
     ByRef Occurrences() As OccurrenceData, ByVal nOccurrences As Long)
     If nOccurrences = 0 Then Exit Sub
     Dim cnt As Long, j As Long, t As DrawingText, s As String, qty As Long, x As Double, y As Double, best As Long
-    Dim re As Object: Set re = CreateObject("VBScript.RegExp")
-    re.Pattern = "(\d+)": re.Global = False: re.IgnoreCase = True
+    Dim re As Object: Set re = RegexQuantidade()
     On Error Resume Next: cnt = oView.Texts.count: On Error GoTo 0
     Dim tol As Double: tol = ObterToleranciaAdaptativa(oView, QTY_DISTANCE_MIN, QTY_DISTANCE_MAX, QTY_DISTANCE_BASE)
     For j = 1 To cnt
@@ -848,7 +850,9 @@ Private Function ObterEscalaSegura(ByVal v As DrawingView) As Double
 End Function
 
 Private Function ObterToleranciaAdaptativa(ByVal v As DrawingView, ByVal minV As Double, ByVal maxV As Double, ByVal baseV As Double) As Double
-    Dim r As Double: r = baseV * Sqr(ObterEscalaSegura(v)): If r < minV Then r = minV: If r > maxV Then r = maxV
+    Dim r As Double: r = baseV * Sqr(ObterEscalaSegura(v))
+    If r < minV Then r = minV
+    If r > maxV Then r = maxV
     ObterToleranciaAdaptativa = r
 End Function
 
@@ -863,7 +867,16 @@ Private Sub SepararTextoEmLinhas(ByVal s As String, ByRef lines() As String, ByR
 End Sub
 
 Private Function TextoTemREF(ByVal s As String) As Boolean: TextoTemREF = InStr(1, s, "REF", vbTextCompare) > 0: End Function
-Private Function TextoTemQuantidade(ByVal s As String) As Boolean: s = UCase$(Trim$(s)): TextoTemQuantidade = (InStr(1, s, "REQD", vbTextCompare) > 0 Or InStr(1, s, "PL", vbTextCompare) > 0): End Function
+Private Function TextoTemQuantidade(ByVal s As String) As Boolean: TextoTemQuantidade = RegexQuantidade().Test(s): End Function
+
+Private Function RegexQuantidade() As Object
+    Static re As Object
+    If re Is Nothing Then
+        Set re = CreateObject("VBScript.RegExp")
+        re.Pattern = QTY_PATTERN: re.Global = False: re.IgnoreCase = True
+    End If
+    Set RegexQuantidade = re
+End Function
 
 Private Function ExtrairQuantidade(ByVal s As String, ByVal re As Object) As Long
     If re Is Nothing Or Not re.Test(s) Then Exit Function
