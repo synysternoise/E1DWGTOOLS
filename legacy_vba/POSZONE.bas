@@ -21,6 +21,9 @@ Private Const REF_DISTANCE_BASE As Double = 35#
 Private Const QTY_DISTANCE_MIN As Double = 20#
 Private Const QTY_DISTANCE_MAX As Double = 120#
 Private Const QTY_DISTANCE_BASE As Double = 70#
+Private Const UNIT_DISTANCE_MIN As Double = 8#
+Private Const UNIT_DISTANCE_MAX As Double = 25#
+Private Const UNIT_DISTANCE_BASE As Double = 15#
 Private Const ZONE_MIN_ROWS As Long = 2
 Private Const ZONE_MIN_COLS As Long = 3
 Private Const ZONE_EDGE_RATIO As Double = 0.12
@@ -90,7 +93,7 @@ Public Sub MapearCalloutsTodasAsFolhas1214()
 
     Dim verdes As New Collection, vermelhos As New Collection
     Dim qtdVerdes As Long, qtdGrupo As Long, qtdConflito As Long
-    Dim qtdReferencias As Long, qtdMultiline As Long, falhasCor As Long
+    Dim qtdReferencias As Long, qtdMultiline As Long, falhasCor As Long, qtdUnidades As Long
     Dim drawingName As String, p As Long
     p = InStrRev(oDoc.name, ".")
     If p > 1 Then drawingName = Left$(oDoc.name, p - 1) Else drawingName = oDoc.name
@@ -144,7 +147,7 @@ Public Sub MapearCalloutsTodasAsFolhas1214()
         maxZonas = 0: Erase Zonas
         MapearZonasDaFolha oSheet, Zonas, maxZonas
         ProcessarCalloutsDaFolha oSheet, Zonas, maxZonas, Occurrences, nOccurrences, _
-            verdes, vermelhos, qtdVerdes, qtdGrupo, qtdConflito, qtdReferencias, qtdMultiline
+            verdes, vermelhos, qtdVerdes, qtdGrupo, qtdConflito, qtdReferencias, qtdMultiline, qtdUnidades
     Next w
 
     Dim Callouts() As CalloutData, nCallouts As Long
@@ -177,9 +180,10 @@ Public Sub MapearCalloutsTodasAsFolhas1214()
         "Objetos válidos identificados: " & qtdVerdes & vbCrLf & _
         "Linhas multilinha contabilizadas: " & qtdMultiline & vbCrLf & _
         "Referências ignoradas por REF: " & qtdReferencias & vbCrLf & _
+        "Valores com unidade ignorados (placard): " & qtdUnidades & vbCrLf & _
         "Vermelhos agrupados/ambíguos: " & qtdGrupo & vbCrLf & _
         "Vermelhos inconsistentes: " & qtdConflito & vbCrLf & _
-        "Ocorrências válidas encontradas: " & nOccurrences - qtdReferencias & vbCrLf & _
+        "Ocorrências válidas encontradas: " & nOccurrences - qtdReferencias - qtdUnidades & vbCrLf & _
         "Callouts consolidados no Excel: " & nCallouts & vbCrLf & _
         "Falhas ao aplicar cor: " & falhasCor, vbInformation, "Sucesso"
     Exit Sub
@@ -193,13 +197,14 @@ End Sub
 Private Sub ProcessarCalloutsDaFolha(ByVal oSheet As DrawingSheet, ByRef Zonas() As ZoneData, ByVal maxZonas As Long, _
     ByRef Occurrences() As OccurrenceData, ByRef nOccurrences As Long, ByRef verdes As Collection, _
     ByRef vermelhos As Collection, ByRef qtdVerdes As Long, ByRef qtdGrupo As Long, ByRef qtdConflito As Long, _
-    ByRef qtdReferencias As Long, ByRef qtdMultiline As Long)
+    ByRef qtdReferencias As Long, ByRef qtdMultiline As Long, ByRef qtdUnidades As Long)
     Dim i As Long, oView As DrawingView
     For i = 1 To oSheet.Views.count
         Set oView = oSheet.Views.Item(i)
         If Not VistaDeveSerIgnorada(oView) Then
             ColetarCalloutsDaVista oSheet, oView, Zonas, maxZonas, Occurrences, nOccurrences, verdes, vermelhos, qtdVerdes, qtdGrupo, qtdConflito, qtdMultiline
             IdentificarReferenciasDaVista oSheet, oView, Occurrences, nOccurrences, qtdReferencias
+            IdentificarValoresComUnidadeDaVista oSheet, oView, Occurrences, nOccurrences, qtdUnidades
             AssociarQuantidadesDaVista oSheet, oView, Occurrences, nOccurrences
         End If
     Next i
@@ -289,6 +294,68 @@ Private Sub IdentificarReferenciasDaVista(ByVal oSheet As DrawingSheet, ByVal oV
         End If
     Next j
 End Sub
+
+' ===== VALORES COM UNIDADE (PLACARD) =====
+' Numero sublinhado, sem leader, junto de um texto com unidade (KG, LBS...)
+' e valor de placard, nao callout. Baloes (frame circular) nao sao avaliados aqui.
+Private Sub IdentificarValoresComUnidadeDaVista(ByVal oSheet As DrawingSheet, ByVal oView As DrawingView, _
+    ByRef Occurrences() As OccurrenceData, ByVal nOccurrences As Long, ByRef qtdUnidades As Long)
+    If nOccurrences = 0 Then Exit Sub
+    Dim cnt As Long, j As Long, idx As Long, t As DrawingText, s As String, x As Double, y As Double, tol As Double
+    On Error Resume Next: cnt = oView.Texts.count: On Error GoTo 0
+    tol = Limitar(UNIT_DISTANCE_BASE * Sqr(ObterEscalaSegura(oView)), UNIT_DISTANCE_MIN, UNIT_DISTANCE_MAX)
+    For j = 1 To cnt
+        Set t = Nothing: s = ""
+        On Error Resume Next: Set t = oView.Texts.Item(j): s = CStr(t.Text): On Error GoTo 0
+        If Not t Is Nothing And TextoTemUnidade(s) Then
+            ObterCoordenadaNaFolha oView, t, x, y
+            For idx = 1 To nOccurrences
+                With Occurrences(idx)
+                    If .Sheet = oSheet.name And .View = oView.name And Not .IsReference Then
+                        If .sourceType = SOURCE_UNDERLINED Or .sourceType = SOURCE_MULTILINE Then
+                            If DistanciaEntrePontos(x, y, .x, .y) <= tol Then
+                                ' IsReference = nao contabilizar (mesmo efeito do REF), com contador proprio.
+                                If Not TextoTemLeader(oView, .sourceTextIndex) Then .IsReference = True: qtdUnidades = qtdUnidades + 1
+                            End If
+                        End If
+                    End If
+                End With
+            Next idx
+        End If
+    Next j
+End Sub
+
+Private Function TextoTemLeader(ByVal v As DrawingView, ByVal textIndex As Long) As Boolean
+    ' Se nao for possivel ler os leaders, considera sem leader.
+    Dim t As Object, n As Long
+    On Error Resume Next
+    Set t = v.Texts.Item(textIndex)
+    If Err.number = 0 And Not t Is Nothing Then n = t.Leaders.count
+    If Err.number <> 0 Then n = 0
+    Err.Clear: On Error GoTo 0
+    TextoTemLeader = (n > 0)
+End Function
+
+Private Function TextoTemUnidade(ByVal s As String) As Boolean
+    ' Unidade como palavra inteira: "100KG", "KG/LBS" e "(LBS)" casam; "BLACK" nao.
+    Dim i As Long, ch As String, token As String
+    s = UCase$(s) & " "
+    For i = 1 To Len(s)
+        ch = Mid$(s, i, 1)
+        If ch >= "A" And ch <= "Z" Then
+            token = token & ch
+        Else
+            If EhTokenUnidade(token) Then TextoTemUnidade = True: Exit Function
+            token = ""
+        End If
+    Next i
+End Function
+
+Private Function EhTokenUnidade(ByVal token As String) As Boolean
+    Select Case token
+        Case "KG", "KGS", "KGF", "LB", "LBS", "LBF": EhTokenUnidade = True
+    End Select
+End Function
 
 Private Sub AssociarQuantidadesDaVista(ByVal oSheet As DrawingSheet, ByVal oView As DrawingView, _
     ByRef Occurrences() As OccurrenceData, ByVal nOccurrences As Long)
