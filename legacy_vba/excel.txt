@@ -14,6 +14,9 @@ Private Const ORIGEM_PN As Long = 2
 Private Const ORIGEM_POSICAO As Long = 13
 Private Const ORIGEM_ZONA As Long = 14
 Private Const ORIGEM_QUANTIDADE As Long = 20
+Private Const ORIGEM_PROGRAMA As Long = 15
+Private Const ORIGEM_SN_INICIAL As Long = 18
+Private Const ORIGEM_SN_FINAL As Long = 19
 
 ' Colunas do template
 Private Const DESTINO_PN As Long = 18
@@ -322,6 +325,9 @@ Private Sub ImportarArquivoSAPParaDicionario( _
 
     Dim dadosRegistro As Variant
 
+    Dim valorEfetividade As String
+    Dim dictEfetividade As Object
+
     On Error GoTo TrataErroArquivo
 
     Set wbSAP = Workbooks.Open( _
@@ -410,23 +416,68 @@ Private Sub ImportarArquivoSAPParaDicionario( _
                     posicaoNormalizada & "|" & _
                     zonaNormalizada
 
+                ' Efetividade = programa + faixa de SN.
+                ' A mesma posicao em efetividades diferentes
+                ' (ex.: programa 0170 e 0190) nao e somada:
+                ' vale a maior quantidade entre elas.
+                ' Linhas da mesma efetividade continuam somando.
+                valorEfetividade = _
+                    ObterTextoExibido( _
+                        wsSAP.Cells( _
+                            linhaSAP, _
+                            ORIGEM_PROGRAMA)) & "|" & _
+                    ObterTextoExibido( _
+                        wsSAP.Cells( _
+                            linhaSAP, _
+                            ORIGEM_SN_INICIAL)) & "|" & _
+                    ObterTextoExibido( _
+                        wsSAP.Cells( _
+                            linhaSAP, _
+                            ORIGEM_SN_FINAL))
+
                 If dictSAP.Exists(chaveComposta) Then
 
                     dadosRegistro = dictSAP(chaveComposta)
 
+                    Set dictEfetividade = dadosRegistro(4)
+
+                    If dictEfetividade.Exists(valorEfetividade) Then
+
+                        dictEfetividade(valorEfetividade) = _
+                            CDbl(dictEfetividade(valorEfetividade)) + _
+                            quantidadeNumerica
+
+                    Else
+
+                        dictEfetividade.Add _
+                            valorEfetividade, _
+                            quantidadeNumerica
+
+                    End If
+
                     dadosRegistro(3) = _
-                        CDbl(dadosRegistro(3)) + _
-                        quantidadeNumerica
+                        MaiorQuantidadeEntreEfetividades( _
+                            dictEfetividade)
 
                     dictSAP(chaveComposta) = dadosRegistro
 
                 Else
 
+                    Set dictEfetividade = _
+                        CreateObject("Scripting.Dictionary")
+
+                    dictEfetividade.CompareMode = vbTextCompare
+
+                    dictEfetividade.Add _
+                        valorEfetividade, _
+                        quantidadeNumerica
+
                     dadosRegistro = Array( _
                         valorPN, _
                         valorPosicao, _
                         valorZona, _
-                        quantidadeNumerica)
+                        quantidadeNumerica, _
+                        dictEfetividade)
 
                     dictSAP.Add _
                         chaveComposta, _
@@ -474,6 +525,33 @@ TrataErroArquivo:
         descricaoErro
 
 End Sub
+
+' ========================================================================
+' MAIOR QUANTIDADE ENTRE AS EFETIVIDADES DE UMA POSICAO
+' ========================================================================
+
+Private Function MaiorQuantidadeEntreEfetividades( _
+    ByVal dictEfetividade As Object) As Double
+
+    Dim chave As Variant
+
+    MaiorQuantidadeEntreEfetividades = 0#
+
+    If dictEfetividade Is Nothing Then Exit Function
+
+    For Each chave In dictEfetividade.Keys
+
+        If CDbl(dictEfetividade(chave)) > _
+           MaiorQuantidadeEntreEfetividades Then
+
+            MaiorQuantidadeEntreEfetividades = _
+                CDbl(dictEfetividade(chave))
+
+        End If
+
+    Next chave
+
+End Function
 
 ' ========================================================================
 ' CONVERSÃO DE QUANTIDADE IMPORTADA
