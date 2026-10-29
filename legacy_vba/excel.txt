@@ -643,7 +643,7 @@ Private Sub CompararPosicaoZona(ByVal ws As Worksheet)
     Dim dictZonaDrawingPorPosicao As Object
     Dim dictZonaSAPPorPosicao As Object
 
-    Dim dictQtdDrawingPorZona As Object
+    Dim dictQtdDrawingPorPosicao As Object
     Dim dictQtdSAPPorPosicao As Object
 
     Dim dictQtdInvalidaDrawing As Object
@@ -678,7 +678,7 @@ Private Sub CompararPosicaoZona(ByVal ws As Worksheet)
     Set dictZonaSAPPorPosicao = _
         CreateObject("Scripting.Dictionary")
 
-    Set dictQtdDrawingPorZona = _
+    Set dictQtdDrawingPorPosicao = _
         CreateObject("Scripting.Dictionary")
 
     Set dictQtdSAPPorPosicao = _
@@ -696,7 +696,7 @@ Private Sub CompararPosicaoZona(ByVal ws As Worksheet)
     dictZonaDrawingPorPosicao.CompareMode = vbTextCompare
     dictZonaSAPPorPosicao.CompareMode = vbTextCompare
 
-    dictQtdDrawingPorZona.CompareMode = vbTextCompare
+    dictQtdDrawingPorPosicao.CompareMode = vbTextCompare
     dictQtdSAPPorPosicao.CompareMode = vbTextCompare
 
     dictQtdInvalidaDrawing.CompareMode = vbTextCompare
@@ -774,7 +774,7 @@ Private Sub CompararPosicaoZona(ByVal ws As Worksheet)
     '
     ' 1. Registra cada posição existente.
     ' 2. Registra a zona correspondente a cada posição.
-    ' 3. Soma a quantidade total de cada zona.
+    ' 3. Soma a quantidade total de cada posição.
     ' ====================================================================
 
     For linha = PRIMEIRA_LINHA_DESTINO _
@@ -812,7 +812,7 @@ Private Sub CompararPosicaoZona(ByVal ws As Worksheet)
 
         End If
 
-        If Len(zonaNormalizada) > 0 Then
+        If Len(posicaoNormalizada) > 0 Then
 
             quantidadeValida = _
                 TentarObterQuantidadeComparacao( _
@@ -823,39 +823,39 @@ Private Sub CompararPosicaoZona(ByVal ws As Worksheet)
 
             If quantidadeValida Then
 
-                If dictQtdDrawingPorZona.Exists( _
-                        zonaNormalizada) Then
+                If dictQtdDrawingPorPosicao.Exists( _
+                        posicaoNormalizada) Then
 
-                    dictQtdDrawingPorZona(zonaNormalizada) = _
+                    dictQtdDrawingPorPosicao(posicaoNormalizada) = _
                         CDbl( _
-                            dictQtdDrawingPorZona( _
-                                zonaNormalizada)) + _
+                            dictQtdDrawingPorPosicao( _
+                                posicaoNormalizada)) + _
                         quantidade
 
                 Else
 
-                    dictQtdDrawingPorZona.Add _
-                        zonaNormalizada, _
+                    dictQtdDrawingPorPosicao.Add _
+                        posicaoNormalizada, _
                         quantidade
 
                 End If
 
             Else
 
-                If Not dictQtdDrawingPorZona.Exists( _
-                        zonaNormalizada) Then
+                If Not dictQtdDrawingPorPosicao.Exists( _
+                        posicaoNormalizada) Then
 
-                    dictQtdDrawingPorZona.Add _
-                        zonaNormalizada, _
+                    dictQtdDrawingPorPosicao.Add _
+                        posicaoNormalizada, _
                         0#
 
                 End If
 
                 If Not dictQtdInvalidaDrawing.Exists( _
-                        zonaNormalizada) Then
+                        posicaoNormalizada) Then
 
                     dictQtdInvalidaDrawing.Add _
-                        zonaNormalizada, _
+                        posicaoNormalizada, _
                         True
 
                 End If
@@ -1024,27 +1024,27 @@ Private Sub CompararPosicaoZona(ByVal ws As Worksheet)
         ' --------------------------------------------------------------
         ' QUANTIDADE
         '
-        ' Compara o total da zona no Drawing com a quantidade SAP
+        ' Compara o total da posição no Drawing com a quantidade SAP
         ' da posição correspondente.
         ' --------------------------------------------------------------
 
         If posicaoCorreta And zonaCorreta Then
 
-            If dictQtdDrawingPorZona.Exists( _
-                    zonaNormalizada) And _
+            If dictQtdDrawingPorPosicao.Exists( _
+                    posicaoNormalizada) And _
                dictQtdSAPPorPosicao.Exists( _
                     posicaoNormalizada) Then
 
                 If Not dictQtdInvalidaDrawing.Exists( _
-                            zonaNormalizada) And _
+                            posicaoNormalizada) And _
                    Not dictQtdInvalidaSAP.Exists( _
                             posicaoNormalizada) Then
 
                     quantidadeCorreta = _
                         QuantidadesSaoIguais( _
                             CDbl( _
-                                dictQtdDrawingPorZona( _
-                                    zonaNormalizada)), _
+                                dictQtdDrawingPorPosicao( _
+                                    posicaoNormalizada)), _
                             CDbl( _
                                 dictQtdSAPPorPosicao( _
                                     posicaoNormalizada)))
@@ -1170,21 +1170,21 @@ Private Sub CompararPosicaoZona(ByVal ws As Worksheet)
 
         If posicaoCorreta And zonaCorreta Then
 
-            If dictQtdDrawingPorZona.Exists( _
-                    zonaNormalizada) And _
+            If dictQtdDrawingPorPosicao.Exists( _
+                    posicaoNormalizada) And _
                dictQtdSAPPorPosicao.Exists( _
                     posicaoNormalizada) Then
 
                 If Not dictQtdInvalidaDrawing.Exists( _
-                            zonaNormalizada) And _
+                            posicaoNormalizada) And _
                    Not dictQtdInvalidaSAP.Exists( _
                             posicaoNormalizada) Then
 
                     quantidadeCorreta = _
                         QuantidadesSaoIguais( _
                             CDbl( _
-                                dictQtdDrawingPorZona( _
-                                    zonaNormalizada)), _
+                                dictQtdDrawingPorPosicao( _
+                                    posicaoNormalizada)), _
                             CDbl( _
                                 dictQtdSAPPorPosicao( _
                                     posicaoNormalizada)))
