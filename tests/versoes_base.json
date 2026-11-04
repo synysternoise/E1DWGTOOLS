@@ -34,7 +34,7 @@
     },
     "Fix Flags": {
       "origem": "repositorio",
-      "situacao": "pendente",
+      "situacao": "convertida",
       "arquivos": {
         "fixflags": "43802a7e5c773bc44b8667e6a42941cdff449188eea4517015c57f02f82a92ab"
       }

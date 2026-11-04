@@ -19,6 +19,8 @@ GREEN = "#2ECC71"
 GREEN_BG = "#0F3B2A"
 GREEN_LINE = "#1E6B45"
 AMBER = "#E6A23C"
+AMBER_BG = "#3A2A12"
+AMBER_LINE = "#6B4E1E"
 RED = "#F0695C"
 RED_BG = "#3A1A1C"
 RED_INK = "#2A0B08"
@@ -47,6 +49,8 @@ QLabel#posicao {{ font-size: 18px; font-weight: 700; }}
 QLabel#erro {{ color: {RED}; }}
 QLabel#chip {{ background: {CARD}; border-radius: 14px; padding: 0 12px; font-size: 12px; font-weight: 600; }}
 QLabel#etiqueta {{ color: {GREEN}; background: {GREEN_BG}; border: 1px solid {GREEN_LINE}; border-radius: 10px;
+    padding: 0 9px; font-size: 11px; font-weight: 700; }}
+QLabel#etiquetaAviso {{ color: {AMBER}; background: {AMBER_BG}; border: 1px solid {AMBER_LINE}; border-radius: 10px;
     padding: 0 9px; font-size: 11px; font-weight: 700; }}
 QLabel#chipEstado {{ font-size: 12px; font-weight: 600; }}
 

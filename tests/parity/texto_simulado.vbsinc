@@ -1,0 +1,203 @@
+' DrawingText simulado, que falha sob encomenda. O CATIA nao falha quando se pede, e sao
+' justamente esses caminhos que restauram o desenho. A mesma definicao roda no VBA e no
+' VBScript, entao qualquer diferenca no resultado vem da conversao.
+'
+' Falhas: ler_texto, ler_depois, grava_texto, grava_segunda, texto_muda, zera_frame,
+' zera_frame_recusa, frame_recusado, frame_nao_grava, zera_borda, borda_recusada,
+' borda_nao_grava, set_param, cor_recusada, cor_parcial, get_param, ler_frame, sem_props, ler_borda
+' As "nao_grava" aceitam o valor sem erro e nao gravam nada, como DrawingText.FrameType no V5R20.
+Class TextoSimulado
+    Public Falha
+    Public Escritas
+    Private mTexto
+    Private mFrame
+    Private mFrameProps
+    Private mBordas
+    Private mCores
+    Private mProps
+
+    Public Sub Iniciar(texto, frameObj, framePr, bordas, cor, nomeFalha)
+        Falha = nomeFalha
+        Escritas = 0
+        mTexto = texto
+        mFrame = frameObj
+        mFrameProps = framePr
+        Dim i, n
+        n = Len(texto)
+        If n > 0 Then
+            ReDim mBordas(n - 1)
+            ReDim mCores(n - 1)
+            For i = 0 To n - 1
+                If Len(bordas) >= i + 1 Then mBordas(i) = CLng(Mid(bordas, i + 1, 1)) * 7 Else mBordas(i) = 0
+                mCores(i) = cor
+            Next
+        Else
+            ReDim mBordas(0)
+            ReDim mCores(0)
+            mBordas(0) = 0
+            mCores(0) = cor
+        End If
+        Set mProps = New PropsSimuladas
+        mProps.Ligar Me
+    End Sub
+
+    Public Property Get Text()
+        If Falha = "ler_texto" Then Err.Raise 5001, , "ler texto"
+        If Falha = "ler_depois" And Escritas >= 1 Then Err.Raise 5015, , "ler depois de gravar"
+        Text = mTexto
+    End Property
+
+    Public Property Let Text(valor)
+        Dim i, n, b, c
+        Escritas = Escritas + 1
+        If Falha = "grava_texto" Then Err.Raise 5002, , "grava texto"
+        If Falha = "grava_segunda" And Escritas >= 2 Then Err.Raise 5003, , "grava segunda"
+        If Falha = "texto_muda" And Escritas = 1 Then valor = valor & " "
+        n = Len(valor)
+        b = mBordas(0)
+        c = mCores(0)
+        If n > 0 Then
+            ReDim mBordas(n - 1)
+            ReDim mCores(n - 1)
+            For i = 0 To n - 1
+                mBordas(i) = b
+                mCores(i) = c
+            Next
+        End If
+        mTexto = valor
+        If Falha = "zera_frame" Or Falha = "zera_frame_recusa" Or Falha = "frame_nao_grava" Then
+            mFrame = 0
+            mFrameProps = 0
+        End If
+        If Falha = "zera_borda" Or Falha = "borda_recusada" Or Falha = "borda_nao_grava" Then
+            For i = 0 To UBound(mBordas)
+                mBordas(i) = 0
+            Next
+        End If
+    End Property
+
+    Public Property Get FrameType()
+        If Falha = "ler_frame" Then Err.Raise 5004, , "ler frame"
+        FrameType = mFrame
+    End Property
+
+    Public Property Let FrameType(valor)
+        If Falha = "frame_recusado" Or Falha = "zera_frame_recusa" Then Err.Raise 5005, , "frame recusado"
+        If Falha = "frame_nao_grava" Then Exit Property
+        mFrame = valor
+    End Property
+
+    Public Property Get TextProperties()
+        If Falha = "sem_props" Then
+            Set TextProperties = Nothing
+        Else
+            Set TextProperties = mProps
+        End If
+    End Property
+
+    Public Function FramePropsAtual()
+        If Falha = "ler_frame" Then Err.Raise 5006, , "ler frame props"
+        FramePropsAtual = mFrameProps
+    End Function
+
+    Public Sub GravaFrameProps(valor)
+        If Falha = "frame_recusado" Or Falha = "zera_frame_recusa" Then Err.Raise 5007, , "frame props recusado"
+        If Falha = "frame_nao_grava" Then Exit Sub
+        mFrameProps = valor
+    End Sub
+
+    Public Sub GravaCorProps(valor)
+        Dim i, ultimo
+        If Falha = "cor_recusada" Then Err.Raise 5008, , "cor recusada"
+        ultimo = UBound(mCores)
+        If Falha = "cor_parcial" Then ultimo = ultimo - 1
+        For i = 0 To ultimo
+            mCores(i) = valor
+        Next
+    End Sub
+
+    Public Sub SetParameterOnSubString(p, ini, qtd, valor)
+        Dim i, a, b
+        If Falha = "set_param" Then Err.Raise 5009, , "set param"
+        If p = 12 And Falha = "borda_recusada" Then Err.Raise 5010, , "borda recusada"
+        If p = 10 And Falha = "cor_recusada" Then Err.Raise 5011, , "cor recusada"
+        If p = 12 And Falha = "borda_nao_grava" Then Exit Sub
+        If qtd = 0 Then
+            a = 0
+            b = UBound(mCores)
+        Else
+            a = ini
+            b = ini + qtd - 1
+        End If
+        If p = 10 And Falha = "cor_parcial" Then b = b - 1
+        If b > UBound(mCores) Then b = UBound(mCores)
+        For i = a To b
+            If p = 12 Then mBordas(i) = valor Else mCores(i) = valor
+        Next
+    End Sub
+
+    Public Function GetParameterOnSubString(p, ini, qtd)
+        If Falha = "get_param" Then Err.Raise 5012, , "get param"
+        If p = 12 And Falha = "ler_borda" Then Err.Raise 5013, , "ler borda"
+        If ini > UBound(mCores) Then Err.Raise 5014, , "fora do texto"
+        If p = 12 Then GetParameterOnSubString = mBordas(ini) Else GetParameterOnSubString = mCores(ini)
+    End Function
+
+    Public Function Estado()
+        Estado = "[" & mTexto & "] F=" & mFrame & " P=" & mFrameProps & " B=" & Join(mBordas, ",") & " C=" & Join(mCores, ",") & " W=" & Escritas
+    End Function
+End Class
+
+Class PropsSimuladas
+    Private mDono
+
+    Public Sub Ligar(dono)
+        Set mDono = dono
+    End Sub
+
+    Public Property Get FrameType()
+        FrameType = mDono.FramePropsAtual()
+    End Property
+
+    Public Property Let FrameType(valor)
+        mDono.GravaFrameProps valor
+    End Property
+
+    Public Property Let Color(valor)
+        mDono.GravaCorProps valor
+    End Property
+
+    Public Sub Update()
+    End Sub
+End Class
+
+' Cada caso: texto; frame do objeto; bordas (uma letra por caractere, 1 = Right Flag); falha.
+Function RodarSimulados()
+    Dim codigos, origens, falhas, c, o, f, t, saida, n
+    codigos = Array("NL006", "NL0006", " NL0006", "NL006 ", "AB123")
+    ' Frame do objeto, frame das propriedades e bordas.
+    origens = Array("7,7|", "57,57|", "9,9|", "0,7|", "0,58|", "7,0|", "1,1|", "0,0|1111111", "0,0|0011100", "0,0|")
+    falhas = Array("", "ler_texto", "ler_depois", "grava_texto", "grava_segunda", "texto_muda", "zera_frame", _
+        "zera_frame_recusa", "frame_recusado", "frame_nao_grava", "zera_borda", "borda_recusada", "borda_nao_grava", _
+        "set_param", "cor_recusada", "cor_parcial", "get_param", "ler_frame", "sem_props", "ler_borda")
+    saida = ""
+    n = 0
+    For Each c In codigos
+        For Each o In origens
+            For Each f In falhas
+                Set t = NovoTextoSimulado()
+                t.Iniciar c, CLng(Split(Split(o, "|")(0), ",")(0)), CLng(Split(Split(o, "|")(0), ",")(1)), Split(o, "|")(1), 0, f
+                ResetarContadoresFix
+                ProcessarFlagSegura t
+                saida = saida & c & "|" & o & "|" & f & " => " & LerContadoresFix() & " :: " & EstadoSeguro(t) & vbLf
+                n = n + 1
+            Next
+        Next
+    Next
+    RodarSimulados = saida
+End Function
+
+Function EstadoSeguro(t)
+    t.Falha = ""
+    EstadoSeguro = t.Estado()
+End Function

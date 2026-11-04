@@ -1,13 +1,13 @@
 """Janela do HUB em PySide6, seguindo o prototipo em design/hub_prototipo.html.
 
-Por enquanto so o Font Size Check esta aqui; as demais ferramentas continuam no
-painel VBA ate passarem pela comparacao (ver MIGRACAO.md).
+Por enquanto so o Font Size Check e o Fix Flags estao aqui; as demais ferramentas
+continuam no painel VBA ate passarem pela comparacao (ver MIGRACAO.md).
 """
 from __future__ import annotations
 
 import os
 
-from PySide6.QtCore import QPoint, Qt, QThread, QTimer, Signal
+from PySide6.QtCore import QCoreApplication, QEvent, QPoint, Qt, QThread, QTimer, Signal
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (
     QButtonGroup, QFrame, QHBoxLayout, QLabel, QPushButton, QStackedWidget, QVBoxLayout, QWidget,
@@ -15,12 +15,16 @@ from PySide6.QtWidgets import (
 
 from ui_qt import theme as T
 from ui_qt.catia_worker import CatiaWorker
+from ui_qt.fix_flags_page import FixFlagsPage
 from ui_qt.font_size_page import FontSizePage, button, label
 
 LARGURA, ALTURA = 1180, 720
 LARGURA_COMPACTA = 460
 INTERVALO_STATUS_MS = 2000
 AINDA_NO_VBA = "Esta ferramenta ainda roda no painel VBA."
+ABA_DESIGN, ABA_CHECK, ABA_ENVIO = range(3)
+PAGINA_FONT, PAGINA_VBA, PAGINA_FLAGS = range(3)
+PAGINA_DA_ABA = {ABA_DESIGN: PAGINA_FLAGS, ABA_CHECK: PAGINA_FONT, ABA_ENVIO: PAGINA_VBA}
 
 
 class Header(QFrame):
@@ -58,7 +62,22 @@ class HubWindow(QWidget):
         corpo.setContentsMargins(12, 12, 12, 12)
         corpo.setSpacing(12)
         self.font_page = FontSizePage()
-        self._rail = self._build_rail()
+        self.flags_page = FixFlagsPage()
+        self._rail = QStackedWidget()
+        self._rail.setFixedWidth(240)
+        self._rail.addWidget(self._build_rail(
+            "DESIGN", "Fix Flags", ("Update Template", "Symbol Shape"),
+            "O Fix Flags altera o desenho. As demais ferramentas seguem no painel VBA por enquanto.",
+        ))
+        self._rail.addWidget(self._build_rail(
+            "CHECK", "Font Size Check", ("Position and Zone", "Check de Flags", "Compare DWG"),
+            "O Check não altera o desenho. As demais ferramentas seguem no painel VBA por enquanto.",
+        ))
+        self._rail.addWidget(self._build_rail(
+            "ENVIO", "", ("Split 3D", "Split 2D"),
+            "As ferramentas de envio seguem no painel VBA por enquanto.",
+        ))
+        self._rail.setCurrentIndex(ABA_CHECK)
         corpo.addWidget(self._rail)
         painel = QFrame()
         painel.setObjectName("painel")
@@ -67,6 +86,7 @@ class HubWindow(QWidget):
         self._pages = QStackedWidget()
         self._pages.addWidget(self.font_page)
         self._pages.addWidget(self._build_placeholder())
+        self._pages.addWidget(self.flags_page)
         painel_col.addWidget(self._pages)
         corpo.addWidget(painel, 1)
         col.addLayout(corpo, 1)
@@ -106,13 +126,15 @@ class HubWindow(QWidget):
         p.setContentsMargins(5, 5, 5, 5)
         p.setSpacing(4)
         grupo = QButtonGroup(self)
+        self.pills = {}
         for i, nome in enumerate(("Design", "Check", "Envio")):
             b = button(nome, "pilula")
             b.setCheckable(True)
             b.setChecked(nome == "Check")
             grupo.addButton(b, i)
             p.addWidget(b)
-        grupo.idClicked.connect(lambda i: self._pages.setCurrentIndex(0 if i == 1 else 1))
+            self.pills[nome] = b
+        grupo.idClicked.connect(self._on_tab)
         h.addWidget(self._pills)
         h.addStretch(1)
 
@@ -134,20 +156,20 @@ class HubWindow(QWidget):
         h.addWidget(fechar)
         return bar
 
-    def _build_rail(self) -> QFrame:
+    def _build_rail(self, secao: str, ativa: str, no_vba: tuple, texto_nota: str) -> QFrame:
         rail = QFrame()
         rail.setObjectName("painel")
-        rail.setFixedWidth(240)
         col = QVBoxLayout(rail)
         col.setContentsMargins(12, 14, 12, 12)
         col.setSpacing(4)
-        col.addWidget(label("CHECK", "secao"))
+        col.addWidget(label(secao, "secao"))
         col.addSpacing(6)
-        font = button("Font Size Check", "trilho")
-        font.setCheckable(True)
-        font.setChecked(True)
-        col.addWidget(font)
-        for nome in ("Position and Zone", "Check de Flags", "Compare DWG"):
+        if ativa:
+            atual = button(ativa, "trilho")
+            atual.setCheckable(True)
+            atual.setChecked(True)
+            col.addWidget(atual)
+        for nome in no_vba:
             b = button(nome, "trilho")
             b.setEnabled(False)
             b.setToolTip(AINDA_NO_VBA)
@@ -157,11 +179,15 @@ class HubWindow(QWidget):
         nota.setObjectName("nota")
         n = QVBoxLayout(nota)
         n.setContentsMargins(10, 8, 10, 8)
-        t = label("O Check não altera o desenho. As demais ferramentas seguem no painel VBA por enquanto.", "notaTexto")
+        t = label(texto_nota, "notaTexto")
         t.setWordWrap(True)
         n.addWidget(t)
         col.addWidget(nota)
         return rail
+
+    def _on_tab(self, aba: int) -> None:
+        self._rail.setCurrentIndex(aba)
+        self._pages.setCurrentIndex(PAGINA_DA_ABA[aba])
 
     def _build_placeholder(self) -> QWidget:
         w = QWidget()
@@ -204,6 +230,21 @@ class HubWindow(QWidget):
         wk.ask_format.connect(pg.on_ask_format)
         wk.warn.connect(pg.on_warn)
 
+        fl = self.flags_page
+        fl.run_requested.connect(wk.fix_flags)
+        fl.retry_requested.connect(wk.poll)
+        fl.go_requested.connect(wk.go_to_flag)
+        fl.stop_requested.connect(wk.request_stop, Qt.DirectConnection)
+        fl.latest_nav.connect(wk.mark_latest_flag_nav, Qt.DirectConnection)
+        fl.confirm_answered.connect(wk.answer_confirm, Qt.DirectConnection)
+        wk.flags_started.connect(fl.on_started)
+        wk.flags_progress.connect(fl.on_progress)
+        wk.flags_ready.connect(fl.on_report)
+        wk.flags_failed.connect(fl.on_failed)
+        wk.flags_nav_done.connect(fl.on_nav_done)
+        wk.flags_confirm.connect(fl.on_ask_confirm)
+        wk.flags_warn.connect(fl.on_warn)
+
         self._thread.start()
         self._timer = QTimer(self)
         self._timer.setInterval(INTERVALO_STATUS_MS)
@@ -216,6 +257,7 @@ class HubWindow(QWidget):
         self.chip_catia.setStyleSheet(f"color: {T.GREEN if connected else T.RED};")
         self.chip_doc.setText(document or "Nenhum desenho")
         self.font_page.set_catia_state(connected, document)
+        self.flags_page.set_catia_state(connected, document)
 
     # ------------------------------------------------------------------
     # Modo compacto
@@ -227,6 +269,7 @@ class HubWindow(QWidget):
         for w in (self._rail, self._pills, self._brand_sub, self.chip_doc):
             w.setVisible(not self._compact)
         self.font_page.set_compact(self._compact)
+        self.flags_page.set_compact(self._compact)
         self.layout().activate()
         self.setWindowFlag(Qt.WindowStaysOnTopHint, self._compact)
         self.btn_compact.setToolTip("Voltar ao tamanho normal" if self._compact else "Modo compacto: fica ao lado do CATIA, sempre visível")
@@ -235,6 +278,11 @@ class HubWindow(QWidget):
         QTimer.singleShot(0, self._apply_mode_geometry)
 
     def _apply_mode_geometry(self) -> None:
+        # Os layouts internos ainda nao recalcularam o minimo depois de esconder os widgets.
+        # O pedido sobe um nivel de cada vez, da pagina ate a janela.
+        for _ in range(4):
+            QCoreApplication.sendPostedEvents(None, QEvent.LayoutRequest)
+        self.layout().activate()
         if self._compact:
             area = (self.screen() or QGuiApplication.primaryScreen()).availableGeometry()
             self.setGeometry(area.right() - LARGURA_COMPACTA + 1, area.top(), LARGURA_COMPACTA, area.height())
@@ -245,6 +293,7 @@ class HubWindow(QWidget):
         self._timer.stop()
         self.worker.request_stop()
         self.worker.answer_format("")
+        self.worker.answer_confirm(False)
         self._thread.quit()
         if not self._thread.wait(5000):
             # O CATIA nao respondeu: nao segura o HUB aberto por causa dele.

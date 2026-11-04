@@ -1,0 +1,196 @@
+' Monta os desenhos de teste do Fix Flags na pasta informada.
+Const BORDA = 12
+Const COR = 10
+Const VERDE = 11555071
+Const VERMELHO = -16776961
+
+Dim mFalhas
+
+Function Add(v, s, x, y)
+    Set Add = v.Texts.Add(s, x, y)
+End Function
+
+' Flag no objeto inteiro.
+Sub TO_(v, s, x, y, frame)
+    Fr Add(v, s, x, y), frame
+End Sub
+
+' DrawingText.FrameType nao grava nada no V5R20: so TextProperties.FrameType grava.
+Sub Fr(t, frame)
+    Dim tp: Set tp = t.TextProperties
+    tp.FrameType = frame
+    tp.Update
+End Sub
+
+' Flag aplicada pelo Text Editor, no texto todo. O indice das letras comeca em 1.
+' A borda nao aceita 57, 58 e 59: esses textos ficam sem flag e devem ser ignorados.
+Sub TE(v, s, x, y, frame)
+    Dim t: Set t = Add(v, s, x, y)
+    t.SetParameterOnSubString BORDA, 1, Len(s), frame
+End Sub
+
+Function Vista(sh, nome, x, y)
+    Dim v: Set v = sh.Views.Add(nome)
+    v.x = x: v.y = y: v.Activate
+    Set Vista = v
+End Function
+
+Sub Salvar(doc, caminho)
+    Dim fso: Set fso = CreateObject("Scripting.FileSystemObject")
+    If fso.FileExists(caminho) Then fso.DeleteFile caminho
+    doc.SaveAs caminho
+    doc.Close
+End Sub
+
+Function Montar(pasta)
+    On Error Resume Next
+    mFalhas = ""
+    Montar_ pasta
+    If Err.Number <> 0 Then Montar = "ERRO " & Err.Number & ": " & Err.Description Else Montar = "OK" & mFalhas
+End Function
+
+Sub Tenta(rotulo)
+    If Err.Number <> 0 Then mFalhas = mFalhas & " [" & rotulo & ": " & Err.Description & "]"
+    Err.Clear
+End Sub
+
+Sub Montar_(pasta)
+    Dim doc, sh, v, i, f, t, codigos, frames, y
+    CATIA.DisplayFileAlerts = False
+    Do While CATIA.Documents.Count > 0: CATIA.Documents.Item(1).Close: Loop
+
+    codigos = Array("NL006", "AB123", "NL0006", "XYZ0001", "nl006", " NL006", "NL006 ", "  NL0006  ", _
+        "NL006" & vbLf, Chr(160) & "NL006" & Chr(160), vbTab & "AB123", "NL06", "NL00006", "NL 006", _
+        "N1006", "123", "ABC", "   ", Chr(193) & "B123", "NL006" & vbLf & "AB123", "A123", "ABCDEFG1234")
+    frames = Array(7, 8, 9, 57, 58, 59)
+
+    Set doc = CATIA.Documents.Add("Drawing")
+
+    ' Folha 1: flag no objeto, todos os tipos e todos os codigos.
+    Set sh = doc.Sheets.Item(1)
+    sh.PaperSize = 2: sh.Activate
+    For f = 0 To UBound(frames)
+        Set v = Vista(sh, "OBJ " & frames(f), 60 + 130 * f, 700)
+        For i = 0 To UBound(codigos)
+            On Error Resume Next
+            TO_ v, codigos(i), 0, -22 * i, frames(f)
+            Tenta "objeto " & frames(f) & "/" & i
+            On Error GoTo 0
+        Next
+    Next
+
+    ' Folha 2: flag pelo Text Editor.
+    Set sh = doc.Sheets.Add("Editor")
+    sh.PaperSize = 2: sh.Activate
+    For f = 0 To UBound(frames)
+        Set v = Vista(sh, "ED " & frames(f), 60 + 130 * f, 700)
+        For i = 0 To UBound(codigos)
+            On Error Resume Next
+            TE v, codigos(i), 0, -22 * i, frames(f)
+            Tenta "editor " & frames(f) & "/" & i
+            On Error GoTo 0
+        Next
+    Next
+
+    ' Folha 3: casos especiais.
+    Set sh = doc.Sheets.Add("Especiais")
+    sh.PaperSize = 2: sh.Activate
+
+    Set v = Vista(sh, "SEM FLAG", 60, 700)
+    Add v, "NL006", 0, 0
+    TO_ v, "NL007", 0, -22, 1
+    TO_ v, "NL008", 0, -44, 2
+    TE v, "NL009", 0, -66, 1
+    Add v, "NOTA GERAL 123", 0, -88
+
+    Set v = Vista(sh, "PARCIAL", 200, 700)
+    Set t = Add(v, "NL006", 0, 0): t.SetParameterOnSubString BORDA, 3, 3, 7
+    Set t = Add(v, "NL016", 0, -22): t.SetParameterOnSubString BORDA, 1, 2, 8
+    Set t = Add(v, "NL026", 0, -44): t.SetParameterOnSubString BORDA, 1, 2, 7: t.SetParameterOnSubString BORDA, 3, 3, 9
+    Set t = Add(v, "NL0036", 0, -66): t.SetParameterOnSubString BORDA, 6, 1, 9
+    Set t = Add(v, "NL0037", 0, -88): t.SetParameterOnSubString BORDA, 1, 3, 7
+    ' Comecando em 0, a borda nao pega a ultima letra: a validacao do codigo com 4 numeros
+    ' falha e o texto e restaurado. E uma falha real do CATIA.
+    Set t = Add(v, "NL0038", 0, -110): t.SetParameterOnSubString BORDA, 0, 6, 7
+    Set t = Add(v, "NL0039", 0, -132): t.SetParameterOnSubString BORDA, 2, 5, 8
+
+    Set v = Vista(sh, "CORES", 340, 700)
+    Set t = Add(v, "NL0046", 0, 0): Fr t, 7: t.SetParameterOnSubString COR, 0, 0, VERDE
+    Set t = Add(v, "NL0056", 0, -22): Fr t, 7: t.SetParameterOnSubString COR, 2, 2, VERMELHO
+    Set t = Add(v, "NL066", 0, -44): Fr t, 57: t.SetParameterOnSubString COR, 1, 2, VERMELHO
+    Set t = Add(v, "NL076", 0, -66): t.SetParameterOnSubString BORDA, 1, 5, 8: t.SetParameterOnSubString COR, 0, 0, VERMELHO
+
+    Set v = Vista(sh, "FORMA", 480, 700)
+    Set t = Add(v, "NL086", 0, 0): Fr t, 9: t.SetFontSize 0, 0, 7
+    Set t = Add(v, "NL096", 0, -30): Fr t, 58: t.SetFontSize 0, 2, 5
+    Set t = Add(v, "NL106", 0, -60): Fr t, 7
+    On Error Resume Next
+    t.Angle = 0.5: Tenta "angulo"
+    t.WrappingWidth = 40: Tenta "largura"
+    t.AnchorPosition = 5: Tenta "ancora"
+    On Error GoTo 0
+    Set t = Add(v, "NL116", 0, -90): Fr t, 8
+    On Error Resume Next
+    t.Leaders.Add 40, -120: Tenta "leader"
+    On Error GoTo 0
+    Set t = Add(v, "NL0126", 0, -150): Fr t, 59
+    On Error Resume Next
+    t.Leaders.Add 40, -180: Tenta "leader 2"
+    On Error GoTo 0
+    Set t = Add(v, "NL136", 0, -210): t.SetParameterOnSubString BORDA, 1, 5, 9
+    On Error Resume Next
+    t.Leaders.Add 40, -240: Tenta "leader 3"
+    On Error GoTo 0
+
+    Set v = Vista(sh, "ESCALA", 620, 500)
+    v.Scale = 0.5: v.Angle = 0.5
+    TO_ v, "NL146", 0, 0, 7
+    TE v, "NL156", 0, -22, 8
+
+    Set v = Vista(sh, "ESCONDIDA", 620, 700)
+    TO_ v, "NL166", 0, 0, 7
+    TE v, "NL176", 0, -22, 8
+    doc.Selection.Clear: doc.Selection.Add v: doc.Selection.VisProperties.SetShow 1: doc.Selection.Clear
+
+    Set v = Vista(sh, "TRAVADA", 760, 700)
+    TO_ v, "NL186", 0, 0, 7
+    TE v, "NL196", 0, -22, 8
+    TO_ v, "NL0206", 0, -44, 57
+    v.LockStatus = True
+
+    Set v = Vista(sh, "VAZIA", 60, 300)
+
+    Set v = sh.Views.Item(1): v.Activate
+    TO_ v, "NL216", 100, 100, 7
+    Set v = sh.Views.Item(2): v.Activate
+    TO_ v, "NL226", 100, 60, 8
+    TE v, "NL236", 100, 40, 9
+    Add v, "SHEET 1", 100, 20
+
+    ' Folha 4: so o Background, sem nada para corrigir.
+    Set sh = doc.Sheets.Add("So fundo")
+    sh.PaperSize = 2
+    Salvar doc, pasta & "\FLAGS_RICO.CATDrawing"
+
+    ' Sem nenhuma flag.
+    Set doc = CATIA.Documents.Add("Drawing")
+    Set sh = doc.Sheets.Item(1)
+    sh.PaperSize = 2: sh.Activate
+    Set v = Vista(sh, "V1", 300, 300)
+    Add v, "NL006", 0, 0
+    Add v, "TEXTO COMUM", 0, -30
+    Salvar doc, pasta & "\FLAGS_SEM.CATDrawing"
+
+    ' Tudo ja correto.
+    Set doc = CATIA.Documents.Add("Drawing")
+    Set sh = doc.Sheets.Item(1)
+    sh.PaperSize = 2: sh.Activate
+    Set v = Vista(sh, "V1", 300, 300)
+    TO_ v, "NL0006", 0, 0, 7
+    TE v, "AB0123", 0, -30, 8
+    Salvar doc, pasta & "\FLAGS_CERTAS.CATDrawing"
+
+    ' Uma peca, para o aviso de documento errado.
+    Set doc = CATIA.Documents.Add("Part")
+    Salvar doc, pasta & "\NAO_E_DESENHO.CATPart"
+End Sub

@@ -16,7 +16,7 @@ usuário em 04/11/2026. A pasta `legacy_vba/` está **desatualizada** e não ser
 | Font Size Check | `sizedetect.txt`, `frmFontNav.txt` do CONSERTO-E1DWGVBA | Convertido, em `main_qt.py` |
 | Update Template | `update.txt` do CONSERTO-E1DWGVBA | Pendente, ver abaixo |
 | Position and Zone | `vba_referencia/poszone` (V3.5.1) | Pendente |
-| Fix Flags | `vba_referencia/fixflags` | Pendente |
+| Fix Flags | `vba_referencia/fixflags` | Convertido, em `main_qt.py` |
 | Split 2D e 3D | `vba_referencia/SPLIT 2D`, `SPLIT 3D` | Pendente |
 | Painel | `vba_referencia/symbol shape` | Será substituído pelo HUB |
 | Comparação no Excel | `vba_referencia/excel` | Continua no Excel |
@@ -58,7 +58,40 @@ Com o CATIA aberto e sem desenhos importantes abertos, porque o teste fecha todo
 
 ```bat
 python tests\parity\rodar_paridade_font.py C:\Users\renan\Documents\E1DWGVBA
+python tests\parity\rodar_paridade_flags.py
 ```
+
+## Fix Flags: o que o teste cobre
+
+- **Desenhos reais.** A macro e o Python rodam nos mesmos desenhos, duas vezes seguidas. Cada
+  texto é fotografado depois: conteúdo, tipo da flag, cor e borda de cada letra, tamanho,
+  posição, ângulo e leaders. O teste falha se o desenho não cobrir todos os tipos de flag.
+- **Falhas sob encomenda.** O CATIA não falha quando se pede, e são esses caminhos que restauram
+  o desenho. `tests/parity/texto_simulado.vbsinc` simula um texto com 19 tipos de falha, e a mesma
+  definição roda no VBA e no script: 1000 casos. Defeitos plantados de propósito no script foram
+  todos percebidos por essa simulação.
+- **O que não foi testado.** Desenho real de produção. As flags do teste foram criadas por
+  automação, não pela interface do CATIA. O VBA de referência roda pelo Excel, não dentro do CATIA.
+
+## Fix Flags: fatos do CATIA V5R20 confirmados no teste
+
+- `DrawingText.FrameType = x` aceita sem erro e não grava nada. Só `TextProperties.FrameType` grava.
+- O índice das letras em `SetParameterOnSubString` começa em 1. A macro usa 0 ao aplicar a borda e
+  ao validar letra por letra. Por isso a última letra fica de fora, e uma flag do Text Editor em
+  só parte do texto falha na validação e é restaurada em vermelho.
+- A borda por letra não aceita 57, 58 e 59: flag fixa com cadeado só existe no objeto inteiro.
+
+## Fix Flags: diferenças conhecidas em relação ao VBA
+
+- **Comportamento mantido de propósito.** Flag que já está correta também fica verde, embora a
+  mensagem a conte como correta. É o item 6 de `vba_referencia/README.md`, ainda sem decisão.
+- **Melhorias.** Lista de cada flag, com o texto antes e depois e o resultado; navegação até ela
+  no CATIA; barra de progresso; parada entre folhas; modo compacto. Depois de um erro, a tela
+  mostra o que já tinha sido alterado, que no VBA só ficava no desenho.
+- **Desenho trocado no meio.** O VBA guarda o documento; o Python procura pelo nome completo a
+  cada folha e nunca segue para outro documento que tenha ficado ativo.
+- **Janelas.** O resumo que o VBA mostrava numa mensagem agora fica na própria tela. A confirmação
+  continua igual, com o Não como botão padrão. As mensagens ganharam os acentos.
 
 ## Font Size Check: diferenças conhecidas em relação ao VBA
 
