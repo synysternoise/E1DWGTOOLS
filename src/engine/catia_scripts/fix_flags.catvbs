@@ -3,6 +3,11 @@
 '
 ' CONVERSAO:   NL006 -> NL0006   AB123 -> AB0123   NL0006 permanece NL0006
 '
+' DIFERENCAS DECIDIDAS EM RELACAO A MACRO (ver MIGRACAO.md):
+'   - Flag que ja esta correta nao e tocada: nem texto, nem frame, nem cor.
+'   - As letras sao contadas a partir de 1, como no CATIA.
+'   - Tirar um espaco externo de um codigo com 4 numeros conta como correcao.
+'
 ' TIPOS:       7, 8, 9 = Right, Left e Both Flag variavel
 '              57, 58, 59 = Right, Left e Both Flag fixa com cadeado
 '
@@ -221,7 +226,7 @@ Sub ProcessarFlagSegura(drawingText)
 End Sub
 
 Sub ProcessarFlagSegura_(drawingText)
-    Dim textoCodigo, textoCorrigido, textoRelido, prefixo, parteNumerica, quatroNumeros, tamanho
+    Dim textoCodigo, textoCorrigido, textoRelido, prefixo, parteNumerica, quatroNumeros
 
     mTextoOriginal = CStr(drawingText.Text)
 
@@ -265,14 +270,17 @@ Sub ProcessarFlagSegura_(drawingText)
         textoCorrigido = prefixo & "0" & parteNumerica
     End If
 
-    If (Not quatroNumeros) Or StrComp(mTextoOriginal, textoCorrigido, vbBinaryCompare) <> 0 Then
-        drawingText.Text = textoCorrigido
-        mAlterouTexto = True
-        AtualizarPropriedadesTexto drawingText
+    ' Flag ja correta fica exatamente como esta.
+    If quatroNumeros And StrComp(mTextoOriginal, textoCorrigido, vbBinaryCompare) = 0 Then
+        fixTotalJaCorretas = fixTotalJaCorretas + 1
+        Exit Sub
     End If
 
-    tamanho = Len(textoCorrigido)
-    If Not PreservarFlagOriginal(drawingText, mOrigemFlag, mFrameOriginal, tamanho) Then
+    drawingText.Text = textoCorrigido
+    mAlterouTexto = True
+    AtualizarPropriedadesTexto drawingText
+
+    If Not PreservarFlagOriginal(drawingText, mOrigemFlag, mFrameOriginal, Len(textoCorrigido)) Then
         FalhaERestaurar drawingText, mTextoOriginal, mOrigemFlag, mFrameOriginal
         Exit Sub
     End If
@@ -298,11 +306,7 @@ Sub ProcessarFlagSegura_(drawingText)
         Exit Sub
     End If
 
-    If quatroNumeros Then
-        fixTotalJaCorretas = fixTotalJaCorretas + 1
-    Else
-        fixTotalCorrigidas = fixTotalCorrigidas + 1
-    End If
+    fixTotalCorrigidas = fixTotalCorrigidas + 1
 End Sub
 
 Sub FalhaERestaurar(drawingText, textoOriginal, origemFlag, frameOriginal)
@@ -360,7 +364,7 @@ Function DetectarFlagOriginal(drawingText, tamanhoTexto, frameEncontrado, origem
         Exit Function
     End If
 
-    For indice = 0 To tamanhoTexto - 1
+    For indice = 1 To tamanhoTexto
         valor = LerBordaTrechoFix(drawingText, indice, 1)
         If EhFrameDeFlagFix(valor) Then
             frameEncontrado = valor
@@ -451,7 +455,7 @@ Function AplicarFrameNoTextoInteiro_(drawingText, frameOriginal, tamanhoTexto)
     AplicarFrameNoTextoInteiro_ = False
     If tamanhoTexto <= 0 Then Exit Function
     If Not EhFrameDeFlagFix(frameOriginal) Then Exit Function
-    drawingText.SetParameterOnSubString FIX_PROPERTY_BORDER, 0, tamanhoTexto, frameOriginal
+    drawingText.SetParameterOnSubString FIX_PROPERTY_BORDER, 1, tamanhoTexto, frameOriginal
     AtualizarPropriedadesTexto drawingText
     AplicarFrameNoTextoInteiro_ = True
 End Function
@@ -477,7 +481,7 @@ Function ValidarFrameNoTextoInteiro(drawingText, frameEsperado, tamanhoTexto)
     Dim indice
     ValidarFrameNoTextoInteiro = False
     If tamanhoTexto <= 0 Then Exit Function
-    For indice = 0 To tamanhoTexto - 1
+    For indice = 1 To tamanhoTexto
         If LerBordaTrechoFix(drawingText, indice, 1) <> frameEsperado Then Exit Function
     Next
     ValidarFrameNoTextoInteiro = True
@@ -516,7 +520,7 @@ Function ValidarCorTextoInteiro(drawingText, tamanhoTexto, corEsperada)
     Dim indice
     ValidarCorTextoInteiro = False
     If tamanhoTexto <= 0 Then Exit Function
-    For indice = 0 To tamanhoTexto - 1
+    For indice = 1 To tamanhoTexto
         If LerCorTrechoFix(drawingText, indice, 1) <> corEsperada Then Exit Function
     Next
     ValidarCorTextoInteiro = True

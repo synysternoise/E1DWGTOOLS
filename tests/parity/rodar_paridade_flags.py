@@ -107,6 +107,51 @@ def classes_para_vba(fonte: str) -> dict:
     return {"classes": classes, "resto": "\n".join(resto)}
 
 
+def aplicar_decisoes(fonte: str) -> str:
+    """Leva para a referencia as tres mudancas decididas pelo usuario, e so elas (ver MIGRACAO.md).
+
+    Assim a comparacao continua provando que todo o resto da macro foi preservado.
+    """
+    fonte = fonte.replace("\r\n", "\n")
+
+    def troca(de, para, vezes=1):
+        nonlocal fonte
+        assert fonte.count(de) == vezes, de
+        fonte = fonte.replace(de, para)
+
+    # 1. Flag ja correta nao e tocada; tirar espaco externo conta como correcao.
+    troca(
+        "        textoCorrigido = prefixo & parteNumerica\n",
+        "        textoCorrigido = prefixo & parteNumerica\n"
+        "        If StrComp(textoOriginal, textoCorrigido, vbBinaryCompare) = 0 Then\n"
+        "            fixTotalJaCorretas = fixTotalJaCorretas + 1\n"
+        "            Exit Sub\n"
+        "        End If\n",
+    )
+    troca(
+        "        fixTotalJaCorretas = _\n            fixTotalJaCorretas + 1\n\n        Exit Sub\n\n    End If\n\n"
+        "    ' ========================================================\n    ' CODIGO COM TRES NUMEROS",
+        "        fixTotalCorrigidas = _\n            fixTotalCorrigidas + 1\n\n        Exit Sub\n\n    End If\n\n"
+        "    ' ========================================================\n    ' CODIGO COM TRES NUMEROS",
+    )
+    troca(
+        '''                   "O codigo completo ficara verde."
+''',
+        '''                   "O codigo corrigido ficara verde."
+
+    AdicionarLinha mensagem, _
+                   "Flags ja corretas nao sao alteradas."
+''',
+    )
+    # 2. As letras contam a partir de 1.
+    troca("    For indice = 0 To tamanhoTexto - 1\n", "    For indice = 1 To tamanhoTexto\n", 3)
+    troca(
+        "        FIX_PROPERTY_BORDER, _\n        0, _\n        tamanhoTexto, _\n        frameOriginal",
+        "        FIX_PROPERTY_BORDER, _\n        1, _\n        tamanhoTexto, _\n        frameOriginal",
+    )
+    return fonte
+
+
 def preparar_fonte(destino: str) -> None:
     with open(os.path.join(RAIZ, "vba_referencia", "fixflags"), encoding="cp1252") as f:
         fonte = f.read()
@@ -114,6 +159,7 @@ def preparar_fonte(destino: str) -> None:
     fonte = re.sub(r"\bMsgBox\b", "MsgTeste", fonte)
     fonte = fonte.replace("Private Sub ProcessarFlagSegura", "Public Sub ProcessarFlagSegura")
     fonte = fonte.replace("Private Sub ResetarContadoresFix", "Public Sub ResetarContadoresFix")
+    fonte = aplicar_decisoes(fonte)
     with open(destino, "w", encoding="cp1252", newline="\r\n") as f:
         f.write(fonte + FIM_FONTE)
 
@@ -297,6 +343,10 @@ def caso(xl, bridge, trabalho, nome, caminho, resposta_vba, vezes=1, so_vba=Fals
             for x, y in difs[:10]:
                 print(f"    VBA: {x!r}\n    PY : {y!r}")
     mudaram = sum(a != b for a, b in zip(antes, vba_fotos[0])) if antes else 0
+    # Decisao do usuario: a segunda execucao nao pode mudar nada.
+    if vezes == 2 and py_fotos[0] != py_fotos[1]:
+        falha = 1
+        print(f"  a segunda execucao mudou {sum(a != b for a, b in zip(*py_fotos))} textos")
     if rep is not None and exigir:
         # Sem isto, desenhos de teste mal montados dariam um "igual" que nao prova nada.
         faltou = [n for n, v in exigir.items() if getattr(primeiro_rep, n) < v]
@@ -331,7 +381,7 @@ def main() -> int:
             return 1
         arq = lambda n: os.path.join(trabalho, n)  # noqa: E731
         cobertura = {"objeto": 50, "text_editor": 20, "cadeado": 20, "corrigidas": 30, "ja_corretas": 10,
-                     "ignoradas": 50, "falhas": 1, "restauradas": 1}
+                     "ignoradas": 50}
         casos = [
             ("sem documento", None, 6, 1, None),
             ("documento nao e desenho", arq("NAO_E_DESENHO.CATPart"), 6, 1, None),

@@ -237,8 +237,8 @@ class FixFlagsPage(QWidget):
         else:
             self._intro_title.setText("Fix Flags")
             self._intro_sub.setText(
-                "Corrige as flag notes: NL006 vira NL0006, e o código completo fica verde. "
-                "Altera o desenho: salve uma cópia antes."
+                "Corrige as flag notes: NL006 vira NL0006, e o código corrigido fica verde. "
+                "Flags já corretas não são tocadas. Altera o desenho: salve uma cópia antes."
             )
             self.btn_run.setText("CORRIGIR FLAGS")
         self.btn_again.setEnabled(self._connected and self._has_drawing)

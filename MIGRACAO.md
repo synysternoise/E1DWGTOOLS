@@ -77,14 +77,15 @@ python tests\parity\rodar_paridade_flags.py
 
 - `DrawingText.FrameType = x` aceita sem erro e não grava nada. Só `TextProperties.FrameType` grava.
 - O índice das letras em `SetParameterOnSubString` começa em 1. A macro usa 0 ao aplicar a borda e
-  ao validar letra por letra. Por isso a última letra fica de fora, e uma flag do Text Editor em
-  só parte do texto falha na validação e é restaurada em vermelho.
+  ao validar letra por letra, então a última letra fica de fora. O Python usa 1.
 - A borda por letra não aceita 57, 58 e 59: flag fixa com cadeado só existe no objeto inteiro.
 
 ## Fix Flags: diferenças conhecidas em relação ao VBA
 
-- **Comportamento mantido de propósito.** Flag que já está correta também fica verde, embora a
-  mensagem a conte como correta. É o item 6 de `vba_referencia/README.md`, ainda sem decisão.
+- **Decisões do usuário (04/11/2026).** Flag já correta não é tocada: nem texto, nem frame, nem cor
+  (item 6 de `vba_referencia/README.md`). Tirar um espaço externo de um código com 4 números conta
+  como correção. Uma flag do Text Editor em só parte do texto agora é corrigida, em vez de falhar. A
+  comparação aplica essas mudanças à macro de referência, e só elas, para provar que o resto é igual.
 - **Melhorias.** Lista de cada flag, com o texto antes e depois e o resultado; navegação até ela
   no CATIA; barra de progresso; parada entre folhas; modo compacto. Depois de um erro, a tela
   mostra o que já tinha sido alterado, que no VBA só ficava no desenho.

@@ -116,31 +116,56 @@ Class TextoSimulado
         Next
     End Sub
 
+    ' Como no CATIA: as letras contam a partir de 1. Comecando em 0, a primeira posicao nao
+    ' existe e a ultima letra do trecho fica de fora.
     Public Sub SetParameterOnSubString(p, ini, qtd, valor)
-        Dim i, a, b
+        Dim i, a, b, n
         If Falha = "set_param" Then Err.Raise 5009, , "set param"
         If p = 12 And Falha = "borda_recusada" Then Err.Raise 5010, , "borda recusada"
         If p = 10 And Falha = "cor_recusada" Then Err.Raise 5011, , "cor recusada"
         If p = 12 And Falha = "borda_nao_grava" Then Exit Sub
+        n = UBound(mCores) + 1
         If qtd = 0 Then
-            a = 0
-            b = UBound(mCores)
+            a = 1
+            b = n
+        ElseIf ini = 0 Then
+            a = 1
+            b = qtd - 1
         Else
             a = ini
             b = ini + qtd - 1
         End If
         If p = 10 And Falha = "cor_parcial" Then b = b - 1
-        If b > UBound(mCores) Then b = UBound(mCores)
+        If b > n Then b = n
         For i = a To b
-            If p = 12 Then mBordas(i) = valor Else mCores(i) = valor
+            If p = 12 Then mBordas(i - 1) = valor Else mCores(i - 1) = valor
         Next
     End Sub
 
     Public Function GetParameterOnSubString(p, ini, qtd)
+        Dim a, b, i, n, v, primeiro
         If Falha = "get_param" Then Err.Raise 5012, , "get param"
         If p = 12 And Falha = "ler_borda" Then Err.Raise 5013, , "ler borda"
-        If ini > UBound(mCores) Then Err.Raise 5014, , "fora do texto"
-        If p = 12 Then GetParameterOnSubString = mBordas(ini) Else GetParameterOnSubString = mCores(ini)
+        n = UBound(mCores) + 1
+        If ini = 0 Then
+            a = 1
+            If qtd > 1 Then b = qtd - 1 Else b = n
+        Else
+            a = ini
+            b = ini + qtd - 1
+        End If
+        If a > n Then a = n
+        If b > n Then b = n
+        For i = a To b
+            If p = 12 Then v = mBordas(i - 1) Else v = mCores(i - 1)
+            If i = a Then
+                primeiro = v
+            ElseIf v <> primeiro Then
+                GetParameterOnSubString = 0
+                Exit Function
+            End If
+        Next
+        GetParameterOnSubString = primeiro
     End Function
 
     Public Function Estado()

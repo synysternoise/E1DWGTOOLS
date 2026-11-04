@@ -109,8 +109,7 @@ Sub Montar_(pasta)
     Set t = Add(v, "NL026", 0, -44): t.SetParameterOnSubString BORDA, 1, 2, 7: t.SetParameterOnSubString BORDA, 3, 3, 9
     Set t = Add(v, "NL0036", 0, -66): t.SetParameterOnSubString BORDA, 6, 1, 9
     Set t = Add(v, "NL0037", 0, -88): t.SetParameterOnSubString BORDA, 1, 3, 7
-    ' Comecando em 0, a borda nao pega a ultima letra: a validacao do codigo com 4 numeros
-    ' falha e o texto e restaurado. E uma falha real do CATIA.
+    ' Comecando em 0, a borda nao pega a ultima letra.
     Set t = Add(v, "NL0038", 0, -110): t.SetParameterOnSubString BORDA, 0, 6, 7
     Set t = Add(v, "NL0039", 0, -132): t.SetParameterOnSubString BORDA, 2, 5, 8
 
