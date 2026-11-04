@@ -12,6 +12,10 @@ from PySide6.QtWidgets import (
 from engine import fix_flags as ff
 from ui_qt import theme as T
 from ui_qt.font_size_page import PAPEL_OK, MarkDelegate, button, label
+from ui_qt.pecas import (
+    Cartao, LinhaSituacao, Resumo, aviso_catia_ocupado, botao, botao_grande, etiqueta, icone_grande, moldura,
+)
+from ui_qt.tool_page import LARGURA_LATERAL
 
 NAO_ENCONTRADO = "Flag não encontrada: foi apagada ou o desenho foi fechado."
 COLUNAS = ("", "FOLHA", "VISTA", "ANTES", "DEPOIS", "TIPO")
@@ -32,6 +36,7 @@ class FixFlagsPage(QWidget):
     go_requested = Signal(object, object, int)
     latest_nav = Signal(int)
     confirm_answered = Signal(bool)
+    conferir_requested = Signal()
 
     def __init__(self):
         super().__init__()
@@ -55,10 +60,15 @@ class FixFlagsPage(QWidget):
     # Telas
     # ------------------------------------------------------------------
     def _build_intro(self) -> QWidget:
-        w = QWidget()
+        w = moldura()
         col = QVBoxLayout(w)
         col.setContentsMargins(22, 18, 22, 18)
         col.addStretch(1)
+        linha_icone = QHBoxLayout()
+        linha_icone.addStretch(1)
+        linha_icone.addWidget(icone_grande("flag"))
+        linha_icone.addStretch(1)
+        col.addLayout(linha_icone)
         self._intro_title = label("Fix Flags", "titulo")
         self._intro_title.setAlignment(Qt.AlignCenter)
         self._intro_title.setWordWrap(True)
@@ -86,7 +96,7 @@ class FixFlagsPage(QWidget):
         return w
 
     def _build_running(self) -> QWidget:
-        w = QWidget()
+        w = moldura()
         col = QVBoxLayout(w)
         col.setContentsMargins(22, 18, 22, 18)
         col.addStretch(1)
@@ -105,6 +115,8 @@ class FixFlagsPage(QWidget):
         col.addSpacing(14)
         col.addWidget(self.bar)
         col.addSpacing(14)
+        col.addWidget(aviso_catia_ocupado())
+        col.addSpacing(14)
         linha = QHBoxLayout()
         linha.addStretch(1)
         linha.addWidget(self.btn_stop)
@@ -115,9 +127,14 @@ class FixFlagsPage(QWidget):
 
     def _build_results(self) -> QWidget:
         w = QWidget()
-        col = QVBoxLayout(w)
+        fora = QHBoxLayout(w)
+        fora.setContentsMargins(0, 0, 0, 0)
+        fora.setSpacing(12)
+        centro = moldura()
+        col = QVBoxLayout(centro)
         col.setContentsMargins(18, 14, 18, 14)
         col.setSpacing(10)
+        fora.addWidget(centro, 1)
 
         topo = QHBoxLayout()
         textos = QVBoxLayout()
@@ -130,12 +147,12 @@ class FixFlagsPage(QWidget):
         self.lbl_counts = label("", "sub")
         self.lbl_counts.setWordWrap(True)
         self.lbl_counts.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        self.lbl_counts.hide()  # as mesmas contagens ficam no Resumo, ao lado
         textos.addWidget(self.lbl_counts)
         topo.addLayout(textos, 1)
-        self._tag = label("ALTERA O DESENHO", "etiquetaAviso")
-        self._tag.setFixedHeight(20)
+        self._tag = etiqueta("ALTERA O DESENHO")
         topo.addWidget(self._tag, 0, Qt.AlignTop)
-        self.btn_again = button("Corrigir de novo", "secundario")
+        self.btn_again = botao("Corrigir de novo", "secundario", "refresh")
         self.btn_again.clicked.connect(self.run_requested)
         topo.addWidget(self.btn_again, 0, Qt.AlignTop)
         col.addLayout(topo)
@@ -145,6 +162,18 @@ class FixFlagsPage(QWidget):
         self.lbl_error.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         self.lbl_error.hide()
         col.addWidget(self.lbl_error)
+
+        cartoes = QHBoxLayout()
+        cartoes.setSpacing(8)
+        self.card_corrigidas = Cartao("corrigidas", "verde")
+        self.card_certas = Cartao("já estavam certas")
+        self.card_lidas = Cartao("flags lidas")
+        for c in (self.card_corrigidas, self.card_certas, self.card_lidas):
+            cartoes.addWidget(c, 1)
+        self._cartoes = QFrame()
+        self._cartoes.setLayout(cartoes)
+        cartoes.setContentsMargins(0, 0, 0, 0)
+        col.addWidget(self._cartoes)
 
         filtros = QHBoxLayout()
         filtros.setSpacing(6)
@@ -177,7 +206,7 @@ class FixFlagsPage(QWidget):
         cab.setSectionResizeMode(QHeaderView.Fixed)
         cab.setSectionResizeMode(COL_VISTA, QHeaderView.Stretch)
         cab.setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        for coluna, largura in ((COL_MARCA, 40), (COL_FOLHA, 100), (COL_ANTES, 110), (COL_DEPOIS, 110), (COL_TIPO, 170)):
+        for coluna, largura in ((COL_MARCA, 40), (COL_FOLHA, 90), (COL_ANTES, 84), (COL_DEPOIS, 84), (COL_TIPO, 120)):
             self.table.setColumnWidth(coluna, largura)
         self.table.selectionModel().currentRowChanged.connect(self._on_row_changed)
         col.addWidget(self.table, 1)
@@ -202,8 +231,9 @@ class FixFlagsPage(QWidget):
         col.addWidget(detalhe)
 
         nav = QHBoxLayout()
-        self.btn_prev = button("‹   ANTERIOR", "secundario")
-        self.btn_next = button("PRÓXIMO   ›", "primario")
+        self.btn_prev = botao("ANTERIOR", "secundario", "left")
+        self.btn_next = botao("PRÓXIMO", "primario", "right", T.CYAN_INK)
+        self.btn_next.setLayoutDirection(Qt.RightToLeft)
         self.lbl_pos = label("", "posicao")
         self.lbl_pos.setAlignment(Qt.AlignCenter)
         self.btn_prev.clicked.connect(self._on_prev)
@@ -215,6 +245,25 @@ class FixFlagsPage(QWidget):
         nav.addWidget(self.lbl_pos, 1)
         nav.addWidget(self.btn_next, 2)
         col.addLayout(nav)
+
+        self._lateral = moldura()
+        self._lateral.setFixedWidth(LARGURA_LATERAL)
+        lado = QVBoxLayout(self._lateral)
+        lado.setContentsMargins(14, 14, 14, 14)
+        lado.setSpacing(10)
+        lado.addWidget(label("Resumo", "titulo"))
+        self.resumo = Resumo((
+            "Textos analisados", "Flags lidas", "No objeto inteiro", "Pelo Text Editor", "Fixas com cadeado",
+            "Corrigidas", "Já certas", "Ignorados", "Falhas de validação", "Restaurados", "Erros",
+        ))
+        lado.addWidget(self.resumo)
+        lado.addStretch(1)
+        self.linha_fim = LinhaSituacao()
+        lado.addWidget(self.linha_fim)
+        self.btn_conferir = botao_grande("CONFERIR NO CHECK", "shield")
+        self.btn_conferir.clicked.connect(self.conferir_requested)
+        lado.addWidget(self.btn_conferir)
+        fora.addWidget(self._lateral)
         return w
 
     # ------------------------------------------------------------------
@@ -306,10 +355,21 @@ class FixFlagsPage(QWidget):
         self._report = report
         self.lbl_error.hide()
         problemas = [i for i in report.items if not i.ok]
+        self.card_corrigidas.valor(report.corrigidas)
+        self.card_certas.valor(report.ja_corretas)
+        self.card_lidas.valor(report.flags)
+        for nome, valor, cor in (
+            ("Textos analisados", report.textos, ""), ("Flags lidas", report.flags, ""),
+            ("No objeto inteiro", report.objeto, ""), ("Pelo Text Editor", report.text_editor, ""), ("Fixas com cadeado", report.cadeado, ""),
+            ("Corrigidas", report.corrigidas, T.GREEN if report.corrigidas else ""), ("Já certas", report.ja_corretas, ""),
+            ("Ignorados", report.ignoradas, ""), ("Falhas de validação", report.falhas, T.RED if report.falhas else ""),
+            ("Restaurados", report.restauradas, T.AMBER if report.restauradas else ""), ("Erros", report.erros, T.RED if report.erros else ""),
+        ):
+            self.resumo.definir(nome, valor, cor)
+        self.linha_fim.definir("aviso" if problemas else "ok", "Confira as flags com problema" if problemas else "Pode voltar a usar o CATIA")
         parou = "  ·  Parado antes do fim" if report.stopped else ""
         self.lbl_sub.setText(
-            f"{report.textos} textos analisados  ·  {report.flags} flags reconhecidas  ·  "
-            f"{report.ignoradas} textos ignorados{parou}"
+            f"{report.textos} textos analisados  ·  {report.flags} flags{parou}"
         )
         self.lbl_counts.setText(
             f"{report.objeto} no objeto inteiro  ·  {report.text_editor} pelo Text Editor  ·  "
@@ -430,10 +490,11 @@ class FixFlagsPage(QWidget):
             self._select((self._current - 1) % len(self._rows))
 
     def set_compact(self, compact: bool) -> None:
+        self._lateral.setVisible(not compact)
+        self._cartoes.setVisible(not compact)
         for coluna in (COL_FOLHA, COL_VISTA, COL_TIPO):
             self.table.setColumnHidden(coluna, compact)
         self.table.horizontalHeader().setSectionResizeMode(COL_DEPOIS, QHeaderView.Stretch if compact else QHeaderView.Fixed)
         self._tag.setVisible(not compact)
-        self.lbl_counts.setVisible(not compact)
         self.btn_ok.setVisible(not compact)
         self.btn_again.setText("Corrigir" if compact else "Corrigir de novo")

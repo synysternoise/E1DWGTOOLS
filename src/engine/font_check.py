@@ -111,6 +111,8 @@ class FontItem:
     standard: str
     ok: bool = False
     order: int = 0  # posicao na ordem de leitura do desenho
+    padroes: Tuple[float, float] = (0.0, 0.0)  # tamanhos padrao da folha, em polegadas
+    inches: float = 0.0
 
 
 @dataclass
@@ -212,6 +214,8 @@ def run_font_inspection(
                 standard=f'{formato}: {padrao_1}" ou {padrao_2}"',
                 ok=correto,
                 order=report.total_items,
+                padroes=padroes,
+                inches=valor,
             )
             if correto:
                 report.total_ok += 1
@@ -239,3 +243,23 @@ def go_to_item(bridge: CatiaBridge, report: FontReport, item: FontItem) -> bool:
 def reset_colors(bridge: CatiaBridge) -> bool:
     """Restaura as cores brancas para preto. Retorna False se nao ha desenho ativo."""
     return bridge.call(SCRIPT, "RestaurarCores")[0][0] == "1"
+
+
+def closest_standard(item: FontItem) -> float:
+    """O padrao da folha mais perto do tamanho atual. A pessoa pode escolher o outro."""
+    return min(item.padroes, key=lambda p: abs(p - item.inches))
+
+
+def fix_font_size(bridge: CatiaBridge, report: FontReport, item: FontItem, polegadas: float) -> float:
+    """Muda so o tamanho do texto. Devolve as polegadas lidas depois; erro se nao ficou no padrao."""
+    if item.is_dim:
+        raise CatiaError("Cotas são corrigidas no CATIA.")
+    lido = bridge.call(
+        SCRIPT, "AjustarTamanho", report.doc_full_name, item.sheet_name, item.view_index, item.view_name,
+        item.item_index, item.item_name, polegadas * MM_POR_POLEGADA,
+    )[0][0]
+    novo = round_vba(parse_number(lido) / MM_POR_POLEGADA)
+    if abs(novo - polegadas) > TOLERANCIA:
+        raise CatiaError(f"O CATIA não aceitou o tamanho: ficou {novo}.")
+    item.inches = novo
+    return novo

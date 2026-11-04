@@ -20,7 +20,7 @@ from PySide6.QtWidgets import QApplication, QMessageBox  # noqa: E402
 from engine import fix_flags as ff  # noqa: E402
 from engine.catia_bridge import CAMPO, REGISTRO, CatiaBridge  # noqa: E402
 from ui_qt import fix_flags_page as pagina  # noqa: E402
-from ui_qt.hub_window import PAGINA_FLAGS, PAGINA_FONT, PAGINA_SPLIT3D, PAGINA_UPDATE, HubWindow  # noqa: E402
+from ui_qt.hub_window import PAGINA_FLAGS, PAGINA_GERAL, PAGINA_SEQUENCIA, PAGINA_SPLIT3D, HubWindow  # noqa: E402
 
 PASTA = sys.argv[1]
 IMAGENS = sys.argv[2] if len(sys.argv) > 2 else None
@@ -84,9 +84,9 @@ p = j.flags_page
 clica(j.pills["Envio"])
 confere("aba Envio mostra o Split 3D", j._pages.currentIndex() == PAGINA_SPLIT3D)
 clica(j.pills["Check"])
-confere("aba Check mostra o Font Check", j._pages.currentIndex() == PAGINA_FONT)
+confere("aba Check mostra a Visão geral", j._pages.currentIndex() == PAGINA_GERAL)
 clica(j.pills["Design"])
-confere("aba Design mostra o Update Template", j._pages.currentIndex() == PAGINA_UPDATE)
+confere("aba Design mostra a Sequência", j._pages.currentIndex() == PAGINA_SEQUENCIA)
 clica(j.rail_buttons["Fix Flags"])
 confere("o trilho leva ao Fix Flags", j._pages.currentIndex() == PAGINA_FLAGS)
 clica(j.pills["Check"])
@@ -138,9 +138,19 @@ confere("responder Não não muda o desenho", foto_desenho() == antes)
 
 # Correcao de verdade.
 visto.clear()
-batidas = [0]
+# O que importa e o maior tempo com a tela parada, nao quantas batidas couberam.
+parada = {"ultima": time.perf_counter(), "maior": 0.0}
+
+
+def batida():
+    agora = time.perf_counter()
+    parada["maior"] = max(parada["maior"], agora - parada["ultima"])
+    parada["ultima"] = agora
+
+
 relogio = QTimer()
-relogio.timeout.connect(lambda: batidas.__setitem__(0, batidas[0] + 1))
+relogio.timeout.connect(batida)
+parada["ultima"] = time.perf_counter()
 relogio.start(50)
 t0 = time.perf_counter()
 QTimer.singleShot(50, lambda: responde_a_janela(True))
@@ -148,7 +158,7 @@ clica(p.btn_run)
 confere("termina a correção", espera(lambda: p._stack.currentIndex() == 2))
 tempo = time.perf_counter() - t0
 relogio.stop()
-confere("tela continua respondendo", batidas[0] >= tempo * 20 * 0.5, f"{batidas[0]} batidas em {tempo:.1f} s")
+confere("tela continua respondendo", parada["maior"] < 1.0, f'maior parada {parada["maior"]:.2f} s em {tempo:.1f} s')
 rep = p._report
 print("   ", rep.mensagem.replace("\r\n", " | "))
 confere("leva sozinho à primeira flag", espera(lambda: "Selecionada" in p.lbl_nav_state.text(), 20), p.lbl_where.text())

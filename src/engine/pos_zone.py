@@ -45,6 +45,8 @@ CLUSTER_LINK_DEFAULT = 20.0
 TEXT_WIDTH_RATIO = 0.8
 TEXT_LINE_SPACING = 1.5
 INFINITO = 1e99
+MOTIVO_GRUPO = "Grupo ou ambíguo"
+MOTIVO_CONFLITO = "Inconsistência de frame"
 MAIOR_LONG = 2147483647
 
 _ESPACOS_VBA = " "  # Trim do VBA tira so espacos
@@ -157,6 +159,7 @@ class TextRead:
     underline: bool
     inner_ok: bool
     inner: int
+    name: str = ""
 
 
 @dataclass
@@ -202,7 +205,7 @@ def parse_sheet(registros: List[List[str]]) -> SheetRead:
         elif r[0] == "T":
             vista.texts.append(TextRead(
                 int(r[2]), r[3], parse_number(r[4]), parse_number(r[5]), parse_number(r[6]), int(r[7]),
-                r[8] == "1", int(r[9]), r[10] == "1", r[11] == "1", int(r[12]),
+                r[8] == "1", int(r[9]), r[10] == "1", r[11] == "1", int(r[12]), r[13] if len(r) > 13 else "",
             ))
     return folha
 
@@ -441,6 +444,20 @@ class Callout:
 
 
 @dataclass
+class Pending:
+    """Texto que nao entrou na conta por ser ambiguo. Os campos servem ao navegador do CATIA."""
+
+    sheet_name: str
+    view_index: int
+    view_name: str
+    item_index: int
+    item_name: str
+    number: str
+    motivo: str
+    is_dim = False
+
+
+@dataclass
 class Counters:
     validos: int = 0
     grupo: int = 0
@@ -457,6 +474,7 @@ class Analyzer:
         self.carregar_linhas = carregar_linhas
         self.occs: List[Occurrence] = []
         self.c = Counters()
+        self.pendencias: List[Pending] = []
         self._numero_folha = 0
 
     def process_sheet(self, indice: int, folha: SheetRead) -> None:
@@ -496,9 +514,11 @@ class Analyzer:
         status = classify(t, value)
         if status == STATUS_PENDING_GROUP:
             self.c.grupo += 1
+            self.pendencias.append(Pending(folha.name, v.index, v.name, t.index, t.name, trim(value), MOTIVO_GRUPO))
             return
         if status == STATUS_PENDING_CONFLICT:
             self.c.conflito += 1
+            self.pendencias.append(Pending(folha.name, v.index, v.name, t.index, t.name, trim(value), MOTIVO_CONFLITO))
             return
         if status == STATUS_ACCEPTED:
             source = SOURCE_BALLOON
@@ -807,6 +827,8 @@ class PosZoneReport:
     counters: Counters
     occurrences: int
     callouts: List[Callout] = field(default_factory=list)
+    pendencias: List[Pending] = field(default_factory=list)
+    doc_full_name: str = ""
     xl_app: object = None
     xl_book: object = None
 
@@ -874,7 +896,7 @@ def run_pos_zone(
             pass
 
     callouts = consolidate(analise.occs)
-    report = PosZoneReport(pn, caminho, analise.c, len(analise.occs), callouts)
+    report = PosZoneReport(pn, caminho, analise.c, len(analise.occs), callouts, analise.pendencias, cheio)
     try:
         report.xl_app, report.xl_book = write_workbook(caminho, pn, callouts)
     except PosZoneError:

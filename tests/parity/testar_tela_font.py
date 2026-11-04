@@ -73,6 +73,8 @@ def abre(nome):
 j = HubWindow()
 j.show()
 p = j.font_page
+clica(j.pills["Check"])
+clica(j.rail_buttons["Font Size Check"])
 
 # Sem desenho.
 confere("reconhece o CATIA aberto", espera(lambda: "ativo" in j.chip_catia.text()))
@@ -83,9 +85,19 @@ foto(j, "1_sem_desenho")
 # Analise do desenho com todos os casos.
 doc = abre("FONT_RICO.CATDrawing")
 confere("percebe o desenho sozinho", espera(lambda: p.btn_analyze.text() == "ANALISAR", 6))
-batidas = [0]
+# O que importa e o maior tempo com a tela parada, nao quantas batidas couberam.
+parada = {"ultima": time.perf_counter(), "maior": 0.0}
+
+
+def batida():
+    agora = time.perf_counter()
+    parada["maior"] = max(parada["maior"], agora - parada["ultima"])
+    parada["ultima"] = agora
+
+
 relogio = QTimer()
-relogio.timeout.connect(lambda: batidas.__setitem__(0, batidas[0] + 1))
+relogio.timeout.connect(batida)
+parada["ultima"] = time.perf_counter()
 relogio.start(50)
 t0 = time.perf_counter()
 clica(p.btn_analyze)
@@ -94,7 +106,7 @@ foto(j, "2_analisando")
 confere("termina a analise", espera(lambda: p._stack.currentIndex() == 2))
 tempo = time.perf_counter() - t0
 relogio.stop()
-confere("tela continua respondendo durante a analise", batidas[0] >= tempo * 20 * 0.7, f"{batidas[0]} batidas em {tempo:.1f} s")
+confere("tela continua respondendo durante a analise", parada["maior"] < 1.0, f'maior parada {parada["maior"]:.2f} s em {tempo:.1f} s')
 confere("leva sozinho ao primeiro item", espera(lambda: "Selecionado" in p.lbl_nav_state.text()))
 foto(j, "3_resultado")
 

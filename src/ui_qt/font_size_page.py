@@ -87,7 +87,8 @@ class FontSizePage(QWidget):
     # Telas
     # ------------------------------------------------------------------
     def _build_intro(self) -> QWidget:
-        w = QWidget()
+        w = QFrame()
+        w.setObjectName("painel")
         col = QVBoxLayout(w)
         col.setContentsMargins(22, 18, 22, 18)
         col.addStretch(1)
@@ -118,7 +119,8 @@ class FontSizePage(QWidget):
         return w
 
     def _build_running(self) -> QWidget:
-        w = QWidget()
+        w = QFrame()
+        w.setObjectName("painel")
         col = QVBoxLayout(w)
         col.setContentsMargins(22, 18, 22, 18)
         col.addStretch(1)
@@ -146,7 +148,8 @@ class FontSizePage(QWidget):
         return w
 
     def _build_results(self) -> QWidget:
-        w = QWidget()
+        w = QFrame()
+        w.setObjectName("painel")
         col = QVBoxLayout(w)
         col.setContentsMargins(18, 14, 18, 14)
         col.setSpacing(10)
@@ -160,10 +163,11 @@ class FontSizePage(QWidget):
         self.lbl_sub.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         textos.addWidget(self.lbl_sub)
         topo.addLayout(textos, 1)
-        self._tag = label("SÓ CONFERE", "etiqueta")
-        self._tag.setFixedHeight(20)
+        from ui_qt.pecas import botao, etiqueta  # aqui porque pecas importa este modulo
+
+        self._tag = etiqueta("SÓ CONFERE", "confere")
         topo.addWidget(self._tag, 0, Qt.AlignTop)
-        self.btn_again = button("Analisar de novo", "secundario")
+        self.btn_again = botao("Analisar de novo", "secundario", "refresh")
         self.btn_again.clicked.connect(self.analyze_requested)
         topo.addWidget(self.btn_again, 0, Qt.AlignTop)
         col.addLayout(topo)
@@ -224,8 +228,9 @@ class FontSizePage(QWidget):
         col.addWidget(detalhe)
 
         nav = QHBoxLayout()
-        self.btn_prev = button("‹   ANTERIOR", "secundario")
-        self.btn_next = button("PRÓXIMO   ›", "primario")
+        self.btn_prev = botao("ANTERIOR", "secundario", "left")
+        self.btn_next = botao("PRÓXIMO", "primario", "right", T.CYAN_INK)
+        self.btn_next.setLayoutDirection(Qt.RightToLeft)
         self.lbl_pos = label("", "posicao")
         self.lbl_pos.setAlignment(Qt.AlignCenter)
         self.btn_prev.clicked.connect(self._on_prev)

@@ -251,4 +251,7 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    codigo = main()
+    sys.stdout.flush()
+    # Soltar milhares de objetos COM do Excel ao sair pode travar: o resultado ja foi impresso.
+    os._exit(codigo)

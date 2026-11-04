@@ -760,14 +760,52 @@ class _Conversao:
                 pass
 
 
+@dataclass
+class TemplatePreview:
+    """O que a conversao faria, sem alterar nada no desenho."""
+
+    doc_name: str
+    sheets: List[Tuple[str, str]]  # nome da folha, formato lido ("" se nao achou)
+    faltando: List[str]  # formatos sem template na pasta
+    encontrados: List[str]
+    pasta_ok: bool = True
+
+
+def preview_update(bridge: CatiaBridge, pasta: str = PASTA_TEMPLATES) -> Optional[TemplatePreview]:
+    """Le as folhas e procura os templates. Devolve None se nao houver desenho ativo."""
+    app = bridge.app
+    try:
+        if app.Documents.Count == 0:
+            return None
+        doc = app.ActiveDocument
+        if not str(doc.Name).lower().endswith(".catdrawing"):
+            return None
+        folhas = [(str(f.Name), format_from_background(f)) for f in drawing_sheets(doc)]
+        nome = str(doc.Name)
+    except COM_ERROR:
+        return None
+    previa = TemplatePreview(nome, folhas, [], [])
+    for formato in dict.fromkeys(f for _, f in folhas if f):
+        try:
+            (previa.encontrados if find_template(pasta, formato) else previa.faltando).append(formato)
+        except OSError:
+            previa.pasta_ok = False
+            previa.faltando.append(formato)
+    return previa
+
+
 def run_update_template(
     bridge: CatiaBridge,
     ask_format: Callable[[str, str, str], Optional[str]],
     status: Optional[Callable[[str], None]] = None,
     progress: Optional[Callable[[int, int], None]] = None,
     pasta: str = PASTA_TEMPLATES,
+    formatos: Optional[Dict[str, str]] = None,
 ) -> Optional[TemplateReport]:
-    """Atualiza o template do desenho ativo. Retorna None se o usuario cancelar o pedido de formato."""
+    """Atualiza o template do desenho ativo. Retorna None se o usuario cancelar o pedido de formato.
+
+    formatos: folha -> formato, para as folhas em que o usuario corrigiu o formato na tela.
+    """
     c = _Conversao(bridge, status, progress)
     app = bridge.app
     try:
@@ -781,7 +819,10 @@ def run_update_template(
         if not folhas_doc:
             raise TemplateError("O documento não possui folhas de desenho.", VB_OBJECT_ERROR + 1003)
         doc_cheio = doc.FullName
-        lidas = [(f, str(f.Name), format_from_background(f)) for f in folhas_doc]
+        lidas = []
+        for f in folhas_doc:
+            nome = str(f.Name)
+            lidas.append((f, nome, (formatos or {}).get(nome) or format_from_background(f)))
     except COM_ERROR as exc:
         raise TemplateError(_descricao_com(exc), exc.hresult) from exc
     except TemplateError:

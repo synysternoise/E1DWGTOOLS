@@ -257,3 +257,35 @@ Function RestaurarCores_()
     sel.Clear
     RestaurarCores_ = "OK" & Registro(Array("1"))
 End Function
+
+' ---------------------------------------------------------------------
+' Font Size Fix: muda so o tamanho de um texto. Registro: tamanho lido depois, em mm.
+' Item procurado como no navegador; item que nao existe mais volta como ERR.
+' ---------------------------------------------------------------------
+Function AjustarTamanho(docCheio, nomeFolha, iVista, nomeVista, iItem, nomeItem, mm)
+    On Error Resume Next
+    Dim r
+    r = AjustarTamanho_(docCheio, nomeFolha, iVista, nomeVista, iItem, nomeItem, mm)
+    If Err.Number <> 0 Then AjustarTamanho = Falha() Else AjustarTamanho = r
+End Function
+
+Function AjustarTamanho_(docCheio, nomeFolha, iVista, nomeVista, iItem, nomeItem, mm)
+    Dim doc, d, sh, v, item
+    Set doc = Nothing
+    For Each d In CATIA.Documents
+        If d.FullName = docCheio Then
+            Set doc = d
+            Exit For
+        End If
+    Next
+    If doc Is Nothing Then Err.Raise 1003, , "Desenho fechado."
+    Set sh = Achar(doc.Sheets, 0, nomeFolha)
+    If sh Is Nothing Then Err.Raise 1004, , "Folha nao encontrada."
+    Set v = Achar(sh.Views, iVista, nomeVista)
+    If v Is Nothing Then Err.Raise 1004, , "Vista nao encontrada."
+    If v.LockStatus Then Err.Raise 1005, , "Vista travada."
+    Set item = Achar(v.Texts, iItem, nomeItem)
+    If item Is Nothing Then Err.Raise 1004, , "Item nao encontrado."
+    item.SetFontSize 0, 0, CDbl(mm)
+    AjustarTamanho_ = "OK" & Registro(Array(CStr(item.GetFontSize(0, 0))))
+End Function

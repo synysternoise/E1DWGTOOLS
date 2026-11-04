@@ -36,13 +36,14 @@ CONFIRMACAO = (
     "Deseja continuar?"
 )
 
-CORRIGIDA, JA_CORRETA, RESTAURADA, NAO_RESTAURADA, ERRO = "C", "J", "R", "N", "E"
+CORRIGIDA, JA_CORRETA, RESTAURADA, NAO_RESTAURADA, ERRO, PARA_CORRIGIR = "C", "J", "R", "N", "E", "P"
 NOME_RESULTADO = {
     CORRIGIDA: "Corrigida",
     JA_CORRETA: "Já correta",
     RESTAURADA: "Falhou, texto restaurado",
     NAO_RESTAURADA: "Falhou, não restaurada",
     ERRO: "Erro",
+    PARA_CORRIGIR: "Para corrigir",
 }
 NOME_FRAME = {
     7: "Right Flag",
@@ -220,3 +221,53 @@ def _ler_folha(report: FixReport, registros: List[List[str]]) -> None:
 def go_to_flag(bridge: CatiaBridge, report: FixReport, item: FlagItem) -> bool:
     """Leva a tela ate a flag. Retorna False se ela ou o desenho nao existem mais."""
     return fc.go_to_item(bridge, report, item)
+
+
+# ---------------------------------------------------------------------
+# Check de Flags: as mesmas regras, sem gravar nada no desenho.
+# ---------------------------------------------------------------------
+@dataclass
+class FlagCheckReport:
+    doc_full_name: str
+    textos: int = 0
+    flags: int = 0
+    objeto: int = 0
+    text_editor: int = 0
+    cadeado: int = 0
+    certas: int = 0
+    erradas: int = 0
+    ignoradas: int = 0
+    erros: int = 0
+    items: List[FlagItem] = field(default_factory=list)
+    stopped: bool = False
+
+
+def check_flags(
+    bridge: CatiaBridge,
+    progress: Optional[Callable[[int, int], None]] = None,
+    should_stop: Optional[Callable[[], bool]] = None,
+) -> Optional[FlagCheckReport]:
+    """Confere as flags do desenho ativo. Em item.after fica como o texto deveria ser."""
+    situacao = bridge.call(SCRIPT, "LerDesenho")[0]
+    if situacao[0] != "2":
+        raise CatiaError(SEM_DOCUMENTO if situacao[0] == "0" else NAO_E_DESENHO)
+    cheio, total = situacao[1], int(situacao[2])
+    report = FlagCheckReport(cheio)
+    for i in range(1, total + 1):
+        if should_stop and should_stop():
+            report.stopped = True
+            break
+        registros = bridge.call(SCRIPT, "ConferirFolha", cheio, i)
+        c = registros[0]
+        nome_folha = c[1]
+        for nome, valor in zip(("textos", "flags", "objeto", "text_editor", "cadeado", "certas", "erradas", "ignoradas", "erros"), c[2:]):
+            setattr(report, nome, getattr(report, nome) + int(valor))
+        for r in registros[1:]:
+            if r[0] == "F":
+                _, i_vista, i_item, nome_item, nome_vista, antes, certo, frame, origem, resultado = r
+                report.items.append(FlagItem(nome_folha, int(i_vista), nome_vista, int(i_item), nome_item, antes, certo, int(frame), int(origem), resultado, len(report.items) + 1))
+            elif r[0] == "ABORT":
+                raise CatiaError(r[2], int(r[1]) if r[1].lstrip("-").isdigit() else 0)
+        if progress:
+            progress(i, total)
+    return report

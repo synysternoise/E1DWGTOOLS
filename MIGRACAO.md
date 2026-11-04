@@ -18,6 +18,8 @@ usuário em 04/11/2026. A pasta `legacy_vba/` está **desatualizada** e não ser
 | Fix Flags | `vba_referencia/fixflags` | Convertido |
 | Position and Zone | `vba_referencia/poszone` (V3.5.1) | Convertido |
 | Split 2D e 3D | `vba_referencia/SPLIT 2D`, `SPLIT 3D` | Convertido |
+| Check de Flags | Mesmas regras do Fix Flags, sem gravar | Novo, na aba Check |
+| Font Size Fix | Mesmas regras do Font Size Check, mudando o tamanho | Novo, na aba Design |
 | Comparação no Excel | `vba_referencia/excel` | Continua no Excel |
 | Painel | `vba_referencia/symbol shape` | Substituído pelo HUB, menos o Symbol Shape |
 | Symbol Shape | `CATMain11` não está em nenhum arquivo | Bloqueado, segue no painel VBA |
@@ -36,6 +38,25 @@ Dois arquivos do zip são mais antigos que os do CONSERTO-E1DWGVBA, e continua v
 
 Os acentos das mensagens de `vba_referencia/poszone` viraram espaços ("n o foi encontrado"). As
 mensagens em Python saíram com os acentos certos.
+
+## Telas
+
+O visual segue o protótipo em `design/hub_prototipo.html`. Só aparece o que funciona de verdade:
+
+- **Feito.** Sequência de aplicação, com a parada depois da etapa atual. Visão geral do Check, com
+  os resultados e os contadores desta sessão. Prévia sem alterar o documento no Update Template e nos
+  Splits. Correção do formato por folha no Update Template. Pendências do Position and Zone, com
+  navegação até cada uma no CATIA. Tamanho real dos arquivos gerados, comparado a 200 MB.
+- **Cada conferência tem a sua correção.** Fix Flags corrige e Check de Flags confere, com as mesmas
+  regras. Font Size Fix corrige e Font Size Check confere. `tests/parity/testar_check_e_fix.py` prova
+  que o Check aponta o que o Fix corrige e que, depois do Fix, o Check não aponta mais nada.
+- **Fora, por falta de lógica.** PDF antes e depois, relatório em PDF e o Split por limite de 200 MB
+  são recursos novos, que as macros não têm. Compare DWG é um programa externo. Aparecem desligados
+  ou não aparecem, em vez de botões sem efeito.
+- **Font Size Fix não corrige cotas.** O V5R20 não lê o tamanho de cota, então não há como testar aqui.
+- **Fora, por pedido do usuário.** Cronômetro e tempo estimado.
+- **Trocado.** No Fix Flags, a tabela por folha do protótipo virou a lista de cada flag, com
+  navegação, que mostra mais. O Symbol Shape aparece desligado na sequência, sem o código de `CATMain11`.
 
 ## Como cada ferramenta é convertida
 

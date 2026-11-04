@@ -59,7 +59,7 @@ End Function
 '   F, nome, e detalhe (0/1), largura, altura ("" se nao leu)
 '   V, indice, nome, e background (0/1), x, y, escala, angulo
 '   T, indice da vista, indice do texto, conteudo, x, y, fonte, ancora, frame global lido (0/1),
-'      frame global, sublinhado (0/1), frame interno lido (0/1), frame interno
+'      frame global, sublinhado (0/1), frame interno lido (0/1), frame interno, nome do texto
 ' ---------------------------------------------------------------------
 Function LerFolha(docCheio, iFolha)
     On Error Resume Next
@@ -180,7 +180,7 @@ Sub LerUmTexto(oTexts, iv, j, buf, n)
     sub_ = Sublinhado(t)
     ir = 0: inf = 0
     LerFrameInterno t, s, ir, inf
-    Anota buf, n, Registro(Array("T", iv, j, Campo(s), x, y, fonte, ancora, gr, gf, sub_, ir, inf))
+    Anota buf, n, Registro(Array("T", iv, j, Campo(s), x, y, fonte, ancora, gr, gf, sub_, ir, inf, Campo(t.Name)))
     Err.Clear
 End Sub
 

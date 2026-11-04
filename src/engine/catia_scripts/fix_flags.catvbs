@@ -708,3 +708,92 @@ Function LerContadoresFix()
         fixTotalFlagsTextEditor, fixTotalFlagsComCadeado, fixTotalCorrigidas, fixTotalJaCorretas, _
         fixTotalIgnoradas, fixTotalFalhasValidacao, fixTotalRestauradas, fixTotalErros), Chr(31))
 End Function
+
+' ---------------------------------------------------------------------
+' Check de Flags: as mesmas regras do fix, sem gravar nada no desenho.
+' Primeiro registro: "N", nome da folha, textos, flags, no objeto, Text Editor, com cadeado,
+' corretas, para corrigir, ignorados, erros. Depois: "F", vista, texto, nome do texto, nome da
+' vista, texto lido, como deveria ser, frame, origem, J correta ou P para corrigir.
+' ---------------------------------------------------------------------
+Function ConferirFolha(docCheio, iFolha)
+    On Error Resume Next
+    Dim nomeFolha, buf(), n, fim
+    ResetarContadoresFix
+    ReDim buf(255)
+    n = 0
+    nomeFolha = ""
+    fim = ""
+    ConferirFolha_ docCheio, iFolha, nomeFolha, buf, n
+    If Err.Number <> 0 Then fim = Registro(Array("ABORT", Err.Number, Campo(Err.Description)))
+    Err.Clear
+    If n > 0 Then ReDim Preserve buf(n - 1) Else ReDim buf(0)
+    ConferirFolha = "OK" & Registro(Array("N", nomeFolha, fixTotalTextos, fixTotalFlags, fixTotalFlagsObjetoInteiro, _
+        fixTotalFlagsTextEditor, fixTotalFlagsComCadeado, fixTotalJaCorretas, fixTotalCorrigidas, fixTotalIgnoradas, fixTotalErros)) & Join(buf, "") & fim
+End Function
+
+Sub ConferirFolha_(docCheio, iFolha, nomeFolha, buf, n)
+    Dim doc, sh, views, v, txts, t, iv, it
+    Set doc = AcharDocumento(docCheio)
+    If doc Is Nothing Then Err.Raise 1003, , "Desenho fechado."
+    Set sh = doc.Sheets.Item(iFolha)
+    nomeFolha = Campo(sh.Name)
+    Set views = sh.Views
+    For iv = 1 To views.Count
+        Set v = views.Item(iv)
+        If LerTextosDaVista(v, txts) Then
+            For it = 1 To txts.Count
+                Set t = txts.Item(it)
+                fixTotalTextos = fixTotalTextos + 1
+                ConferirTexto t, v, iv, it, buf, n
+            Next
+        End If
+    Next
+End Sub
+
+' Aqui fixTotalCorrigidas conta as flags para corrigir. Nada e gravado.
+Sub ConferirTexto(t, v, iv, it, buf, n)
+    On Error Resume Next
+    Err.Clear
+    ConferirTexto_ t, v, iv, it, buf, n
+    If Err.Number <> 0 Then fixTotalErros = fixTotalErros + 1
+    Err.Clear
+End Sub
+
+Sub ConferirTexto_(t, v, iv, it, buf, n)
+    Dim original, codigo, prefixo, numeros, frame, origem, certo, correta
+    original = CStr(t.Text)
+    codigo = RemoverCaracteresExternos(original)
+    If Len(codigo) = 0 Then
+        fixTotalIgnoradas = fixTotalIgnoradas + 1
+        Exit Sub
+    End If
+    prefixo = ""
+    numeros = ""
+    If Not SepararCodigoSeguro(codigo, prefixo, numeros) Then
+        fixTotalIgnoradas = fixTotalIgnoradas + 1
+        Exit Sub
+    End If
+    frame = FIX_FRAME_NONE
+    origem = FIX_ORIGEM_NENHUMA
+    If Not DetectarFlagOriginal(t, Len(original), frame, origem) Then
+        fixTotalIgnoradas = fixTotalIgnoradas + 1
+        Exit Sub
+    End If
+    fixTotalFlags = fixTotalFlags + 1
+    If origem = FIX_ORIGEM_OBJETO Then
+        fixTotalFlagsObjetoInteiro = fixTotalFlagsObjetoInteiro + 1
+    Else
+        fixTotalFlagsTextEditor = fixTotalFlagsTextEditor + 1
+    End If
+    If EhFrameDeFlagComCadeado(frame) Then fixTotalFlagsComCadeado = fixTotalFlagsComCadeado + 1
+    If Len(numeros) = 4 Then certo = prefixo & numeros Else certo = prefixo & "0" & numeros
+    correta = (StrComp(original, certo, vbBinaryCompare) = 0)
+    If correta Then fixTotalJaCorretas = fixTotalJaCorretas + 1 Else fixTotalCorrigidas = fixTotalCorrigidas + 1
+    If n > UBound(buf) Then ReDim Preserve buf(2 * n)
+    buf(n) = Registro(Array("F", iv, it, Campo(LerSeguro(t, "Name")), Campo(LerSeguro(v, "Name")), Campo(original), Campo(certo), frame, origem, IIf_(correta, "J", "P")))
+    n = n + 1
+End Sub
+
+Function IIf_(c, a, b)
+    If c Then IIf_ = a Else IIf_ = b
+End Function

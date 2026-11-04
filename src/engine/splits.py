@@ -219,6 +219,59 @@ def run_split_2d(
 # ---------------------------------------------------------------------
 # Split 3D
 # ---------------------------------------------------------------------
+@dataclass
+class SplitPreview:
+    doc_name: str
+    full_name: str
+    size_mb: float
+    pn: str = ""
+    bodies: List[str] = field(default_factory=list)
+    sheets: List[str] = field(default_factory=list)
+    locked_all: bool = True
+
+
+def _tamanho_mb(caminho: str) -> float:
+    try:
+        return os.path.getsize(caminho) / (1024 * 1024)
+    except OSError:
+        return 0.0
+
+
+def preview_2d(bridge: CatiaBridge) -> Optional[SplitPreview]:
+    """Folhas do desenho ativo, sem alterar nada. None se nao houver desenho salvo."""
+    app = bridge.app
+    try:
+        if app.Documents.Count == 0:
+            return None
+        doc = app.ActiveDocument
+        nome = str(doc.Name)
+        if not nome.lower().endswith(".catdrawing") or not doc.Path:
+            return None
+        cheio = str(doc.FullName)
+        folhas = [str(doc.Sheets.Item(i).Name) for i in range(1, doc.Sheets.Count + 1)]
+    except COM_ERROR:
+        return None
+    return SplitPreview(nome, cheio, _tamanho_mb(cheio), sheets=folhas)
+
+
+def preview_3d(bridge: CatiaBridge) -> Optional[SplitPreview]:
+    """Bodies do CATPart ativo, sem alterar nada. None se nao houver peca ativa."""
+    app = bridge.app
+    try:
+        if app.Documents.Count == 0:
+            return None
+        doc = app.ActiveDocument
+        nome = str(doc.Name)
+        if not nome.lower().endswith(".catpart"):
+            return None
+        peca = doc.Part
+        cheio = str(doc.FullName)
+        corpos = [str(peca.Bodies.Item(i).Name) for i in range(1, peca.Bodies.Count + 1)]
+        return SplitPreview(nome, cheio, _tamanho_mb(cheio), _numero_da_peca(doc, peca), [c for c in corpos if c.upper() != "PARTBODY"])
+    except COM_ERROR:
+        return None
+
+
 def _numero_da_peca(doc, peca) -> str:
     try:
         pn = str(doc.Product.PartNumber)
