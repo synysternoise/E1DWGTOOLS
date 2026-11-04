@@ -1,0 +1,31 @@
+{
+  "repositorio_base": "synysternoise/CONSERTO-E1DWGVBA",
+  "commit_base": "d293ce0bf5749c83883ac6fa6003f6dea77de415",
+  "ferramentas": {
+    "Font Size Check": {
+      "situacao": "convertida",
+      "arquivos": {
+        "sizedetect.txt": "a1dcb92c7bdca4897dfa9f0ae5cce128e83e3944598557d06af3672a612063b7",
+        "frmFontNav.txt": "a56619c7da58562b3e6b8c6fe08685fb38198525c2e98f41f214b479c1fdeb01"
+      }
+    },
+    "Update Template": {
+      "situacao": "pendente",
+      "arquivos": {
+        "update.txt": "a174356a14a8310c0a17444998ea26c6fd9e5781f624b65db599d53baf7edf80"
+      }
+    },
+    "Position and Zone": {
+      "situacao": "pendente",
+      "arquivos": {
+        "poszone.txt": "a045c5755f1bce7b2189953cbfbd9165a62306bbf693c24ed5072a4e03ed7ef8"
+      }
+    },
+    "Painel": {
+      "situacao": "pendente",
+      "arquivos": {
+        "fixflags.txt": "4e9891ea22bc2441b15800adbcea9e24cddb63b2c1ae4d5949f9e89e1e00482a"
+      }
+    }
+  }
+}

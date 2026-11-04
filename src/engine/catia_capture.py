@@ -15,7 +15,7 @@ _CAPTURE_FORMATS = ((4, "png"), (3, "jpg"), (0, "bmp"), (5, "tif"))
 
 
 def _temp_path(ext: str) -> str:
-    return os.path.join(tempfile.gettempdir(), f"dgw_sheet_preview.{ext}")
+    return os.path.join(tempfile.gettempdir(), f"dwg_sheet_preview.{ext}")
 
 
 def get_active_sheet_name() -> Optional[str]:
