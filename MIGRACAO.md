@@ -5,22 +5,36 @@ O VBA continua em uso até a versão Python passar pela comparação.
 
 ## De onde vem o código
 
-A versão de referência de cada macro é a do repositório **CONSERTO-E1DWGVBA**.
-A pasta `legacy_vba/` deste repositório está **desatualizada** e não serve de base.
-O Update Template atual em `src/engine/update_template.py` também é antigo: foi portado
-da versão de 14/10 e precisa ser refeito a partir de `update.txt`.
+`vba_referencia/` guarda, sem nenhuma alteração, os códigos do `dwg-main.zip` enviado pelo
+usuário em 04/11/2026. A pasta `legacy_vba/` está **desatualizada** e não serve de base.
 
-`tests/versoes_base.json` guarda a impressão digital de cada macro usada como base.
+`tests/versoes_base.json` guarda a origem e a impressão digital de cada macro usada como base.
 `tests/test_versoes_base.py` falha se uma macro já convertida mudar depois da conversão.
 
-| Ferramenta | Arquivos de base | Situação |
+| Ferramenta | Base | Situação |
 |---|---|---|
-| Font Size Check | `sizedetect.txt`, `frmFontNav.txt` | Convertido, em `main_qt.py` |
-| Update Template | `update.txt` | Pendente |
-| Position and Zone | `poszone.txt` | Pendente |
-| Painel | `fixflags.txt` | Será substituído pelo HUB |
-| Comparação no Excel | `legacy_vba/excel.txt` | Continua no Excel |
-| Fix Flags, Symbol Shape, Split | Código não disponível | Bloqueado |
+| Font Size Check | `sizedetect.txt`, `frmFontNav.txt` do CONSERTO-E1DWGVBA | Convertido, em `main_qt.py` |
+| Update Template | `update.txt` do CONSERTO-E1DWGVBA | Pendente, ver abaixo |
+| Position and Zone | `vba_referencia/poszone` (V3.5.1) | Pendente |
+| Fix Flags | `vba_referencia/fixflags` | Pendente |
+| Split 2D e 3D | `vba_referencia/SPLIT 2D`, `SPLIT 3D` | Pendente |
+| Painel | `vba_referencia/symbol shape` | Será substituído pelo HUB |
+| Comparação no Excel | `vba_referencia/excel` | Continua no Excel |
+| Symbol Shape | `CATMain11` não está em nenhum arquivo | Bloqueado |
+
+### Versões em aberto
+
+Dois arquivos do zip são mais antigos que os do CONSERTO-E1DWGVBA. Nada foi substituído até o
+usuário decidir, para não haver downgrade:
+
+- **`update`**: mesmo texto de `legacy_vba/UPDATETEMPLATE.bas` (14/10). O `update.txt` é de 23/10,
+  tem 2513 linhas e troca o template no próprio desenho. `src/engine/update_template.py` também
+  veio da versão de 14/10.
+- **`sizedetect`**: ainda pinta o desenho e pede o formato no combobox. O `sizedetect.txt` de
+  04/11 não pinta e lê o formato no Background. As regras de tamanho são iguais nos dois.
+
+Os acentos das mensagens de `vba_referencia/poszone` viraram espaços ("n o foi encontrado").
+Na conversão, as mensagens devem sair com os acentos certos do `poszone.txt`.
 
 ## Como cada ferramenta é convertida
 

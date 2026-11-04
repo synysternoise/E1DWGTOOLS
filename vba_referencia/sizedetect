@@ -1,0 +1,284 @@
+Option Explicit
+
+' =====================================================================
+' MÓDULO PRINCIPAL
+' =====================================================================
+
+Public Sub RunFontInspection()
+
+    Dim drwDoc As drawingDocument
+    Set drwDoc = CATIA.ActiveDocument
+
+    Dim oSel As Selection
+    Set oSel = drwDoc.Selection
+
+    Dim sDrawingNo As String
+
+    On Error Resume Next
+    sDrawingNo = drwDoc.Parameters.item("Drawing_No").ValueAsString
+    On Error GoTo 0
+
+    ' --- Lê a seleção do combobox (UserForm) ---
+    Dim sSheetSize As String
+    sSheetSize = SIZEDEC.ComboBox1.value
+
+    If sSheetSize = "" Then
+        MsgBox "Selecione um formato de folha antes de continuar.", _
+               vbExclamation, _
+               "E1 - Font Check"
+        Exit Sub
+    End If
+
+    ' --- Resolve os padrões conforme o formato selecionado ---
+    Dim dStd1 As Double
+    Dim dStd2 As Double
+
+    If Not GetStandardSizes(sSheetSize, dStd1, dStd2) Then
+        MsgBox "Formato '" & sSheetSize & "' não reconhecido.", _
+               vbCritical, _
+               "E1 - Font Check"
+        Exit Sub
+    End If
+
+    ' =====================================
+    ' CONTADORES
+    ' =====================================
+
+    Dim totalItens As Long
+    Dim totalOK As Long
+    Dim totalNOK As Long
+
+    totalItens = 0
+    totalOK = 0
+    totalNOK = 0
+
+    ' =====================================
+    ' LOOP POR TODAS AS FOLHAS E VIEWS
+    ' =====================================
+
+    Dim oSheet As drawingSheet
+    Dim oView As drawingView
+
+    Dim i As Long
+    Dim j As Long
+
+    Dim dSizeMM As Double
+    Dim visStatus As CatVisPropertyShow
+    Dim sContent As String
+
+    For Each oSheet In drwDoc.Sheets
+
+        For i = 1 To oSheet.Views.count
+
+            Set oView = oSheet.Views.item(i)
+
+            oSel.Clear
+            oSel.Add oView
+            oSel.VisProperties.GetShow visStatus
+
+            If oView.LockStatus = False _
+               And oView.name <> "Background View" _
+               And visStatus = catVisPropertyShowAttr Then
+
+                ' =====================================
+                ' TEXTOS
+                ' =====================================
+
+                For j = 1 To oView.Texts.count
+
+                    Dim oText As drawingText
+
+                    Set oText = oView.Texts.item(j)
+
+                    dSizeMM = oText.GetFontSize(0, 0)
+                    sContent = oText.Text
+
+                    totalItens = totalItens + 1
+
+                    LogAndPaint _
+                        dSizeMM, _
+                        sContent, _
+                        oText, _
+                        oSel, _
+                        dStd1, _
+                        dStd2, _
+                        totalOK, _
+                        totalNOK
+
+                Next j
+
+                ' =====================================
+                ' DIMENSÕES
+                ' =====================================
+
+                For j = 1 To oView.Dimensions.count
+
+                    Dim oDim As DrawingDimension
+                    Dim oDimVal As DrawingDimValue
+
+                    Set oDim = oView.Dimensions.item(j)
+                    Set oDimVal = oDim.GetValue
+
+                    dSizeMM = 0
+
+                    On Error Resume Next
+                    oDimVal.GetFontSize 1, dSizeMM
+                    sContent = oDimVal.value
+                    On Error GoTo 0
+
+                    If dSizeMM > 0 Then
+
+                        totalItens = totalItens + 1
+
+                        LogAndPaint _
+                            dSizeMM, _
+                            sContent, _
+                            oDim, _
+                            oSel, _
+                            dStd1, _
+                            dStd2, _
+                            totalOK, _
+                            totalNOK
+
+                    End If
+
+                Next j
+
+            End If
+
+        Next i
+
+    Next oSheet
+
+    MsgBox _
+        "Análise concluída!" & vbCrLf & vbCrLf & _
+        "PN: " & sDrawingNo & vbCrLf & _
+        "Formato: " & UCase(sSheetSize) & vbCrLf & _
+        "Padrões: " & dStd1 & Chr(34) & " e " & dStd2 & Chr(34) & vbCrLf & vbCrLf & _
+        "Itens analisados: " & totalItens & vbCrLf & _
+        "Corretos: " & totalOK & vbCrLf & _
+        "Incorretos: " & totalNOK, _
+        vbInformation, _
+        "E1 - Font Size Analysis"
+
+End Sub
+
+' =====================================================================
+' Retorna os tamanhos padrão por formato
+' =====================================================================
+
+Public Function GetStandardSizes( _
+    sSize As String, _
+    ByRef std1 As Double, _
+    ByRef std2 As Double) As Boolean
+
+    GetStandardSizes = True
+
+    Select Case UCase(Trim(sSize))
+
+        Case "A4"
+
+            std1 = 0.07
+            std2 = 0.125
+
+        Case "A3", "A1"
+
+            std1 = 0.17
+            std2 = 0.25
+
+        Case "A2"
+
+            std1 = 0.108
+            std2 = 0.193
+
+        Case "A0", "E3", "E0", "3A0"
+
+            std1 = 0.197
+            std2 = 0.277
+
+        Case Else
+
+            std1 = 0
+            std2 = 0
+
+            GetStandardSizes = False
+
+    End Select
+
+End Function
+
+' =====================================================================
+' Validação e pintura
+' =====================================================================
+
+Public Sub LogAndPaint( _
+    sMM As Double, _
+    cont As String, _
+    obj As Object, _
+    sel As Selection, _
+    std1 As Double, _
+    std2 As Double, _
+    ByRef totalOK As Long, _
+    ByRef totalNOK As Long)
+
+    Dim valInch As Double
+
+    valInch = Round(sMM / 25.4, 4)
+
+    Const tol As Double = 0.001
+
+    Dim isStandard As Boolean
+
+    isStandard = _
+        (Abs(valInch - std1) <= tol) Or _
+        (Abs(valInch - std2) <= tol)
+
+    sel.Clear
+    sel.Add obj
+
+    If isStandard Then
+
+        sel.VisProperties.SetRealColor 0, 180, 0, 1
+        totalOK = totalOK + 1
+
+    Else
+
+        sel.VisProperties.SetRealColor 255, 0, 0, 1
+        totalNOK = totalNOK + 1
+
+    End If
+
+    sel.Clear
+
+End Sub
+
+' =====================================================================
+' RESET DAS CORES
+' =====================================================================
+
+Public Sub ResetColors()
+
+    Dim drwDoc As drawingDocument
+
+    On Error Resume Next
+    Set drwDoc = CATIA.ActiveDocument
+    On Error GoTo 0
+
+    If drwDoc Is Nothing Then Exit Sub
+
+    Dim oSel As Selection
+    Set oSel = drwDoc.Selection
+
+    oSel.Clear
+
+    oSel.Search "#Color=(255,255,255),All"
+    oSel.VisProperties.SetRealColor 0, 0, 0, 0
+
+    oSel.Clear
+
+    MsgBox "Cores restauradas ao padrão do layer.", _
+           vbInformation, _
+           "E1 - Reset"
+
+End Sub
+

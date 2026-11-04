@@ -6,7 +6,9 @@ e a impressao digital ser atualizada com:
 
     python tests/test_versoes_base.py --atualizar <arquivo>
 
-Pasta do VBA: variavel E1DWGVBA ou o caminho padrao abaixo. Sem ela, o teste e pulado.
+Cada ferramenta indica a "origem" da macro: "repositorio" e a pasta vba_referencia deste
+projeto; "conserto" e o CONSERTO-E1DWGVBA (variavel E1DWGVBA ou o caminho padrao abaixo).
+Sem a pasta do CONSERTO, os arquivos dela sao pulados.
 """
 import hashlib
 import json
@@ -16,7 +18,8 @@ import unittest
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
 ARQUIVO_BASE = os.path.join(AQUI, "versoes_base.json")
-PASTA_VBA = os.environ.get("E1DWGVBA", r"C:\Users\renan\Documents\E1DWGVBA")
+PASTA_REPOSITORIO = os.path.join(AQUI, "..", "vba_referencia")
+PASTA_CONSERTO = os.environ.get("E1DWGVBA", r"C:\Users\renan\Documents\E1DWGVBA")
 
 
 def impressao(caminho: str) -> str:
@@ -30,16 +33,22 @@ def carregar() -> dict:
         return json.load(f)
 
 
+def pasta_de(dados: dict) -> str:
+    return PASTA_REPOSITORIO if dados["origem"] == "repositorio" else PASTA_CONSERTO
+
+
 class VersoesBase(unittest.TestCase):
-    @unittest.skipUnless(os.path.isdir(PASTA_VBA), "pasta do VBA nao encontrada")
     def test_macros_convertidas_nao_mudaram(self):
         for ferramenta, dados in carregar()["ferramentas"].items():
             if dados["situacao"] != "convertida":
                 continue
+            pasta = pasta_de(dados)
             for nome, esperado in dados["arquivos"].items():
                 with self.subTest(arquivo=nome):
+                    if not os.path.isdir(pasta):
+                        self.skipTest("pasta do VBA nao encontrada")
                     self.assertEqual(
-                        impressao(os.path.join(PASTA_VBA, nome)), esperado,
+                        impressao(os.path.join(pasta, nome)), esperado,
                         f"{nome} mudou depois da conversao de {ferramenta}: leve a mudanca para o Python.",
                     )
 
@@ -50,7 +59,7 @@ if __name__ == "__main__":
         for nome in sys.argv[2:]:
             for dados in base["ferramentas"].values():
                 if nome in dados["arquivos"]:
-                    dados["arquivos"][nome] = impressao(os.path.join(PASTA_VBA, nome))
+                    dados["arquivos"][nome] = impressao(os.path.join(pasta_de(dados), nome))
         with open(ARQUIVO_BASE, "w", encoding="utf-8", newline="\n") as f:
             json.dump(base, f, indent=2, ensure_ascii=False)
             f.write("\n")

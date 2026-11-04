@@ -1,0 +1,1863 @@
+Option Explicit
+
+' ============================================================
+' MODULO: FlagNotesFix
+'
+' CORRECAO SEGURA DAS FLAG NOTES
+'
+' CONVERSAO:
+'
+'   NL006  -> NL0006
+'   AB123  -> AB0123
+'   NL0006 -> permanece NL0006
+'
+' TIPOS RECONHECIDOS:
+'
+'   7  = Right Flag variavel
+'   8  = Left Flag variavel
+'   9  = Both Flag variavel
+'
+'   57 = Right Flag fixa com cadeado
+'   58 = Left Flag fixa com cadeado
+'   59 = Both Flag fixa com cadeado
+'
+' O valor 57 foi confirmado diretamente no CATIA.
+'
+' PROTECOES:
+'
+'   - Aceita somente letras + 3 ou 4 numeros.
+'   - Nao adiciona espaco antes ou depois do codigo.
+'   - Preserva exatamente o FrameType original.
+'   - Nao converte Flag fixa em Flag variavel.
+'   - Nao converte Flag do DrawingText em catBorder.
+'   - Preserva Flags aplicadas pelo Text Editor.
+'   - Aplica verde ao texto inteiro.
+'   - Valida texto, cor e FrameType.
+'   - Restaura o texto original em caso de falha.
+' ============================================================
+
+
+' ============================================================
+' CatTextFrameType
+' ============================================================
+Private Const FIX_FRAME_NONE As Long = 0
+
+Private Const FIX_FRAME_RIGHT_FLAG As Long = 7
+Private Const FIX_FRAME_LEFT_FLAG As Long = 8
+Private Const FIX_FRAME_BOTH_FLAG As Long = 9
+
+Private Const FIX_FRAME_RIGHT_FLAG_LOCKED As Long = 57
+Private Const FIX_FRAME_LEFT_FLAG_LOCKED As Long = 58
+Private Const FIX_FRAME_BOTH_FLAG_LOCKED As Long = 59
+
+
+' ============================================================
+' CatTextProperty
+'
+' catColor  = 10
+' catBorder = 12
+' ============================================================
+Private Const FIX_PROPERTY_COLOR As Long = 10
+Private Const FIX_PROPERTY_BORDER As Long = 12
+
+
+' ============================================================
+' ORIGEM DA FLAG
+' ============================================================
+Private Const FIX_ORIGEM_NENHUMA As Long = 0
+Private Const FIX_ORIGEM_OBJETO As Long = 1
+Private Const FIX_ORIGEM_TEXT_EDITOR As Long = 2
+
+
+' ============================================================
+' CORES CATIA
+' ============================================================
+Private Const FIX_COLOR_GREEN As Long = 11555071
+Private Const FIX_COLOR_RED As Long = -16776961
+
+
+' ============================================================
+' CONTADORES
+' ============================================================
+Private fixTotalTextos As Long
+Private fixTotalFlags As Long
+
+Private fixTotalFlagsObjetoInteiro As Long
+Private fixTotalFlagsTextEditor As Long
+Private fixTotalFlagsComCadeado As Long
+
+Private fixTotalCorrigidas As Long
+Private fixTotalJaCorretas As Long
+Private fixTotalIgnoradas As Long
+Private fixTotalFalhasValidacao As Long
+Private fixTotalRestauradas As Long
+Private fixTotalErros As Long
+
+
+' ============================================================
+' FEATURE PRINCIPAL
+' ============================================================
+Public Sub CorrigirFlagNotes()
+
+    Dim drawingDocument As Object
+    Dim drawingSheets As Object
+    Dim drawingSheet As Object
+
+    Dim drawingViews As Object
+    Dim drawingView As Object
+
+    Dim drawingTexts As Object
+    Dim drawingText As Object
+
+    Dim sheetIndex As Long
+    Dim viewIndex As Long
+    Dim textIndex As Long
+
+    Dim resposta As VbMsgBoxResult
+
+    Dim mensagem As String
+    Dim mensagemResultado As String
+    Dim mensagemErro As String
+
+    Dim numeroErro As Long
+    Dim descricaoErro As String
+
+    On Error GoTo TratarErroGeral
+
+    ResetarContadoresFix
+
+    ' --------------------------------------------------------
+    ' VALIDAR DOCUMENTO
+    ' --------------------------------------------------------
+    If CATIA.Documents.count = 0 Then
+
+        MsgBox "Nao existe nenhum documento aberto no CATIA.", _
+               vbExclamation, _
+               "E1DT - Fix de Flag Notes"
+
+        Exit Sub
+
+    End If
+
+    Set drawingDocument = CATIA.ActiveDocument
+
+    If TypeName(drawingDocument) <> "DrawingDocument" Then
+
+        mensagemErro = "O documento ativo nao e um CATDrawing."
+        mensagemErro = mensagemErro & vbCrLf & vbCrLf
+        mensagemErro = mensagemErro & _
+                       "Abra o desenho 2D e execute novamente."
+
+        MsgBox mensagemErro, _
+               vbExclamation, _
+               "E1DT - Fix de Flag Notes"
+
+        Exit Sub
+
+    End If
+
+    ' --------------------------------------------------------
+    ' MENSAGEM DE CONFIRMACAO
+    ' --------------------------------------------------------
+    mensagem = ""
+
+    AdicionarLinha mensagem, _
+                   "Esta feature ira corrigir as Flag Notes."
+
+    AdicionarLinhaVazia mensagem
+
+    AdicionarLinha mensagem, _
+                   "Exemplo: NL006 sera alterado para NL0006."
+
+    AdicionarLinhaVazia mensagem
+
+    AdicionarLinha mensagem, _
+                   "Tipos reconhecidos:"
+
+    AdicionarLinha mensagem, _
+                   "- Right Flag;"
+
+    AdicionarLinha mensagem, _
+                   "- Left Flag;"
+
+    AdicionarLinha mensagem, _
+                   "- Both Flag;"
+
+    AdicionarLinha mensagem, _
+                   "- Flags fixas com cadeado;"
+
+    AdicionarLinha mensagem, _
+                   "- Flags aplicadas pelo Text Editor."
+
+    AdicionarLinhaVazia mensagem
+
+    AdicionarLinha mensagem, _
+                   "O tipo exato da Flag sera preservado."
+
+    AdicionarLinha mensagem, _
+                   "O codigo completo ficara verde."
+
+    AdicionarLinha mensagem, _
+                   "Nenhum espaco sera adicionado ao texto."
+
+    AdicionarLinhaVazia mensagem
+
+    AdicionarLinha mensagem, _
+                   "Salve uma copia do desenho antes do teste."
+
+    AdicionarLinhaVazia mensagem
+
+    AdicionarTexto mensagem, _
+                    "Deseja continuar?"
+
+    resposta = MsgBox( _
+        mensagem, _
+        vbYesNo + vbQuestion + vbDefaultButton2, _
+        "E1DT - Confirmar Fix de Flag Notes")
+
+    If resposta <> vbYes Then
+        Exit Sub
+    End If
+
+    Set drawingSheets = drawingDocument.Sheets
+
+    ' ========================================================
+    ' PERCORRER TODAS AS FOLHAS
+    ' ========================================================
+    For sheetIndex = 1 To drawingSheets.count
+
+        Set drawingSheet = _
+            drawingSheets.item(sheetIndex)
+
+        Set drawingViews = _
+            drawingSheet.Views
+
+        ' ====================================================
+        ' PERCORRER TODAS AS VIEWS
+        ' ====================================================
+        For viewIndex = 1 To drawingViews.count
+
+            Set drawingView = _
+                drawingViews.item(viewIndex)
+
+            Set drawingTexts = Nothing
+
+            On Error Resume Next
+            Err.Clear
+
+            Set drawingTexts = drawingView.Texts
+
+            If Err.number <> 0 Then
+
+                fixTotalErros = _
+                    fixTotalErros + 1
+
+                Err.Clear
+
+            ElseIf drawingTexts Is Nothing Then
+
+                fixTotalErros = _
+                    fixTotalErros + 1
+
+            Else
+
+                On Error GoTo TratarErroGeral
+
+                ' ============================================
+                ' PERCORRER TODOS OS DRAWINGTEXTS
+                ' ============================================
+                For textIndex = 1 To drawingTexts.count
+
+                    Set drawingText = _
+                        drawingTexts.item(textIndex)
+
+                    fixTotalTextos = _
+                        fixTotalTextos + 1
+
+                    ProcessarFlagSegura drawingText
+
+                Next textIndex
+
+            End If
+
+            On Error GoTo TratarErroGeral
+
+        Next viewIndex
+
+    Next sheetIndex
+
+    ' --------------------------------------------------------
+    ' FINALIZAR
+    ' --------------------------------------------------------
+    On Error Resume Next
+
+    drawingDocument.Selection.Clear
+    drawingDocument.Update
+
+    Err.Clear
+    On Error GoTo TratarErroGeral
+
+    ' --------------------------------------------------------
+    ' MENSAGEM DE RESULTADO
+    ' --------------------------------------------------------
+    mensagemResultado = ""
+
+    AdicionarLinha mensagemResultado, _
+                   "Fix de Flag Notes concluido."
+
+    AdicionarLinhaVazia mensagemResultado
+
+    AdicionarLinha mensagemResultado, _
+                   "DrawingTexts analisados: " & _
+                   CStr(fixTotalTextos)
+
+    AdicionarLinha mensagemResultado, _
+                   "Flags reconhecidas: " & _
+                   CStr(fixTotalFlags)
+
+    AdicionarLinhaVazia mensagemResultado
+
+    AdicionarLinha mensagemResultado, _
+                   "Flags no objeto inteiro: " & _
+                   CStr(fixTotalFlagsObjetoInteiro)
+
+    AdicionarLinha mensagemResultado, _
+                   "Flags pelo Text Editor: " & _
+                   CStr(fixTotalFlagsTextEditor)
+
+    AdicionarLinha mensagemResultado, _
+                   "Flags fixas com cadeado: " & _
+                   CStr(fixTotalFlagsComCadeado)
+
+    AdicionarLinhaVazia mensagemResultado
+
+    AdicionarLinha mensagemResultado, _
+                   "Flags corrigidas: " & _
+                   CStr(fixTotalCorrigidas)
+
+    AdicionarLinha mensagemResultado, _
+                   "Flags que ja estavam corretas: " & _
+                   CStr(fixTotalJaCorretas)
+
+    AdicionarLinha mensagemResultado, _
+                   "Textos ignorados: " & _
+                   CStr(fixTotalIgnoradas)
+
+    AdicionarLinha mensagemResultado, _
+                   "Falhas de validacao: " & _
+                   CStr(fixTotalFalhasValidacao)
+
+    AdicionarLinha mensagemResultado, _
+                   "Textos restaurados: " & _
+                   CStr(fixTotalRestauradas)
+
+    AdicionarLinha mensagemResultado, _
+                   "Erros: " & _
+                   CStr(fixTotalErros)
+
+    AdicionarLinhaVazia mensagemResultado
+
+    AdicionarTexto mensagemResultado, _
+                    "Execute o Check novamente para confirmar."
+
+    MsgBox mensagemResultado, _
+           vbInformation, _
+           "E1DT - Resultado do Fix"
+
+    Exit Sub
+
+
+TratarErroGeral:
+
+    numeroErro = Err.number
+    descricaoErro = Err.Description
+
+    On Error Resume Next
+
+    If Not drawingDocument Is Nothing Then
+        drawingDocument.Selection.Clear
+    End If
+
+    On Error GoTo 0
+
+    mensagemErro = ""
+    mensagemErro = mensagemErro & _
+                   "O fix foi interrompido."
+
+    mensagemErro = mensagemErro & _
+                   vbCrLf & vbCrLf
+
+    mensagemErro = mensagemErro & _
+                   "Erro: " & CStr(numeroErro)
+
+    mensagemErro = mensagemErro & vbCrLf
+
+    mensagemErro = mensagemErro & _
+                   "Descricao: " & descricaoErro
+
+    MsgBox mensagemErro, _
+           vbCritical, _
+           "E1DT - Erro no Fix"
+
+End Sub
+
+
+' ============================================================
+' PROCESSAR UM DRAWINGTEXT
+' ============================================================
+Private Sub ProcessarFlagSegura( _
+    ByVal drawingText As Object)
+
+    Dim textoOriginal As String
+    Dim textoCodigo As String
+    Dim textoCorrigido As String
+    Dim textoRelido As String
+
+    Dim prefixo As String
+    Dim parteNumerica As String
+
+    Dim frameOriginal As Long
+    Dim origemFlag As Long
+
+    Dim alterouTexto As Boolean
+    Dim restaurou As Boolean
+    Dim aplicouFrame As Boolean
+    Dim aplicouCor As Boolean
+    Dim textoValido As Boolean
+    Dim frameValido As Boolean
+    Dim corValida As Boolean
+
+    On Error GoTo TratarErroTexto
+
+    textoOriginal = CStr(drawingText.Text)
+
+    ' --------------------------------------------------------
+    ' OBTER SOMENTE O CODIGO
+    '
+    ' Remove espacos, tabs, CR, LF e NBSP externos.
+    ' O texto gravado nao tera espaco antes ou depois.
+    ' --------------------------------------------------------
+    textoCodigo = _
+        RemoverCaracteresExternos(textoOriginal)
+
+    If Len(textoCodigo) = 0 Then
+
+        fixTotalIgnoradas = _
+            fixTotalIgnoradas + 1
+
+        Exit Sub
+
+    End If
+
+    prefixo = ""
+    parteNumerica = ""
+
+    If Not SepararCodigoSeguro( _
+        textoCodigo, _
+        prefixo, _
+        parteNumerica) Then
+
+        fixTotalIgnoradas = _
+            fixTotalIgnoradas + 1
+
+        Exit Sub
+
+    End If
+
+    ' --------------------------------------------------------
+    ' DETECTAR A FLAG ANTES DA ALTERACAO
+    ' --------------------------------------------------------
+    frameOriginal = FIX_FRAME_NONE
+    origemFlag = FIX_ORIGEM_NENHUMA
+
+    If Not DetectarFlagOriginal( _
+        drawingText, _
+        Len(textoOriginal), _
+        frameOriginal, _
+        origemFlag) Then
+
+        fixTotalIgnoradas = _
+            fixTotalIgnoradas + 1
+
+        Exit Sub
+
+    End If
+
+    fixTotalFlags = fixTotalFlags + 1
+
+    If origemFlag = FIX_ORIGEM_OBJETO Then
+
+        fixTotalFlagsObjetoInteiro = _
+            fixTotalFlagsObjetoInteiro + 1
+
+    ElseIf origemFlag = FIX_ORIGEM_TEXT_EDITOR Then
+
+        fixTotalFlagsTextEditor = _
+            fixTotalFlagsTextEditor + 1
+
+    End If
+
+    If EhFrameDeFlagComCadeado(frameOriginal) Then
+
+        fixTotalFlagsComCadeado = _
+            fixTotalFlagsComCadeado + 1
+
+    End If
+
+    ' ========================================================
+    ' CODIGO COM QUATRO NUMEROS
+    ' ========================================================
+    If Len(parteNumerica) = 4 Then
+
+        textoCorrigido = prefixo & parteNumerica
+
+        ' ----------------------------------------------------
+        ' REMOVE EVENTUAIS ESPACOS EXTERNOS
+        ' ----------------------------------------------------
+        If StrComp( _
+            textoOriginal, _
+            textoCorrigido, _
+            vbBinaryCompare) <> 0 Then
+
+            drawingText.Text = textoCorrigido
+            alterouTexto = True
+
+            AtualizarPropriedadesTexto drawingText
+
+        End If
+
+        ' ----------------------------------------------------
+        ' PRESERVAR EXATAMENTE O FRAME ORIGINAL
+        ' ----------------------------------------------------
+        aplicouFrame = PreservarFlagOriginal( _
+            drawingText, _
+            origemFlag, _
+            frameOriginal, _
+            Len(textoCorrigido))
+
+        If Not aplicouFrame Then
+
+            FalhaERestaurar drawingText, _
+                            textoOriginal, _
+                            origemFlag, _
+                            frameOriginal
+
+            Exit Sub
+
+        End If
+
+        ' ----------------------------------------------------
+        ' APLICAR VERDE AO TEXTO INTEIRO
+        ' ----------------------------------------------------
+        aplicouCor = AplicarCorTextoInteiro( _
+            drawingText, _
+            FIX_COLOR_GREEN)
+
+        If Not aplicouCor Then
+
+            FalhaERestaurar drawingText, _
+                            textoOriginal, _
+                            origemFlag, _
+                            frameOriginal
+
+            Exit Sub
+
+        End If
+
+        AtualizarPropriedadesTexto drawingText
+
+        textoRelido = CStr(drawingText.Text)
+
+        textoValido = _
+            TextoExatamenteIgual( _
+                textoRelido, _
+                textoCorrigido)
+
+        frameValido = _
+            ValidarFlagFinal( _
+                drawingText, _
+                origemFlag, _
+                frameOriginal, _
+                Len(textoRelido))
+
+        corValida = _
+            ValidarCorTextoInteiro( _
+                drawingText, _
+                Len(textoRelido), _
+                FIX_COLOR_GREEN)
+
+        If Not textoValido Then
+
+            FalhaERestaurar drawingText, _
+                            textoOriginal, _
+                            origemFlag, _
+                            frameOriginal
+
+            Exit Sub
+
+        End If
+
+        If Not frameValido Then
+
+            FalhaERestaurar drawingText, _
+                            textoOriginal, _
+                            origemFlag, _
+                            frameOriginal
+
+            Exit Sub
+
+        End If
+
+        If Not corValida Then
+
+            FalhaERestaurar drawingText, _
+                            textoOriginal, _
+                            origemFlag, _
+                            frameOriginal
+
+            Exit Sub
+
+        End If
+
+        fixTotalJaCorretas = _
+            fixTotalJaCorretas + 1
+
+        Exit Sub
+
+    End If
+
+    ' ========================================================
+    ' CODIGO COM TRES NUMEROS
+    ' ========================================================
+    If Len(parteNumerica) = 3 Then
+
+        textoCorrigido = _
+            prefixo & "0" & parteNumerica
+
+        ' ----------------------------------------------------
+        ' GRAVAR SOMENTE O CODIGO
+        '
+        ' Nao usa Left, Mid ou espacos do texto anterior.
+        ' ----------------------------------------------------
+        drawingText.Text = textoCorrigido
+        alterouTexto = True
+
+        AtualizarPropriedadesTexto drawingText
+
+        ' ----------------------------------------------------
+        ' PRESERVAR O FRAMETYPE EXATO
+        '
+        ' Exemplos:
+        '
+        '   7  continua 7
+        '   8  continua 8
+        '   9  continua 9
+        '   57 continua 57
+        '   58 continua 58
+        '   59 continua 59
+        ' ----------------------------------------------------
+        aplicouFrame = PreservarFlagOriginal( _
+            drawingText, _
+            origemFlag, _
+            frameOriginal, _
+            Len(textoCorrigido))
+
+        If Not aplicouFrame Then
+
+            FalhaERestaurar drawingText, _
+                            textoOriginal, _
+                            origemFlag, _
+                            frameOriginal
+
+            Exit Sub
+
+        End If
+
+        ' ----------------------------------------------------
+        ' APLICAR VERDE AO TEXTO COMPLETO
+        ' ----------------------------------------------------
+        aplicouCor = AplicarCorTextoInteiro( _
+            drawingText, _
+            FIX_COLOR_GREEN)
+
+        If Not aplicouCor Then
+
+            FalhaERestaurar drawingText, _
+                            textoOriginal, _
+                            origemFlag, _
+                            frameOriginal
+
+            Exit Sub
+
+        End If
+
+        AtualizarPropriedadesTexto drawingText
+
+        ' ----------------------------------------------------
+        ' VALIDAR TEXTO
+        ' ----------------------------------------------------
+        textoRelido = CStr(drawingText.Text)
+
+        textoValido = _
+            TextoExatamenteIgual( _
+                textoRelido, _
+                textoCorrigido)
+
+        If Not textoValido Then
+
+            FalhaERestaurar drawingText, _
+                            textoOriginal, _
+                            origemFlag, _
+                            frameOriginal
+
+            Exit Sub
+
+        End If
+
+        ' ----------------------------------------------------
+        ' VALIDAR FRAME
+        ' ----------------------------------------------------
+        frameValido = _
+            ValidarFlagFinal( _
+                drawingText, _
+                origemFlag, _
+                frameOriginal, _
+                Len(textoRelido))
+
+        If Not frameValido Then
+
+            FalhaERestaurar drawingText, _
+                            textoOriginal, _
+                            origemFlag, _
+                            frameOriginal
+
+            Exit Sub
+
+        End If
+
+        ' ----------------------------------------------------
+        ' VALIDAR COR DE TODOS OS CARACTERES
+        ' ----------------------------------------------------
+        corValida = _
+            ValidarCorTextoInteiro( _
+                drawingText, _
+                Len(textoRelido), _
+                FIX_COLOR_GREEN)
+
+        If Not corValida Then
+
+            FalhaERestaurar drawingText, _
+                            textoOriginal, _
+                            origemFlag, _
+                            frameOriginal
+
+            Exit Sub
+
+        End If
+
+        fixTotalCorrigidas = _
+            fixTotalCorrigidas + 1
+
+    End If
+
+    Exit Sub
+
+
+TratarErroTexto:
+
+    fixTotalErros = _
+        fixTotalErros + 1
+
+    On Error Resume Next
+
+    If alterouTexto Then
+
+        restaurou = RestaurarEstadoOriginal( _
+            drawingText, _
+            textoOriginal, _
+            origemFlag, _
+            frameOriginal)
+
+        If restaurou Then
+
+            fixTotalRestauradas = _
+                fixTotalRestauradas + 1
+
+        End If
+
+    End If
+
+    Err.Clear
+    On Error GoTo 0
+
+End Sub
+
+
+' ============================================================
+' REGISTRAR FALHA E RESTAURAR
+' ============================================================
+Private Sub FalhaERestaurar( _
+    ByVal drawingText As Object, _
+    ByVal textoOriginal As String, _
+    ByVal origemFlag As Long, _
+    ByVal frameOriginal As Long)
+
+    Dim restaurou As Boolean
+
+    fixTotalFalhasValidacao = _
+        fixTotalFalhasValidacao + 1
+
+    restaurou = RestaurarEstadoOriginal( _
+        drawingText, _
+        textoOriginal, _
+        origemFlag, _
+        frameOriginal)
+
+    If restaurou Then
+
+        fixTotalRestauradas = _
+            fixTotalRestauradas + 1
+
+    Else
+
+        AplicarCorTextoInteiro _
+            drawingText, _
+            FIX_COLOR_RED
+
+    End If
+
+End Sub
+
+
+' ============================================================
+' DETECTAR FLAG ORIGINAL
+'
+' ORDEM:
+'
+'   1. DrawingText.FrameType
+'   2. TextProperties.FrameType
+'   3. catBorder no texto inteiro
+'   4. catBorder caractere por caractere
+' ============================================================
+Private Function DetectarFlagOriginal( _
+    ByVal drawingText As Object, _
+    ByVal tamanhoTexto As Long, _
+    ByRef frameEncontrado As Long, _
+    ByRef origemFlag As Long) As Boolean
+
+    Dim frameObjeto As Long
+    Dim frameProperties As Long
+    Dim frameBorder As Long
+    Dim indice As Long
+
+    frameEncontrado = FIX_FRAME_NONE
+    origemFlag = FIX_ORIGEM_NENHUMA
+
+    ' --------------------------------------------------------
+    ' DRAWINGTEXT.FRAMETYPE
+    ' --------------------------------------------------------
+    frameObjeto = _
+        LerFrameDoDrawingText(drawingText)
+
+    If EhFrameDeFlagFix(frameObjeto) Then
+
+        frameEncontrado = frameObjeto
+        origemFlag = FIX_ORIGEM_OBJETO
+
+        DetectarFlagOriginal = True
+        Exit Function
+
+    End If
+
+    ' --------------------------------------------------------
+    ' TEXTPROPERTIES.FRAMETYPE
+    ' --------------------------------------------------------
+    frameProperties = _
+        LerFrameDasTextProperties(drawingText)
+
+    If EhFrameDeFlagFix(frameProperties) Then
+
+        frameEncontrado = frameProperties
+        origemFlag = FIX_ORIGEM_OBJETO
+
+        DetectarFlagOriginal = True
+        Exit Function
+
+    End If
+
+    If tamanhoTexto <= 0 Then
+
+        DetectarFlagOriginal = False
+        Exit Function
+
+    End If
+
+    ' --------------------------------------------------------
+    ' CATBORDER COM QUANTIDADE ZERO
+    ' --------------------------------------------------------
+    frameBorder = LerBordaTrechoFix( _
+        drawingText, _
+        0, _
+        0)
+
+    If EhFrameDeFlagFix(frameBorder) Then
+
+        frameEncontrado = frameBorder
+        origemFlag = FIX_ORIGEM_TEXT_EDITOR
+
+        DetectarFlagOriginal = True
+        Exit Function
+
+    End If
+
+    ' --------------------------------------------------------
+    ' CATBORDER NO TEXTO COMPLETO
+    ' --------------------------------------------------------
+    frameBorder = LerBordaTrechoFix( _
+        drawingText, _
+        0, _
+        tamanhoTexto)
+
+    If EhFrameDeFlagFix(frameBorder) Then
+
+        frameEncontrado = frameBorder
+        origemFlag = FIX_ORIGEM_TEXT_EDITOR
+
+        DetectarFlagOriginal = True
+        Exit Function
+
+    End If
+
+    ' --------------------------------------------------------
+    ' CATBORDER CARACTERE POR CARACTERE
+    ' --------------------------------------------------------
+    For indice = 0 To tamanhoTexto - 1
+
+        frameBorder = LerBordaTrechoFix( _
+            drawingText, _
+            indice, _
+            1)
+
+        If EhFrameDeFlagFix(frameBorder) Then
+
+            frameEncontrado = frameBorder
+            origemFlag = FIX_ORIGEM_TEXT_EDITOR
+
+            DetectarFlagOriginal = True
+            Exit Function
+
+        End If
+
+    Next indice
+
+    DetectarFlagOriginal = False
+
+End Function
+
+
+' ============================================================
+' PRESERVAR FLAG ORIGINAL
+' ============================================================
+Private Function PreservarFlagOriginal( _
+    ByVal drawingText As Object, _
+    ByVal origemFlag As Long, _
+    ByVal frameOriginal As Long, _
+    ByVal tamanhoTexto As Long) As Boolean
+
+    Select Case origemFlag
+
+        Case FIX_ORIGEM_OBJETO
+
+            PreservarFlagOriginal = _
+                PreservarFrameDoObjeto( _
+                    drawingText, _
+                    frameOriginal)
+
+        Case FIX_ORIGEM_TEXT_EDITOR
+
+            PreservarFlagOriginal = _
+                AplicarFrameNoTextoInteiro( _
+                    drawingText, _
+                    frameOriginal, _
+                    tamanhoTexto)
+
+        Case Else
+
+            PreservarFlagOriginal = False
+
+    End Select
+
+End Function
+
+
+' ============================================================
+' PRESERVAR FRAME DO OBJETO
+'
+' Mantem o valor exato, inclusive 57, 58 ou 59.
+' ============================================================
+Private Function PreservarFrameDoObjeto( _
+    ByVal drawingText As Object, _
+    ByVal frameOriginal As Long) As Boolean
+
+    Dim frameAtual As Long
+    Dim textProperties As Object
+    Dim sucesso As Boolean
+
+    sucesso = False
+
+    If Not EhFrameDeFlagFix(frameOriginal) Then
+
+        PreservarFrameDoObjeto = False
+        Exit Function
+
+    End If
+
+    ' --------------------------------------------------------
+    ' VERIFICAR SE O FRAME JA FOI PRESERVADO PELO CATIA
+    ' --------------------------------------------------------
+    frameAtual = _
+        LerFrameDoDrawingText(drawingText)
+
+    If frameAtual = frameOriginal Then
+
+        PreservarFrameDoObjeto = True
+        Exit Function
+
+    End If
+
+    frameAtual = _
+        LerFrameDasTextProperties(drawingText)
+
+    If frameAtual = frameOriginal Then
+
+        PreservarFrameDoObjeto = True
+        Exit Function
+
+    End If
+
+    ' --------------------------------------------------------
+    ' SE O CATIA ALTEROU O FRAME, RESTAURAR O VALOR EXATO
+    ' --------------------------------------------------------
+    On Error Resume Next
+    Err.Clear
+
+    drawingText.FrameType = frameOriginal
+
+    If Err.number = 0 Then
+        sucesso = True
+    End If
+
+    Err.Clear
+
+    Set textProperties = Nothing
+    Set textProperties = drawingText.textProperties
+
+    If Not textProperties Is Nothing Then
+
+        Err.Clear
+
+        textProperties.FrameType = frameOriginal
+
+        If Err.number = 0 Then
+            sucesso = True
+        End If
+
+        Err.Clear
+        textProperties.Update
+
+    End If
+
+    Err.Clear
+    On Error GoTo 0
+
+    AtualizarPropriedadesTexto drawingText
+
+    frameAtual = _
+        LerFrameDoDrawingText(drawingText)
+
+    If frameAtual = frameOriginal Then
+        sucesso = True
+    End If
+
+    If Not sucesso Then
+
+        frameAtual = _
+            LerFrameDasTextProperties(drawingText)
+
+        If frameAtual = frameOriginal Then
+            sucesso = True
+        End If
+
+    End If
+
+    PreservarFrameDoObjeto = sucesso
+
+End Function
+
+
+' ============================================================
+' APLICAR FRAME NO TEXTO INTEIRO
+'
+' Somente para Flags realmente aplicadas pelo Text Editor.
+' ============================================================
+Private Function AplicarFrameNoTextoInteiro( _
+    ByVal drawingText As Object, _
+    ByVal frameOriginal As Long, _
+    ByVal tamanhoTexto As Long) As Boolean
+
+    On Error GoTo TratarErro
+
+    If tamanhoTexto <= 0 Then
+
+        AplicarFrameNoTextoInteiro = False
+        Exit Function
+
+    End If
+
+    If Not EhFrameDeFlagFix(frameOriginal) Then
+
+        AplicarFrameNoTextoInteiro = False
+        Exit Function
+
+    End If
+
+    drawingText.SetParameterOnSubString _
+        FIX_PROPERTY_BORDER, _
+        0, _
+        tamanhoTexto, _
+        frameOriginal
+
+    AtualizarPropriedadesTexto drawingText
+
+    AplicarFrameNoTextoInteiro = True
+
+    Exit Function
+
+
+TratarErro:
+
+    AplicarFrameNoTextoInteiro = False
+    Err.Clear
+
+End Function
+
+
+' ============================================================
+' VALIDAR FLAG FINAL
+' ============================================================
+Private Function ValidarFlagFinal( _
+    ByVal drawingText As Object, _
+    ByVal origemFlag As Long, _
+    ByVal frameEsperado As Long, _
+    ByVal tamanhoTexto As Long) As Boolean
+
+    Select Case origemFlag
+
+        Case FIX_ORIGEM_OBJETO
+
+            ValidarFlagFinal = _
+                ValidarFrameDoObjeto( _
+                    drawingText, _
+                    frameEsperado)
+
+        Case FIX_ORIGEM_TEXT_EDITOR
+
+            ValidarFlagFinal = _
+                ValidarFrameNoTextoInteiro( _
+                    drawingText, _
+                    frameEsperado, _
+                    tamanhoTexto)
+
+        Case Else
+
+            ValidarFlagFinal = False
+
+    End Select
+
+End Function
+
+
+' ============================================================
+' VALIDAR FRAME DO OBJETO
+' ============================================================
+Private Function ValidarFrameDoObjeto( _
+    ByVal drawingText As Object, _
+    ByVal frameEsperado As Long) As Boolean
+
+    Dim frameDrawingText As Long
+    Dim frameTextProperties As Long
+
+    frameDrawingText = _
+        LerFrameDoDrawingText(drawingText)
+
+    frameTextProperties = _
+        LerFrameDasTextProperties(drawingText)
+
+    If frameDrawingText = frameEsperado Then
+
+        ValidarFrameDoObjeto = True
+        Exit Function
+
+    End If
+
+    If frameTextProperties = frameEsperado Then
+
+        ValidarFrameDoObjeto = True
+        Exit Function
+
+    End If
+
+    ValidarFrameDoObjeto = False
+
+End Function
+
+
+' ============================================================
+' VALIDAR FRAME NO TEXTO INTEIRO
+' ============================================================
+Private Function ValidarFrameNoTextoInteiro( _
+    ByVal drawingText As Object, _
+    ByVal frameEsperado As Long, _
+    ByVal tamanhoTexto As Long) As Boolean
+
+    Dim indice As Long
+    Dim frameAtual As Long
+
+    If tamanhoTexto <= 0 Then
+
+        ValidarFrameNoTextoInteiro = False
+        Exit Function
+
+    End If
+
+    For indice = 0 To tamanhoTexto - 1
+
+        frameAtual = LerBordaTrechoFix( _
+            drawingText, _
+            indice, _
+            1)
+
+        If frameAtual <> frameEsperado Then
+
+            ValidarFrameNoTextoInteiro = False
+            Exit Function
+
+        End If
+
+    Next indice
+
+    ValidarFrameNoTextoInteiro = True
+
+End Function
+
+
+' ============================================================
+' APLICAR COR AO TEXTO INTEIRO
+'
+' Usa dois mecanismos:
+'
+'   1. SetParameterOnSubString com 0, 0
+'   2. TextProperties.Color
+'
+' Isso garante que o zero inserido tambem fique verde.
+' ============================================================
+Private Function AplicarCorTextoInteiro( _
+    ByVal drawingText As Object, _
+    ByVal corCodificada As Long) As Boolean
+
+    Dim textProperties As Object
+    Dim sucessoSubstring As Boolean
+    Dim sucessoProperties As Boolean
+
+    sucessoSubstring = False
+    sucessoProperties = False
+
+    On Error Resume Next
+    Err.Clear
+
+    drawingText.SetParameterOnSubString _
+        FIX_PROPERTY_COLOR, _
+        0, _
+        0, _
+        corCodificada
+
+    If Err.number = 0 Then
+        sucessoSubstring = True
+    End If
+
+    Err.Clear
+
+    Set textProperties = Nothing
+    Set textProperties = drawingText.textProperties
+
+    If Not textProperties Is Nothing Then
+
+        Err.Clear
+
+        textProperties.Color = corCodificada
+
+        If Err.number = 0 Then
+            sucessoProperties = True
+        End If
+
+        Err.Clear
+        textProperties.Update
+
+    End If
+
+    Err.Clear
+    On Error GoTo 0
+
+    AtualizarPropriedadesTexto drawingText
+
+    AplicarCorTextoInteiro = _
+        sucessoSubstring Or sucessoProperties
+
+End Function
+
+
+' ============================================================
+' VALIDAR COR DO TEXTO INTEIRO
+'
+' Confere cada caractere individualmente.
+' ============================================================
+Private Function ValidarCorTextoInteiro( _
+    ByVal drawingText As Object, _
+    ByVal tamanhoTexto As Long, _
+    ByVal corEsperada As Long) As Boolean
+
+    Dim indice As Long
+    Dim corAtual As Long
+
+    If tamanhoTexto <= 0 Then
+
+        ValidarCorTextoInteiro = False
+        Exit Function
+
+    End If
+
+    For indice = 0 To tamanhoTexto - 1
+
+        corAtual = LerCorTrechoFix( _
+            drawingText, _
+            indice, _
+            1)
+
+        If corAtual <> corEsperada Then
+
+            ValidarCorTextoInteiro = False
+            Exit Function
+
+        End If
+
+    Next indice
+
+    ValidarCorTextoInteiro = True
+
+End Function
+
+
+' ============================================================
+' RESTAURAR ESTADO ORIGINAL
+' ============================================================
+Private Function RestaurarEstadoOriginal( _
+    ByVal drawingText As Object, _
+    ByVal textoOriginal As String, _
+    ByVal origemFlag As Long, _
+    ByVal frameOriginal As Long) As Boolean
+
+    Dim restaurouTexto As Boolean
+    Dim restaurouFrame As Boolean
+
+    On Error GoTo TratarErro
+
+    drawingText.Text = textoOriginal
+    restaurouTexto = True
+
+    AtualizarPropriedadesTexto drawingText
+
+    restaurouFrame = PreservarFlagOriginal( _
+        drawingText, _
+        origemFlag, _
+        frameOriginal, _
+        Len(textoOriginal))
+
+    AplicarCorTextoInteiro _
+        drawingText, _
+        FIX_COLOR_RED
+
+    AtualizarPropriedadesTexto drawingText
+
+    RestaurarEstadoOriginal = _
+        restaurouTexto And restaurouFrame
+
+    Exit Function
+
+
+TratarErro:
+
+    RestaurarEstadoOriginal = False
+    Err.Clear
+
+End Function
+
+
+' ============================================================
+' COMPARAR TEXTO EXATAMENTE
+' ============================================================
+Private Function TextoExatamenteIgual( _
+    ByVal textoAtual As String, _
+    ByVal textoEsperado As String) As Boolean
+
+    TextoExatamenteIgual = _
+        (StrComp( _
+            textoAtual, _
+            textoEsperado, _
+            vbBinaryCompare) = 0)
+
+End Function
+
+
+' ============================================================
+' LER DRAWINGTEXT.FRAMETYPE
+' ============================================================
+Private Function LerFrameDoDrawingText( _
+    ByVal drawingText As Object) As Long
+
+    On Error GoTo TratarErro
+
+    LerFrameDoDrawingText = _
+        CLng(drawingText.FrameType)
+
+    Exit Function
+
+
+TratarErro:
+
+    LerFrameDoDrawingText = -1
+    Err.Clear
+
+End Function
+
+
+' ============================================================
+' LER TEXTPROPERTIES.FRAMETYPE
+' ============================================================
+Private Function LerFrameDasTextProperties( _
+    ByVal drawingText As Object) As Long
+
+    Dim textProperties As Object
+
+    On Error GoTo TratarErro
+
+    Set textProperties = _
+        drawingText.textProperties
+
+    If textProperties Is Nothing Then
+
+        LerFrameDasTextProperties = -1
+
+    Else
+
+        LerFrameDasTextProperties = _
+            CLng(textProperties.FrameType)
+
+    End If
+
+    Exit Function
+
+
+TratarErro:
+
+    LerFrameDasTextProperties = -1
+    Err.Clear
+
+End Function
+
+
+' ============================================================
+' LER CATBORDER DE UM TRECHO
+' ============================================================
+Private Function LerBordaTrechoFix( _
+    ByVal drawingText As Object, _
+    ByVal inicio As Long, _
+    ByVal quantidade As Long) As Long
+
+    Dim valorBorda As Variant
+
+    On Error GoTo TratarErro
+
+    valorBorda = _
+        drawingText.GetParameterOnSubString( _
+            FIX_PROPERTY_BORDER, _
+            inicio, _
+            quantidade)
+
+    LerBordaTrechoFix = CLng(valorBorda)
+
+    Exit Function
+
+
+TratarErro:
+
+    LerBordaTrechoFix = -1
+    Err.Clear
+
+End Function
+
+
+' ============================================================
+' LER COR DE UM TRECHO
+' ============================================================
+Private Function LerCorTrechoFix( _
+    ByVal drawingText As Object, _
+    ByVal inicio As Long, _
+    ByVal quantidade As Long) As Long
+
+    Dim valorCor As Variant
+
+    On Error GoTo TratarErro
+
+    valorCor = _
+        drawingText.GetParameterOnSubString( _
+            FIX_PROPERTY_COLOR, _
+            inicio, _
+            quantidade)
+
+    LerCorTrechoFix = CLng(valorCor)
+
+    Exit Function
+
+
+TratarErro:
+
+    LerCorTrechoFix = -1
+    Err.Clear
+
+End Function
+
+
+' ============================================================
+' ATUALIZAR PROPRIEDADES
+' ============================================================
+Private Sub AtualizarPropriedadesTexto( _
+    ByVal drawingText As Object)
+
+    Dim textProperties As Object
+
+    On Error Resume Next
+    Err.Clear
+
+    Set textProperties = _
+        drawingText.textProperties
+
+    If Not textProperties Is Nothing Then
+        textProperties.Update
+    End If
+
+    Err.Clear
+    On Error GoTo 0
+
+End Sub
+
+
+' ============================================================
+' CONFIRMAR QUALQUER TIPO DE FLAG
+' ============================================================
+Private Function EhFrameDeFlagFix( _
+    ByVal frameTypeValue As Long) As Boolean
+
+    Select Case frameTypeValue
+
+        Case FIX_FRAME_RIGHT_FLAG
+            EhFrameDeFlagFix = True
+
+        Case FIX_FRAME_LEFT_FLAG
+            EhFrameDeFlagFix = True
+
+        Case FIX_FRAME_BOTH_FLAG
+            EhFrameDeFlagFix = True
+
+        Case FIX_FRAME_RIGHT_FLAG_LOCKED
+            EhFrameDeFlagFix = True
+
+        Case FIX_FRAME_LEFT_FLAG_LOCKED
+            EhFrameDeFlagFix = True
+
+        Case FIX_FRAME_BOTH_FLAG_LOCKED
+            EhFrameDeFlagFix = True
+
+        Case Else
+            EhFrameDeFlagFix = False
+
+    End Select
+
+End Function
+
+
+' ============================================================
+' CONFIRMAR FLAG COM CADEADO
+' ============================================================
+Private Function EhFrameDeFlagComCadeado( _
+    ByVal frameTypeValue As Long) As Boolean
+
+    Select Case frameTypeValue
+
+        Case FIX_FRAME_RIGHT_FLAG_LOCKED
+            EhFrameDeFlagComCadeado = True
+
+        Case FIX_FRAME_LEFT_FLAG_LOCKED
+            EhFrameDeFlagComCadeado = True
+
+        Case FIX_FRAME_BOTH_FLAG_LOCKED
+            EhFrameDeFlagComCadeado = True
+
+        Case Else
+            EhFrameDeFlagComCadeado = False
+
+    End Select
+
+End Function
+
+
+' ============================================================
+' REMOVER CARACTERES EXTERNOS
+'
+' Remove somente caracteres antes e depois do codigo:
+'
+'   9   = Tab
+'   10  = LF
+'   13  = CR
+'   32  = Espaco
+'   160 = NBSP
+'
+' O resultado e gravado diretamente no DrawingText.
+' ============================================================
+Private Function RemoverCaracteresExternos( _
+    ByVal textoOriginal As String) As String
+
+    Dim primeiro As Long
+    Dim ultimo As Long
+    Dim caractere As String
+
+    If Len(textoOriginal) = 0 Then
+
+        RemoverCaracteresExternos = ""
+        Exit Function
+
+    End If
+
+    primeiro = 1
+    ultimo = Len(textoOriginal)
+
+    Do While primeiro <= ultimo
+
+        caractere = _
+            Mid$(textoOriginal, primeiro, 1)
+
+        If EhCaractereExternoVazio(caractere) Then
+            primeiro = primeiro + 1
+        Else
+            Exit Do
+        End If
+
+    Loop
+
+    Do While ultimo >= primeiro
+
+        caractere = _
+            Mid$(textoOriginal, ultimo, 1)
+
+        If EhCaractereExternoVazio(caractere) Then
+            ultimo = ultimo - 1
+        Else
+            Exit Do
+        End If
+
+    Loop
+
+    If ultimo < primeiro Then
+
+        RemoverCaracteresExternos = ""
+
+    Else
+
+        RemoverCaracteresExternos = _
+            Mid$( _
+                textoOriginal, _
+                primeiro, _
+                ultimo - primeiro + 1)
+
+    End If
+
+End Function
+
+
+' ============================================================
+' IDENTIFICAR CARACTERE EXTERNO VAZIO
+' ============================================================
+Private Function EhCaractereExternoVazio( _
+    ByVal caractere As String) As Boolean
+
+    Dim codigo As Long
+
+    If Len(caractere) = 0 Then
+
+        EhCaractereExternoVazio = True
+        Exit Function
+
+    End If
+
+    codigo = AscW(caractere)
+
+    Select Case codigo
+
+        Case 9
+            EhCaractereExternoVazio = True
+
+        Case 10
+            EhCaractereExternoVazio = True
+
+        Case 13
+            EhCaractereExternoVazio = True
+
+        Case 32
+            EhCaractereExternoVazio = True
+
+        Case 160
+            EhCaractereExternoVazio = True
+
+        Case Else
+            EhCaractereExternoVazio = False
+
+    End Select
+
+End Function
+
+
+' ============================================================
+' SEPARAR PREFIXO E PARTE NUMERICA
+'
+' ACEITA SOMENTE:
+'
+'   letras + 3 numeros
+'   letras + 4 numeros
+' ============================================================
+Private Function SepararCodigoSeguro( _
+    ByVal texto As String, _
+    ByRef prefixo As String, _
+    ByRef parteNumerica As String) As Boolean
+
+    Dim regexObject As Object
+    Dim regexMatches As Object
+    Dim regexMatch As Object
+
+    prefixo = ""
+    parteNumerica = ""
+
+    On Error GoTo TratarErro
+
+    Set regexObject = _
+        CreateObject("VBScript.RegExp")
+
+    With regexObject
+
+        .Global = False
+        .IgnoreCase = True
+        .pattern = "^([A-Z]+)([0-9]{3,4})$"
+
+    End With
+
+    If Not regexObject.Test(texto) Then
+
+        SepararCodigoSeguro = False
+        Exit Function
+
+    End If
+
+    Set regexMatches = _
+        regexObject.Execute(texto)
+
+    Set regexMatch = _
+        regexMatches.item(0)
+
+    prefixo = _
+        CStr(regexMatch.SubMatches.item(0))
+
+    parteNumerica = _
+        CStr(regexMatch.SubMatches.item(1))
+
+    SepararCodigoSeguro = True
+
+    Exit Function
+
+
+TratarErro:
+
+    prefixo = ""
+    parteNumerica = ""
+
+    SepararCodigoSeguro = False
+
+    Err.Clear
+
+End Function
+
+
+' ============================================================
+' ADICIONAR LINHA
+' ============================================================
+Private Sub AdicionarLinha( _
+    ByRef mensagem As String, _
+    ByVal textoLinha As String)
+
+    mensagem = _
+        mensagem & textoLinha & vbCrLf
+
+End Sub
+
+
+' ============================================================
+' ADICIONAR TEXTO SEM QUEBRA
+' ============================================================
+Private Sub AdicionarTexto( _
+    ByRef mensagem As String, _
+    ByVal textoLinha As String)
+
+    mensagem = mensagem & textoLinha
+
+End Sub
+
+
+' ============================================================
+' ADICIONAR LINHA VAZIA
+' ============================================================
+Private Sub AdicionarLinhaVazia( _
+    ByRef mensagem As String)
+
+    mensagem = mensagem & vbCrLf
+
+End Sub
+
+
+' ============================================================
+' RESETAR CONTADORES
+' ============================================================
+Private Sub ResetarContadoresFix()
+
+    fixTotalTextos = 0
+    fixTotalFlags = 0
+
+    fixTotalFlagsObjetoInteiro = 0
+    fixTotalFlagsTextEditor = 0
+    fixTotalFlagsComCadeado = 0
+
+    fixTotalCorrigidas = 0
+    fixTotalJaCorretas = 0
+    fixTotalIgnoradas = 0
+    fixTotalFalhasValidacao = 0
+    fixTotalRestauradas = 0
+    fixTotalErros = 0
+
+End Sub
+
