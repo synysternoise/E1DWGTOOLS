@@ -51,8 +51,9 @@ O visual segue o protótipo em `design/hub_prototipo.html`. Só aparece o que fu
   regras. Font Size Fix corrige e Font Size Check confere. `tests/parity/testar_check_e_fix.py` prova
   que o Check aponta o que o Fix corrige e que, depois do Fix, o Check não aponta mais nada.
 - **Fora, por falta de lógica.** PDF antes e depois, relatório em PDF e o Split por limite de 200 MB
-  são recursos novos, que as macros não têm. Compare DWG é um programa externo. Aparecem desligados
-  ou não aparecem, em vez de botões sem efeito.
+  são recursos novos, que as macros não têm. Não aparecem, em vez de botões sem efeito.
+- **Compare DWG.** É um programa externo, que o HUB só abre. O caminho é escolhido na tela e fica
+  guardado em `%APPDATA%\\E1DWGTools\\config.json`, fora da pasta do HUB.
 - **Font Size Fix não corrige cotas.** O V5R20 não lê o tamanho de cota, então não há como testar aqui.
 - **Fora, por pedido do usuário.** Cronômetro e tempo estimado.
 - **Trocado.** No Fix Flags, a tabela por folha do protótipo virou a lista de cada flag, com

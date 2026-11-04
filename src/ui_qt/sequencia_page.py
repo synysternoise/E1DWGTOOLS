@@ -421,6 +421,7 @@ class CheckGeralPage(QWidget):
 
     run_requested = Signal(list)
     revisar_requested = Signal(str)
+    compare_requested = Signal()
 
     def __init__(self):
         super().__init__()
@@ -458,6 +459,13 @@ class CheckGeralPage(QWidget):
         for l in (self.linha_font, self.linha_pos, self.linha_flags):
             l.caixa.clicked.connect(self._atualizar)
             col.addWidget(l)
+        # Programa externo: nao tem resultado para mostrar aqui, so abre.
+        self.linha_compare = _LinhaCheck("Compare DWG", "Programa externo, abre em janela própria")
+        self.linha_compare.caixa.hide()
+        self.linha_compare.lbl_resultado.setText("Não informa resultado para o HUB")
+        self.linha_compare.btn_revisar.setText("Abrir  ›")
+        self.linha_compare.btn_revisar.clicked.connect(self.compare_requested)
+        col.addWidget(self.linha_compare)
         col.addStretch(1)
         h.addWidget(caixa)
         self._atualizar()

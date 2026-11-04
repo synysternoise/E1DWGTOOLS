@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
 
 from ui_qt import theme as T
 from ui_qt.catia_worker import CatiaWorker
-from ui_qt.check_fix_pages import FlagCheckPage, FontSizeFixPage
+from ui_qt.check_fix_pages import CompareDwgPage, FlagCheckPage, FontSizeFixPage
 from ui_qt.fix_flags_page import FixFlagsPage
 from ui_qt.font_size_page import FontSizePage, button, label
 from ui_qt.icones import icone
@@ -27,12 +27,11 @@ LARGURA, ALTURA = 1180, 720
 LARGURA_COMPACTA = 460
 INTERVALO_STATUS_MS = 2000
 AINDA_NO_VBA = "Esta ferramenta ainda roda no painel VBA."
-AINDA_NAO_EXISTE = "Esta ferramenta ainda não existe."
 ABA_DESIGN, ABA_CHECK, ABA_ENVIO = range(3)
 (
     PAGINA_SEQUENCIA, PAGINA_UPDATE, PAGINA_FLAGS, PAGINA_GERAL, PAGINA_FONT, PAGINA_POSZONE, PAGINA_SPLIT3D, PAGINA_SPLIT2D,
-    PAGINA_FONTFIX, PAGINA_CHECKFLAGS,
-) = range(10)
+    PAGINA_FONTFIX, PAGINA_CHECKFLAGS, PAGINA_COMPARE,
+) = range(11)
 
 
 def _so_a_atual_conta(pilha: QStackedWidget) -> None:
@@ -84,6 +83,7 @@ class HubWindow(QWidget):
         self.split2d_page = Split2DPage()
         self.fontfix_page = FontSizeFixPage()
         self.flagcheck_page = FlagCheckPage()
+        self.compare_page = CompareDwgPage()
         self.tool_pages = {
             p.TOOL: p for p in (
                 self.update_page, self.poszone_page, self.split3d_page, self.split2d_page, self.fontfix_page, self.flagcheck_page,
@@ -125,7 +125,7 @@ class HubWindow(QWidget):
                         ("Font Size Check", "sheet", PAGINA_FONT, ""),
                         ("Position and Zone", "box", PAGINA_POSZONE, ""),
                         ("Check de Flags", "flag", PAGINA_CHECKFLAGS, ""),
-                        ("Compare DWG", "monitor", None, AINDA_NAO_EXISTE))),),
+                        ("Compare DWG", "monitor", PAGINA_COMPARE, ""))),),
             "O Check não altera o desenho.",
         ))
         self._rail.addWidget(self._build_rail(
@@ -138,7 +138,7 @@ class HubWindow(QWidget):
         self._pages = QStackedWidget()
         for pagina in (
             self.seq_page, self.update_page, self.flags_page, self.geral_page, self.font_page,
-            self.poszone_page, self.split3d_page, self.split2d_page, self.fontfix_page, self.flagcheck_page,
+            self.poszone_page, self.split3d_page, self.split2d_page, self.fontfix_page, self.flagcheck_page, self.compare_page,
         ):
             self._pages.addWidget(pagina)
             _so_a_atual_conta(pagina._stack) if hasattr(pagina, "_stack") else None
@@ -372,6 +372,7 @@ class HubWindow(QWidget):
 
         self.geral_page.run_requested.connect(self._rodar_checks)
         self.geral_page.revisar_requested.connect(self._revisar)
+        self.geral_page.compare_requested.connect(self.compare_page.abrir)
 
         self._thread.start()
         self._timer = QTimer(self)

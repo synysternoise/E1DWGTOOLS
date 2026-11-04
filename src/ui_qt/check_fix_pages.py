@@ -4,14 +4,15 @@ from __future__ import annotations
 from typing import Dict, List
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QButtonGroup, QFrame, QHBoxLayout, QTableWidgetItem, QVBoxLayout
+from PySide6.QtWidgets import QButtonGroup, QFileDialog, QFrame, QHBoxLayout, QTableWidgetItem, QVBoxLayout, QWidget
 
+from engine import compare_dwg as cd
 from engine import fix_flags as ff
 from engine import font_check as fc
 from ui_qt import theme as T
 from ui_qt.fix_flags_page import mostrar
 from ui_qt.font_size_page import PAPEL_OK, MarkDelegate, button, label
-from ui_qt.pecas import Cartao, Resumo, botao, botao_grande, largura_livre, moldura
+from ui_qt.pecas import Cartao, LinhaSituacao, Resumo, botao, botao_grande, icone_grande, largura_livre, moldura
 from ui_qt.tool_page import ToolPage, tabela
 
 PENDENTE, CORRIGIDO, COMO_ESTAVA, FALHOU, SO_NO_CATIA = "Pendente", "Corrigido", "Como estava", "Falhou", "Cota: corrija no CATIA"
@@ -421,3 +422,100 @@ class FontSizeFixPage(ToolPage):
         self._atualizar_botoes()
         if len(resultados) == 1 and self._rows and resultados[0][1] is not None:
             self._mover(1)
+
+
+class CompareDwgPage(QWidget):
+    """Abre o Compare DWG, um programa separado, que funciona mesmo com o CATIA fechado."""
+
+    FILTRO = "Programas (*.exe *.bat *.cmd *.lnk *.py *.pyw);;Todos os arquivos (*)"
+
+    def __init__(self):
+        super().__init__()
+        fora = QVBoxLayout(self)
+        fora.setContentsMargins(0, 0, 0, 0)
+        caixa = moldura()
+        col = QVBoxLayout(caixa)
+        col.setContentsMargins(22, 18, 22, 18)
+        col.setSpacing(10)
+        col.addStretch(1)
+        linha = QHBoxLayout()
+        linha.addStretch(1)
+        linha.addWidget(icone_grande("monitor"))
+        linha.addStretch(1)
+        col.addLayout(linha)
+        titulo = label("Compare DWG", "titulo")
+        titulo.setAlignment(Qt.AlignCenter)
+        col.addWidget(titulo)
+        sub = largura_livre(label("Programa separado: abre em janela própria e funciona mesmo com o CATIA fechado.", "sub"))
+        sub.setAlignment(Qt.AlignCenter)
+        col.addWidget(sub)
+        centro = QHBoxLayout()
+        centro.addStretch(1)
+        meio = QVBoxLayout()
+        meio.setSpacing(8)
+        self.linha_caminho = LinhaSituacao()
+        self.linha_caminho.setMinimumWidth(320)
+        meio.addWidget(self.linha_caminho)
+        self.lbl_caminho = largura_livre(label("", "detalheFraco"))
+        self.lbl_caminho.setAlignment(Qt.AlignCenter)
+        meio.addWidget(self.lbl_caminho)
+        self.lbl_erro = largura_livre(label("", "erro"))
+        self.lbl_erro.setAlignment(Qt.AlignCenter)
+        self.lbl_erro.hide()
+        meio.addWidget(self.lbl_erro)
+        self.btn_abrir = botao_grande("ABRIR O COMPARE DWG", "open")
+        self.btn_abrir.clicked.connect(self.abrir)
+        meio.addWidget(self.btn_abrir)
+        self.btn_escolher = botao("TROCAR O CAMINHO", "secundario", "file")
+        self.btn_escolher.clicked.connect(self.escolher)
+        meio.addWidget(self.btn_escolher)
+        centro.addLayout(meio, 3)
+        centro.addStretch(1)
+        col.addLayout(centro)
+        col.addStretch(2)
+        fora.addWidget(caixa)
+        self._atualizar()
+
+    def _atualizar(self) -> None:
+        caminho = cd.get_path()
+        erro = cd.problema(caminho)
+        self.lbl_caminho.setText(caminho)
+        self.lbl_caminho.setToolTip(caminho)
+        if not caminho:
+            self.linha_caminho.definir("neutro", "Caminho ainda não adicionado")
+            self.btn_abrir.setText("ADICIONAR O CAMINHO DO COMPARE DWG")
+            self.btn_escolher.hide()
+        elif erro:
+            self.linha_caminho.definir("erro", "Programa não encontrado nesse caminho")
+            self.btn_abrir.setText("ESCOLHER O CAMINHO DE NOVO")
+            self.btn_escolher.hide()
+        else:
+            self.linha_caminho.definir("ok", "Compare DWG encontrado")
+            self.btn_abrir.setText("ABRIR O COMPARE DWG")
+            self.btn_escolher.show()
+
+    def escolher(self) -> bool:
+        """Pede o programa e guarda o caminho. Devolve False se a pessoa cancelar."""
+        atual = cd.get_path()
+        caminho, _ = QFileDialog.getOpenFileName(self, "Escolha o programa do Compare DWG", atual, self.FILTRO)
+        if not caminho:
+            return False
+        cd.set_path(caminho.replace("/", "\\"))
+        self.lbl_erro.hide()
+        self._atualizar()
+        return True
+
+    def abrir(self) -> None:
+        """Abre o programa. Sem um caminho que funcione, pede o caminho e abre em seguida."""
+        if cd.problema(cd.get_path()) and not self.escolher():
+            return
+        try:
+            cd.abrir(cd.get_path())
+            self.lbl_erro.hide()
+        except OSError as exc:
+            self.lbl_erro.setText(f"Não foi possível abrir o Compare DWG.\n{exc}")
+            self.lbl_erro.show()
+        self._atualizar()
+
+    def set_compact(self, compact: bool) -> None:
+        pass
