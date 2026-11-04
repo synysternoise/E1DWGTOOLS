@@ -10,8 +10,11 @@ from typing import Optional
 import pywintypes
 from PySide6.QtCore import QObject, Signal, Slot
 
+from engine import atualizar_template as at
 from engine import fix_flags as ff
 from engine import font_check as fc
+from engine import pos_zone as pz
+from engine import splits as sp
 from engine.catia_bridge import CatiaBridge, CatiaError
 
 
@@ -32,6 +35,16 @@ class CatiaWorker(QObject):
     flags_nav_done = Signal(int, bool)
     flags_confirm = Signal(str, str)  # mensagem, titulo
     flags_warn = Signal(str, str)
+
+    # Update Template, Position and Zone e Splits: o primeiro campo e o nome da ferramenta.
+    tool_started = Signal(str)
+    tool_progress = Signal(str, int, int)
+    tool_status = Signal(str, str)
+    tool_ready = Signal(str, object)
+    tool_failed = Signal(str, str, object)  # mensagem e o que ja foi feito (ou None)
+    tool_ask = Signal(str, str, str, str)  # pergunta, titulo, sugestao
+    tool_warn = Signal(str, str, str)
+    tool_info = Signal(str, str, str)
 
     def __init__(self):
         super().__init__()
@@ -113,6 +126,60 @@ class CatiaWorker(QObject):
             self._bridge = None
             ok = False
         self.nav_done.emit(request, ok)
+
+    @Slot(str)
+    def run_tool(self, tool: str) -> None:
+        self._stop.clear()
+        self.tool_started.emit(tool)
+
+        def perguntar(pergunta: str, titulo: str, sugestao: str) -> str:
+            self._answer_ready.clear()
+            self.tool_ask.emit(tool, pergunta, titulo, sugestao)
+            self._answer_ready.wait()
+            return self._answer
+
+        def progresso(atual: int, total: int) -> None:
+            self.tool_progress.emit(tool, atual, total)
+
+        def situacao(texto: str) -> None:
+            self.tool_status.emit(tool, texto)
+
+        try:
+            ponte = self._get_bridge()
+            if tool == "update":
+                report = at.run_update_template(ponte, perguntar, status=situacao, progress=progresso)
+            elif tool == "poszone":
+                report = pz.run_pos_zone(ponte, lambda m, t: self.tool_warn.emit(tool, m, t), progress=progresso)
+                if report is not None:
+                    # O Excel fica aberto para o usuario; o objeto COM nao pode sair desta thread.
+                    report.xl_app = report.xl_book = None
+            elif tool == "split2d":
+                report = sp.run_split_2d(
+                    ponte,
+                    lambda m: self.tool_warn.emit(tool, m, "Split 2D"),
+                    lambda m: self.tool_info.emit(tool, m, "Split 2D"),
+                    progress=progresso,
+                    should_stop=self._stop.is_set,
+                )
+            elif tool == "split3d":
+                report = sp.run_split_3d(
+                    ponte,
+                    perguntar,
+                    lambda m: self.tool_warn.emit(tool, m, "Split 3D"),
+                    progress=progresso,
+                    should_stop=self._stop.is_set,
+                )
+            else:
+                raise CatiaError(f"Ferramenta desconhecida: {tool}")
+        except (at.TemplateError, pz.PosZoneError, sp.SplitError) as exc:
+            self._bridge = None
+            self.tool_failed.emit(tool, exc.mensagem, exc.report)
+            return
+        except CatiaError as exc:
+            self._bridge = None
+            self.tool_failed.emit(tool, str(exc), None)
+            return
+        self.tool_ready.emit(tool, report)
 
     def _confirm(self, message: str, title: str) -> bool:
         self._confirm_ready.clear()

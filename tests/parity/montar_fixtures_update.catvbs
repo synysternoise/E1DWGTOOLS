@@ -1,0 +1,226 @@
+' Monta os templates e os desenhos de teste do Update Template na pasta informada.
+' Os templates seguem o nome real: E1_DRAWING TEMPLATE_SHEET <formato>_CATIAV5R32...
+
+Dim mFalhas
+
+Sub Tenta(rotulo)
+    If Err.Number <> 0 Then mFalhas = mFalhas & " [" & rotulo & ": " & Err.Description & "]"
+    Err.Clear
+End Sub
+
+Sub Salvar(doc, caminho)
+    Dim fso: Set fso = CreateObject("Scripting.FileSystemObject")
+    If fso.FileExists(caminho) Then fso.DeleteFile caminho
+    doc.SaveAs caminho
+    doc.Close
+End Sub
+
+Function Param(doc, nome, valor)
+    Set Param = doc.Parameters.CreateString(nome, valor)
+End Function
+
+' Legenda com vinculos. comPrefixo: o "1 /" e um texto separado do total.
+Sub Legenda(doc, bg, comPrefixo)
+    Dim t, pNo, pTit, pRev, pTot
+    Set pNo = Param(doc, "Drawing_No", "XXX")
+    Set pTit = Param(doc, "Title", "XXX")
+    Set pRev = Param(doc, "Revision", "XXX")
+    Set pTot = Param(doc, "No_of_Sheets", "XXX")
+    Set t = bg.Texts.Add("|", 700, 40)
+    t.Name = "Text.40"
+    t.InsertVariable 1, 1, pNo
+    Set t = bg.Texts.Add("TITLE: |", 700, 60)
+    t.Name = "Text.41"
+    t.InsertVariable 8, 1, pTit
+    Set t = bg.Texts.Add("| REV |", 700, 80)
+    t.Name = "Text.42"
+    t.InsertVariable 7, 1, pRev
+    t.InsertVariable 1, 1, pNo
+    If comPrefixo Then
+        Set t = bg.Texts.Add("1 /", 760, 20)
+        t.Name = "Text.75"
+        Set t = bg.Texts.Add("|", 780, 20)
+        t.Name = "Text.76"
+        t.InsertVariable 1, 1, pTot
+    Else
+        Set t = bg.Texts.Add("1 / |", 780, 20)
+        t.Name = "Text.76"
+        t.InsertVariable 5, 1, pTot
+    End If
+    Set t = bg.Texts.Add("TEXTO FIXO DO TEMPLATE", 700, 100)
+    t.Name = "Text.43"
+End Sub
+
+Sub Template(pasta, formato, papel, largura, altura, comPrefixo, comZona)
+    Dim doc, sh, bg, t, v, g, i
+    Set doc = CATIA.Documents.Add("Drawing")
+    Set sh = doc.Sheets.Item(1)
+    sh.PaperSize = papel
+    If papel = 13 Then
+        sh.SetPaperWidth largura
+        sh.SetPaperHeight altura
+    End If
+    sh.Orientation = 1
+    sh.Activate
+    Set bg = sh.Views.Item(2)
+    bg.Activate
+    Set g = bg.Factory2D
+    g.CreateLine 10, 10, 800, 10
+    g.CreateLine 10, 10, 10, 500
+    Set t = bg.Texts.Add(formato, 780, 40)
+    t.Name = "Text.68"
+    Legenda doc, bg, comPrefixo
+    For i = 1 To 4
+        bg.Texts.Add CStr(i), 100 * i, 5
+    Next
+    bg.Texts.Add "A", 5, 100
+    bg.Texts.Add "B", 5, 200
+    If comZona Then
+        Set v = sh.Views.Add("ZONE")
+        v.x = 0: v.y = 0
+        v.Activate
+        v.Texts.Add "A001", 100, 100
+        v.Texts.Add "A002", 200, 100
+        sh.Views.Item(1).Activate
+    End If
+    ' A segunda folha do template nao pode ser usada.
+    Set sh = doc.Sheets.Add("Sheet.2")
+    sh.Activate
+    sh.Views.Item(2).Activate
+    sh.Views.Item(2).Texts.Add "SEGUNDA FOLHA DO TEMPLATE", 100, 100
+    Salvar doc, pasta & "\E1_DRAWING TEMPLATE_SHEET " & formato & "_CATIAV5R32_REV01.CATDrawing"
+End Sub
+
+Function Folha(doc, idx, nome, formato, papel)
+    Dim sh, bg, t
+    If idx = 1 Then
+        Set sh = doc.Sheets.Item(1)
+        sh.Name = nome
+    Else
+        Set sh = doc.Sheets.Add(nome)
+    End If
+    sh.PaperSize = papel
+    sh.Orientation = 0
+    sh.Activate
+    Set bg = sh.Views.Item(2)
+    bg.Activate
+    bg.Factory2D.CreateLine 20, 20, 400, 20
+    Set t = bg.Texts.Add("FORMATO ANTIGO", 300, 30)
+    If formato <> "" Then
+        Set t = bg.Texts.Add(formato, 390, 30)
+        t.Name = "Text.68"
+    End If
+    bg.Texts.Add "1", 780, 20
+    Set Folha = sh
+End Function
+
+Sub Conteudo(sh, nome)
+    Dim v, t
+    Set v = sh.Views.Add(nome)
+    v.x = 200: v.y = 200: v.Scale = 0.5
+    v.Activate
+    v.Factory2D.CreateLine 0, 0, 100, 100
+    Set t = v.Texts.Add("NOTA DA VISTA " & nome, 10, 10)
+    t.SetFontSize 0, 0, 3.5
+    Set t = v.Texts.Add("12", 30, 30)
+    t.TextProperties.FrameType = 3
+    t.TextProperties.Update
+    Set t = v.Texts.Add("NL0006", 50, 30)
+End Sub
+
+Sub ZonaAntiga(sh)
+    Dim v
+    Set v = sh.Views.Add("ZONE")
+    v.x = 0: v.y = 0
+    v.Activate
+    v.Texts.Add "Z999", 50, 50
+    v.LockStatus = True
+End Sub
+
+Function Montar(pasta)
+    On Error Resume Next
+    mFalhas = ""
+    Montar_ pasta
+    If Err.Number <> 0 Then Montar = "ERRO " & Err.Number & ": " & Err.Description Else Montar = "OK" & mFalhas
+End Function
+
+Sub Parametros(doc, comTitulo, comTotal)
+    Param doc, "Drawing_No", "123-456-789"
+    Param doc, "Revision", "B"
+    If comTitulo Then Param doc, "Title", "SUPORTE DE TESTE"
+    If comTotal Then Param doc, "No_of_Sheets", "9"
+End Sub
+
+Sub Montar_(pasta)
+    Dim doc, sh, modelos, t, v, fso
+    CATIA.DisplayFileAlerts = False
+    Do While CATIA.Documents.Count > 0: CATIA.Documents.Item(1).Close: Loop
+    modelos = pasta & "\templates"
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    If Not fso.FolderExists(modelos) Then fso.CreateFolder modelos
+
+    Template modelos, "A1", 3, 0, 0, False, True
+    Template modelos, "A0", 2, 0, 0, True, False
+    Template modelos, "A2", 4, 0, 0, False, False
+    Template modelos, "E3", 13, 1500, 900, False, True
+    Template modelos, "3A0", 13, 2523, 1189, True, False
+
+    ' Um template sem nada no Background.
+    Set doc = CATIA.Documents.Add("Drawing")
+    Salvar doc, modelos & "\E1_DRAWING TEMPLATE_SHEET A3_CATIAV5R32_VAZIO.CATDrawing"
+
+    ' Quatro folhas: dois formatos, uma sem formato, numero da folha na Main View e ZONE travada.
+    Set doc = CATIA.Documents.Add("Drawing")
+    Parametros doc, True, True
+    Set sh = Folha(doc, 1, "Folha A", "A1", 5)
+    sh.Views.Item(1).Activate
+    Set t = sh.Views.Item(1).Texts.Add("1", 780, 20)
+    t.Name = "Text.1"
+    Conteudo sh, "V1"
+    ZonaAntiga sh
+    Set sh = Folha(doc, 2, "Folha B", " a0 ", 5)
+    sh.Views.Item(1).Activate
+    Set t = sh.Views.Item(1).Texts.Add("2", 785, 22)
+    t.Name = "Text.1"
+    Conteudo sh, "V2"
+    Set v = sh.Views.Add("MY ZONE VIEW")
+    v.x = 100: v.y = 100
+    v.Activate
+    v.Texts.Add "VISTA DO USUARIO", 0, 0
+    ZonaAntiga sh
+    Set sh = Folha(doc, 3, "Folha C", "A1", 5)
+    Conteudo sh, "V3"
+    Set sh = Folha(doc, 4, "Folha D", "", 5)
+    Conteudo sh, "V4"
+    Salvar doc, pasta & "\UPD_RICO.CATDrawing"
+
+    ' Sem formato em nenhuma folha: pede ao usuario. Faltam parametros no desenho.
+    Set doc = CATIA.Documents.Add("Drawing")
+    Parametros doc, False, False
+    Set sh = Folha(doc, 1, "Sheet.1", "", 5)
+    Conteudo sh, "V1"
+    Set sh = Folha(doc, 2, "Sheet.2", "", 5)
+    Conteudo sh, "V2"
+    Salvar doc, pasta & "\UPD_SEM_FORMATO.CATDrawing"
+
+    ' Formatos de papel do usuario.
+    Set doc = CATIA.Documents.Add("Drawing")
+    Parametros doc, True, True
+    Set sh = Folha(doc, 1, "Sheet.1", "E3", 5)
+    Conteudo sh, "V1"
+    Set sh = Folha(doc, 2, "Sheet.2", "3A0", 5)
+    Conteudo sh, "V2"
+    Salvar doc, pasta & "\UPD_PAPEL_USUARIO.CATDrawing"
+
+    ' Formato sem template na pasta (A4 nao e aceito; A3 existe, mas vazio).
+    Set doc = CATIA.Documents.Add("Drawing")
+    Parametros doc, True, True
+    Set sh = Folha(doc, 1, "Sheet.1", "A3", 5)
+    Conteudo sh, "V1"
+    Set sh = Folha(doc, 2, "Sheet.2", "A1", 5)
+    Conteudo sh, "V2"
+    Salvar doc, pasta & "\UPD_TEMPLATE_VAZIO.CATDrawing"
+
+    Set doc = CATIA.Documents.Add("Part")
+    Salvar doc, pasta & "\NAO_E_DESENHO.CATPart"
+End Sub

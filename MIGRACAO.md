@@ -13,38 +13,49 @@ usuário em 04/11/2026. A pasta `legacy_vba/` está **desatualizada** e não ser
 
 | Ferramenta | Base | Situação |
 |---|---|---|
-| Font Size Check | `sizedetect.txt`, `frmFontNav.txt` do CONSERTO-E1DWGVBA | Convertido, em `main_qt.py` |
-| Update Template | `update.txt` do CONSERTO-E1DWGVBA | Pendente, ver abaixo |
-| Position and Zone | `vba_referencia/poszone` (V3.5.1) | Pendente |
-| Fix Flags | `vba_referencia/fixflags` | Convertido, em `main_qt.py` |
-| Split 2D e 3D | `vba_referencia/SPLIT 2D`, `SPLIT 3D` | Pendente |
-| Painel | `vba_referencia/symbol shape` | Será substituído pelo HUB |
+| Font Size Check | `sizedetect.txt`, `frmFontNav.txt` do CONSERTO-E1DWGVBA | Convertido |
+| Update Template | `update.txt` do CONSERTO-E1DWGVBA (23/10) | Convertido |
+| Fix Flags | `vba_referencia/fixflags` | Convertido |
+| Position and Zone | `vba_referencia/poszone` (V3.5.1) | Convertido |
+| Split 2D e 3D | `vba_referencia/SPLIT 2D`, `SPLIT 3D` | Convertido |
 | Comparação no Excel | `vba_referencia/excel` | Continua no Excel |
-| Symbol Shape | `CATMain11` não está em nenhum arquivo | Bloqueado |
+| Painel | `vba_referencia/symbol shape` | Substituído pelo HUB, menos o Symbol Shape |
+| Symbol Shape | `CATMain11` não está em nenhum arquivo | Bloqueado, segue no painel VBA |
 
-### Versões em aberto
+Tudo abre por `main_qt.py`. `main.py` e `src/engine/update_template.py` são da interface antiga, com
+a versão de 14/10 do Update Template, e não fazem parte da migração.
 
-Dois arquivos do zip são mais antigos que os do CONSERTO-E1DWGVBA. Nada foi substituído até o
-usuário decidir, para não haver downgrade:
+### Versões decididas pelo usuário (04/11/2026)
 
-- **`update`**: mesmo texto de `legacy_vba/UPDATETEMPLATE.bas` (14/10). O `update.txt` é de 23/10,
-  tem 2513 linhas e troca o template no próprio desenho. `src/engine/update_template.py` também
-  veio da versão de 14/10.
-- **`sizedetect`**: ainda pinta o desenho e pede o formato no combobox. O `sizedetect.txt` de
-  04/11 não pinta e lê o formato no Background. As regras de tamanho são iguais nos dois.
+Dois arquivos do zip são mais antigos que os do CONSERTO-E1DWGVBA, e continua valendo o mais recente:
 
-Os acentos das mensagens de `vba_referencia/poszone` viraram espaços ("n o foi encontrado").
-Na conversão, as mensagens devem sair com os acentos certos do `poszone.txt`.
+- **`update`**: mesmo texto de `legacy_vba/UPDATETEMPLATE.bas` (14/10), que copia as vistas para um
+  documento novo. Vale o `update.txt` de 23/10, que troca o formato no próprio desenho.
+- **`sizedetect`**: ainda pinta o desenho e pede o formato no combobox. Vale o `sizedetect.txt` de
+  04/11, que não pinta e lê o formato no Background. As regras de tamanho são iguais nos dois.
+
+Os acentos das mensagens de `vba_referencia/poszone` viraram espaços ("n o foi encontrado"). As
+mensagens em Python saíram com os acentos certos.
 
 ## Como cada ferramenta é convertida
 
-1. O trabalho pesado vai para um script em `src/engine/catia_scripts`, que roda dentro
-   do CATIA. A regra e as mensagens ficam em Python (`src/engine`).
-2. Cada função de script embrulha a parte real com `On Error Resume Next` e devolve o erro
-   como texto, para nunca abrir janela de erro no CATIA. Toda rotina auxiliar com
-   `On Error Resume Next` termina com `Err.Clear`.
-3. Um teste de paridade roda a macro atual e a versão Python nos mesmos desenhos e compara
-   tudo o que o usuário veria.
+Quem define onde cada coisa roda é o tipo de trabalho. Foi medido no CATIA V5R20:
+
+- **Muitos textos ou geometrias: script dentro do CATIA** (`src/engine/catia_scripts`). Ler ou
+  percorrer item por item é de 40 a 200 vezes mais rápido. Usado no Font Size Check, no Fix Flags
+  e na leitura do Position and Zone.
+- **Comandos de documento (abrir, copiar, colar, salvar): por COM, em Python.** Dentro de um script
+  eles ficam 10 vezes mais lentos, e o comando seguinte a um script também. Usado no Update Template
+  e nos Splits, com `RefreshDisplay = False`, que sozinho deixa a conversão duas vezes mais rápida.
+- **Regras: em Python, sempre que possível**, para poderem ser testadas sem o CATIA.
+
+Toda função de script embrulha a parte real com `On Error Resume Next` e devolve o erro como texto,
+para nunca abrir janela de erro no CATIA. Toda rotina auxiliar com `On Error Resume Next` termina
+com `Err.Clear`. Em VBScript, parâmetro que a rotina altera precisa de `ByVal`, ou altera o original.
+
+Um teste de paridade roda a macro atual e a versão Python nos mesmos documentos e compara tudo o que
+o usuário veria. O tempo é medido alternando quem roda primeiro, porque o CATIA fica mais lento ao
+longo da sessão. A macro de referência roda pelo Excel, não dentro do CATIA.
 
 ## Testes
 
@@ -59,7 +70,13 @@ Com o CATIA aberto e sem desenhos importantes abertos, porque o teste fecha todo
 ```bat
 python tests\parity\rodar_paridade_font.py C:\Users\renan\Documents\E1DWGVBA
 python tests\parity\rodar_paridade_flags.py
+python tests\parity\rodar_paridade_update.py C:\Users\renan\Documents\E1DWGVBA
+python tests\parity\rodar_paridade_splits.py
+python tests\parity\rodar_paridade_poszone.py
 ```
+
+As telas têm testes com cliques reais: `testar_tela_font.py`, `testar_tela_flags.py` e
+`testar_tela_ferramentas.py`, que usam as pastas criadas pelos testes de paridade.
 
 ## Fix Flags: o que o teste cobre
 
@@ -110,3 +127,30 @@ python tests\parity\rodar_paridade_flags.py
 - **Cotas.** Como no VBA, não são conferidas no V5R20, que não tem `DrawingDimValue.GetFontSize`.
 - **Restaurar cores (`ResetColors`).** Convertido como está, mas nos testes o comando de busca
   falha nos dois lados, com o CATIA sem janela. Nenhum botão do painel chama essa rotina.
+
+## Update Template: diferenças conhecidas em relação ao VBA
+
+- **Template já aberto.** `doc.Saved` não é confiável: no V5R20 ele é `True` até depois de mudar um
+  parâmetro. No teste pelo Excel, a macro recusa sempre um template já aberto. O Python recusa
+  também, mas diz que ele já está aberto, em vez de dizer que tem alterações, o que não dá para saber.
+- **Velocidade.** A tela não é redesenhada durante a conversão.
+- **Melhorias.** Progresso por folha na tela, lista das folhas e dos avisos no resultado, e o HUB
+  continua respondendo. Não há botão de parar, porque o desenho ficaria parcialmente convertido.
+- **Pasta dos templates fora do ar.** O Python mostra uma mensagem clara, com a pasta pesquisada.
+
+## Position and Zone: diferenças conhecidas em relação ao VBA
+
+- **Ordem.** O Excel só abre depois de ler o desenho, para não ficar aberto vazio se a leitura falhar.
+- **Precisão.** As coordenadas chegam do CATIA como texto, com 15 dígitos. Só afetaria um empate
+  exato entre duas zonas, que a comparação com a macro não encontrou.
+- **Ordenação.** A planilha é ordenada pelo objeto `Sort` do Excel, porque `Range.Sort` por COM não
+  recebe o parâmetro de cabeçalho. O resultado é o mesmo.
+- **Melhorias.** Tabela e contagens também na tela, progresso por folha e mensagens com acentos.
+
+## Splits: diferenças conhecidas em relação ao VBA
+
+- **Documento incompleto.** Depois de um erro, a cópia ou a peça incompleta não fica aberta, e os
+  alertas e a tela do CATIA voltam ao normal. No Split 3D, a macro deixava os dois desligados.
+- **Parar.** Dá para parar entre uma folha ou parte e a seguinte.
+- **Como na macro.** O Split 2D copia o arquivo do disco: alterações não salvas e as travas aplicadas
+  agora não vão para os arquivos exportados.

@@ -1,0 +1,70 @@
+' Fotografa o desenho ativo para comparar o Update Template no VBA e no Python.
+
+Function Ler(o, prop)
+    On Error Resume Next
+    Dim v
+    v = Eval("o." & prop)
+    If Err.Number <> 0 Then
+        Ler = "E"
+    Else
+        Ler = Replace(Replace(CStr(v), vbCr, "<CR>"), vbLf, "<LF>")
+    End If
+    Err.Clear
+End Function
+
+Function Foto()
+    On Error Resume Next
+    Dim r
+    r = Foto_()
+    If Err.Number <> 0 Then Foto = "ERRO FOTO " & Err.Number & " " & Err.Description Else Foto = r
+End Function
+
+Function Foto_()
+    Dim doc, i, j, k, sh, v, t, s, d, nomes
+    Set doc = CATIA.ActiveDocument
+    s = "DOC" & Chr(31) & doc.Name & Chr(31) & "ativa=" & Ler(doc.Sheets, "ActiveSheet.Name") & Chr(31) & "alertas=" & CATIA.DisplayFileAlerts & Chr(31) & "selecao=" & doc.Selection.Count
+    nomes = ""
+    For Each d In CATIA.Documents
+        nomes = nomes & "|" & d.Name
+    Next
+    s = s & Chr(30) & "ABERTOS" & Chr(31) & nomes
+    For i = 1 To doc.Parameters.Count
+        s = s & Chr(30) & "PARAM" & Chr(31) & doc.Parameters.Item(i).Name & Chr(31) & doc.Parameters.Item(i).ValueAsString
+    Next
+    For i = 1 To doc.Sheets.Count
+        Set sh = doc.Sheets.Item(i)
+        s = s & Chr(30) & Join(Array("FOLHA", sh.Name, Ler(sh, "PaperSize"), Ler(sh, "Orientation"), Ler(sh, "GetPaperWidth"), Ler(sh, "GetPaperHeight"), Ler(sh, "Scale"), Ler(sh, "Views.ActiveView.Name")), Chr(31))
+        For j = 1 To sh.Views.Count
+            Set v = sh.Views.Item(j)
+            s = s & Chr(30) & Join(Array("VISTA", sh.Name, v.Name, Ler(v, "x"), Ler(v, "y"), Ler(v, "Scale"), Ler(v, "LockStatus"), Ler(v, "GeometricElements.Count"), Ler(v, "Tables.Count"), Ler(v, "Components.Count")), Chr(31))
+            For k = 1 To v.Texts.Count
+                Set t = v.Texts.Item(k)
+                s = s & Chr(30) & Join(Array("TEXTO", sh.Name, v.Name, t.Name, Ler(t, "Text"), Ler(t, "x"), Ler(t, "y"), Ler(t, "TextProperties.FrameType"), CStr(t.GetFontSize(0, 0))), Chr(31))
+            Next
+        Next
+    Next
+    Foto_ = s
+End Function
+
+' Prova que os vinculos da legenda funcionam: muda os parametros e relê os textos.
+Function TestarVinculos()
+    On Error Resume Next
+    Dim doc, i
+    Set doc = CATIA.ActiveDocument
+    doc.Parameters.Item("Drawing_No").ValuateFromString "NOVO-PN"
+    Err.Clear
+    doc.Parameters.Item("Revision").ValuateFromString "Z"
+    Err.Clear
+    doc.Update
+    Err.Clear
+    TestarVinculos = "OK"
+End Function
+
+Function Fechar()
+    On Error Resume Next
+    CATIA.DisplayFileAlerts = False
+    Do While CATIA.Documents.Count > 0
+        CATIA.Documents.Item(1).Close
+    Loop
+    Fechar = "OK"
+End Function

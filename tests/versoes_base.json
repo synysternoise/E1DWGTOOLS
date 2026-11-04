@@ -15,19 +15,19 @@
         "sizedetect.txt": "a1dcb92c7bdca4897dfa9f0ae5cce128e83e3944598557d06af3672a612063b7",
         "frmFontNav.txt": "a56619c7da58562b3e6b8c6fe08685fb38198525c2e98f41f214b479c1fdeb01"
       },
-      "nota": "O sizedetect do zip ainda pinta o desenho e pede o formato; aguarda decisao do usuario."
+      "nota": "Decisao do usuario em 2026-11-04: vale a versao sem pintura. O sizedetect do zip ainda pinta."
     },
     "Update Template": {
       "origem": "conserto",
-      "situacao": "pendente",
+      "situacao": "convertida",
       "arquivos": {
         "update.txt": "a174356a14a8310c0a17444998ea26c6fd9e5781f624b65db599d53baf7edf80"
       },
-      "nota": "O update do zip e o texto da versao de 14/10, mais antigo que este; aguarda decisao do usuario."
+      "nota": "Decisao do usuario em 2026-11-04: vale a versao mais recente, a de 23/10. O update do zip e a de 14/10."
     },
     "Position and Zone": {
       "origem": "repositorio",
-      "situacao": "pendente",
+      "situacao": "convertida",
       "arquivos": {
         "poszone": "3aaa55838003fb18fe638dd992a3124e90c0f1682ea78ac4ea2c0e5583599683"
       }
@@ -41,14 +41,14 @@
     },
     "Split 2D": {
       "origem": "repositorio",
-      "situacao": "pendente",
+      "situacao": "convertida",
       "arquivos": {
         "SPLIT 2D": "77da72900cb9712929cecf0e4aa4137cdf5e1ecdb794e0b47555f83cb5b79768"
       }
     },
     "Split 3D": {
       "origem": "repositorio",
-      "situacao": "pendente",
+      "situacao": "convertida",
       "arquivos": {
         "SPLIT 3D": "31e70afbb80e747c5eca3e680534c5b71d24c9baa611f2cdf8e5c4dcbe3b1206"
       }
@@ -66,6 +66,12 @@
       "arquivos": {
         "excel": "5bc2d725465b195b90c068d798c3018f62970d52b11eb2d6793892a08799e8cf"
       }
+    },
+    "Symbol Shape": {
+      "origem": "repositorio",
+      "situacao": "bloqueada",
+      "arquivos": {},
+      "nota": "O codigo de CATMain11 nao esta em nenhum arquivo. Continua no painel VBA."
     }
   }
 }

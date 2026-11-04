@@ -20,7 +20,7 @@ from PySide6.QtWidgets import QApplication, QMessageBox  # noqa: E402
 from engine import fix_flags as ff  # noqa: E402
 from engine.catia_bridge import CAMPO, REGISTRO, CatiaBridge  # noqa: E402
 from ui_qt import fix_flags_page as pagina  # noqa: E402
-from ui_qt.hub_window import PAGINA_FLAGS, PAGINA_FONT, PAGINA_VBA, HubWindow  # noqa: E402
+from ui_qt.hub_window import PAGINA_FLAGS, PAGINA_FONT, PAGINA_SPLIT3D, PAGINA_UPDATE, HubWindow  # noqa: E402
 
 PASTA = sys.argv[1]
 IMAGENS = sys.argv[2] if len(sys.argv) > 2 else None
@@ -82,11 +82,16 @@ p = j.flags_page
 
 # Abas.
 clica(j.pills["Envio"])
-confere("aba Envio mostra o aviso do VBA", j._pages.currentIndex() == PAGINA_VBA)
+confere("aba Envio mostra o Split 3D", j._pages.currentIndex() == PAGINA_SPLIT3D)
 clica(j.pills["Check"])
 confere("aba Check mostra o Font Check", j._pages.currentIndex() == PAGINA_FONT)
 clica(j.pills["Design"])
-confere("aba Design mostra o Fix Flags", j._pages.currentIndex() == PAGINA_FLAGS)
+confere("aba Design mostra o Update Template", j._pages.currentIndex() == PAGINA_UPDATE)
+clica(j.rail_buttons["Fix Flags"])
+confere("o trilho leva ao Fix Flags", j._pages.currentIndex() == PAGINA_FLAGS)
+clica(j.pills["Check"])
+clica(j.pills["Design"])
+confere("a aba lembra a ferramenta escolhida", j._pages.currentIndex() == PAGINA_FLAGS)
 
 # Sem desenho.
 confere("reconhece o CATIA aberto", espera(lambda: "ativo" in j.chip_catia.text(), 10))
@@ -249,6 +254,7 @@ confere("desenho fechado no meio interrompe e guarda o que foi feito",
 j2 = HubWindow()
 j2.show()
 clica(j2.pills["Design"])
+clica(j2.rail_buttons["Fix Flags"])
 j2.flags_page.on_failed(interrompido.mensagem, interrompido.report)
 espera(lambda: False, 0.5)
 confere("tela mostra o erro junto com o que foi feito", j2.flags_page._stack.currentIndex() == 2 and j2.flags_page.lbl_error.isVisible()
