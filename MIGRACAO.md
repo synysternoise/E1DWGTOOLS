@@ -135,6 +135,11 @@ As telas têm testes com cliques reais: `testar_tela_font.py`, `testar_tela_flag
 
 ## Font Size Check: diferenças conhecidas em relação ao VBA
 
+- **Itens ocultos.** A macro antiga pintava os itens ocultos sem ninguém ver, e a macro do navegador
+  os lista. O Python tira da lista os ocultos fora do padrão e informa quantos ignorou. Só esses
+  são conferidos, um por um, porque conferir todos deixaria a leitura lenta em desenho grande.
+- **Consulta ao CATIA.** O HUB lê o título da janela pelo Windows e só fala com o CATIA quando ele
+  muda, para não atrapalhar o que estiver rodando lá, como a conexão do SmarTeam.
 - **Item apagado ou renomeado.** O VBA guarda o objeto; o Python guarda o índice e o nome e
   procura de novo. Renomear um item depois da análise faz ele aparecer como não encontrado.
 - **Zoom do navegador.** Mesma conta (8 vezes o zoom da folha inteira), mas o `Reframe` do
@@ -152,10 +157,15 @@ As telas têm testes com cliques reais: `testar_tela_font.py`, `testar_tela_flag
 
 ## Update Template: diferenças conhecidas em relação ao VBA
 
-- **Template já aberto.** `doc.Saved` não é confiável: no V5R20 ele é `True` até depois de mudar um
-  parâmetro. No teste pelo Excel, a macro recusa sempre um template já aberto. O Python recusa
-  também, mas diz que ele já está aberto, em vez de dizer que tem alterações, o que não dá para saber.
-- **Velocidade.** A tela não é redesenhada durante a conversão.
+- **Template já aberto.** Depois de converter, o CATIA mantém o template carregado sem janela, porque
+  o desenho convertido fica ligado a ele. Esse caso é normal: o `Documents.Open` volta a usá-lo e o
+  `Close` só fecha a janela. Só é recusado o template aberto com janela, que a pessoa pode ter alterado.
+  `doc.Saved` não serve para saber: no V5R20 ele é `True` até depois de mudar um parâmetro. O erro
+  não diz que o desenho pode ter mudado, porque nesse ponto ele ainda não mudou.
+- **Velocidade.** A tela não é redesenhada durante a conversão, só ao abrir o template, para uma
+  janela do CATIA ou do SmarTeam não ficar invisível.
+- **Confirmação do tamanho.** A tela mostra o tamanho detectado, com um botão para confirmar e outro
+  para escolher manualmente.
 - **Melhorias.** Progresso por folha na tela, lista das folhas e dos avisos no resultado, e o HUB
   continua respondendo. Não há botão de parar, porque o desenho ficaria parcialmente convertido.
 - **Pasta dos templates fora do ar.** O Python mostra uma mensagem clara, com a pasta pesquisada.
@@ -168,6 +178,32 @@ As telas têm testes com cliques reais: `testar_tela_font.py`, `testar_tela_flag
 - **Ordenação.** A planilha é ordenada pelo objeto `Sort` do Excel, porque `Range.Sort` por COM não
   recebe o parâmetro de cabeçalho. O resultado é o mesmo.
 - **Melhorias.** Tabela e contagens também na tela, progresso por folha e mensagens com acentos.
+- **A tabela agora fica no HUB.** Mapear não abre mais o Excel: ele só abre com o botão ABRIR NO
+  EXCEL. `run_pos_zone` continua sendo o caminho da macro, usado no teste de paridade.
+- **Part List dentro do HUB.** Porte de `ImportarDadosSAP`, `CompararPosicaoZona` e `LimparDadosSAP`
+  (`vba_referencia/excel`), em `src/engine/part_list.py`. A leitura usa um Excel escondido, fechado no
+  fim, e dá o mesmo resultado da macro (`rodar_paridade_part_list.py`). O desenho e o SAP aparecem
+  lado a lado por posição, em vez de duas tabelas separadas.
+- **Como na macro.** Um callout com duas zonas no desenho (`A005; A006`) fica vermelho, mesmo que o SAP
+  tenha as duas. A planilha fazia assim. Nesse caso, confira e use o OK manual.
+- **OK manual (novo).** Vale por posição e fica em `%APPDATA%\E1DWGTools\poszone_ok.json`, separado por
+  desenho. Deixa de valer se a zona ou a quantidade mudarem, no desenho ou no SAP. Fica neste PC: não
+  vai junto com o desenho para o PC de outra pessoa.
+- **Mover o balão (novo, só no Design).** A zona vem do lugar do balão, então corrigir é mover. O balão
+  vai para o ponto da zona pedida mais perto de onde está, com os textos encostados (flag, número,
+  quantidade), e a tela avisa quais. A ponta do leader não sai do lugar. Lê de volta para conferir e
+  tem DESFAZER. Vista travada não move. O HUB não verifica se o novo lugar ficou em cima de outro
+  desenho: quem confere é a pessoa, com o balão selecionado na tela.
+
+## Fechar o HUB
+
+Ao fechar, o HUB tira a seleção que deixou no CATIA e religa alertas, tela e interação. Depois de um
+`ExecuteScript`, ler `RefreshDisplay` por fora do CATIA dá `False`, mas dentro de um script ele volta
+`True`: o valor lido por fora não indica tela desligada.
+
+Relato em aberto (05/11/2026): macros do CATIA travam depois de usar o HUB, mesmo com ele fechado. Não
+se repetiu aqui, rodando uma macro por `ExecuteScript` antes e depois das mesmas chamadas. Clique em
+botão de macro não foi testado aqui. `python verificar.py --catia` mostra o estado na hora do problema.
 
 ## Splits: diferenças conhecidas em relação ao VBA
 

@@ -1,23 +1,23 @@
-"""Telas do Update Template, do Position and Zone e dos dois Splits."""
+"""Telas do Update Template e dos dois Splits."""
 from __future__ import annotations
 
 import os
 from typing import Dict, List
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
-    QAbstractItemView, QButtonGroup, QFrame, QGridLayout, QHBoxLayout, QHeaderView, QSizePolicy, QSpinBox,
-    QStackedWidget, QTableWidgetItem, QVBoxLayout,
+    QAbstractItemView, QButtonGroup, QGridLayout, QHBoxLayout, QSpinBox,
+    QVBoxLayout, QWidget,
 )
 
 from engine import atualizar_template as at
 from engine import splits as sp
 from ui_qt import theme as T
-from ui_qt.font_size_page import PAPEL_OK, MarkDelegate, button, label
+from ui_qt.font_size_page import button, label
 from ui_qt.pecas import (
-    Cartao, LinhaSituacao, Resumo, botao, botao_grande, cabecalho, etiqueta, largura_livre, moldura,
+    LinhaSituacao, Resumo, botao, botao_grande, cabecalho, etiqueta, largura_livre, moldura,
 )
-from ui_qt.tool_page import ToolPage, abrir_arquivo, abrir_pasta, preencher, tabela
+from ui_qt.tool_page import ToolPage, abrir_pasta, preencher, tabela
 
 LIMITE_ENVIO_MB = 200
 
@@ -33,7 +33,7 @@ class UpdateTemplatePage(ToolPage):
     TOOL = "update"
     TITULO = "Update Template"
     DESCRICAO = "Troca a etiqueta no próprio desenho. As vistas não são tocadas."
-    BOTAO = "EXECUTAR UPDATE TEMPLATE"
+    BOTAO = "CONFIRMAR E ATUALIZAR"
     BOTAO_DE_NOVO = "Atualizar de novo"
     ANDAMENTO = "Atualizando o template"
     ICONE = "refresh"
@@ -51,31 +51,20 @@ class UpdateTemplatePage(ToolPage):
         topo, sub = cabecalho(self.TITULO, etiqueta(self.ETIQUETA))
         sub.setText(self.DESCRICAO)
         col.addLayout(topo)
-        corpo = QHBoxLayout()
-        corpo.setSpacing(18)
-
-        esquerda = QVBoxLayout()
-        esquerda.setSpacing(8)
-        self.linha_desenho = LinhaSituacao()
-        self.linha_formato = LinhaSituacao()
+        col.addWidget(label("TAMANHO DETECTADO", "secao"))
+        self.lbl_detectado = largura_livre(label("", "porcento"))
+        col.addWidget(self.lbl_detectado)
+        self.lbl_detalhe_tamanho = largura_livre(label("", "sub"))
+        col.addWidget(self.lbl_detalhe_tamanho)
         self.linha_template = LinhaSituacao()
-        for w in (self.linha_desenho, self.linha_formato, self.linha_template):
-            esquerda.addWidget(w)
-        esquerda.addSpacing(6)
-        esquerda.addWidget(label("Resumo da análise", "subtitulo2"))
-        self.resumo_previa = Resumo(("Documento", "Folhas", "Formatos", "Templates"))
-        esquerda.addWidget(self.resumo_previa)
-        esquerda.addStretch(1)
-        corpo.addLayout(esquerda, 1)
+        col.addWidget(self.linha_template)
 
-        direita = QVBoxLayout()
-        direita.setSpacing(8)
-        direita.addWidget(label("Folhas e formatos", "subtitulo2"))
-        self.tabela_folhas = tabela(("FOLHA", "FORMATO"), {1: 110}, 0)
-        self.tabela_folhas.selectionModel().currentRowChanged.connect(self._on_folha)
-        direita.addWidget(self.tabela_folhas, 1)
-        self.lbl_pergunta = largura_livre(label("", "subtitulo2"))
-        direita.addWidget(self.lbl_pergunta)
+        # Os tamanhos so aparecem se a pessoa pedir para escolher.
+        self.painel_manual = QWidget()
+        manual = QVBoxLayout(self.painel_manual)
+        manual.setContentsMargins(0, 6, 0, 0)
+        manual.setSpacing(8)
+        manual.addWidget(label("Escolha o tamanho", "subtitulo2"))
         grade = QGridLayout()
         grade.setSpacing(6)
         self._grupo_formatos = QButtonGroup(self)
@@ -85,59 +74,90 @@ class UpdateTemplatePage(ToolPage):
             self._grupo_formatos.addButton(b)
             grade.addWidget(b, i // 3, i % 3)
         self._grupo_formatos.buttonClicked.connect(self._on_formato)
-        direita.addLayout(grade)
-        corpo.addLayout(direita, 1)
-        col.addLayout(corpo, 1)
+        manual.addLayout(grade)
+        manual.addWidget(largura_livre(label("Vale para as folhas selecionadas. Para mudar só uma, clique nela antes.", "sub")))
+        self.tabela_folhas = tabela(("FOLHA", "FORMATO"), {1: 110}, 0)
+        self.tabela_folhas.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self.tabela_folhas.selectionModel().selectionChanged.connect(self._marcar_formato)
+        manual.addWidget(self.tabela_folhas, 1)
+        col.addWidget(self.painel_manual, 1)
+        self.painel_manual.hide()
+
+        self._espaco = QWidget()
+        col.addWidget(self._espaco, 1)
+        self.btn_manual = botao("ESCOLHER MANUALMENTE", "secundario")
+        self.btn_manual.clicked.connect(self._alternar_manual)
+        col.addWidget(self.btn_manual)
 
     def _show_preview(self, previa) -> None:
         self._escolhidos = {}
         self.formats_changed.emit({})
         self._folhas = [[nome, formato] for nome, formato in previa.sheets]
-        self.linha_desenho.definir("ok", f"Desenho detectado: {previa.doc_name}")
         self._atualizar_previa(previa)
-        self.tabela_folhas.selectRow(0)
+        self.tabela_folhas.selectAll()
+        self._marcar_formato()
+        self._mostrar_manual(bool(self._folhas) and not self._folhas[0][1])
 
     def _atualizar_previa(self, previa=None) -> None:
         previa = previa or self._previa
-        sem = [n for n, f in self._folhas if not f]
-        if sem:
-            self.linha_formato.definir("aviso", f"{len(sem)} folha(s) sem formato: usa a primeira ou pergunta")
-        else:
-            self.linha_formato.definir("ok", "Formato lido em todas as folhas")
+        contagem: Dict[str, int] = {}
+        for _, formato in self._folhas:
+            if formato:
+                contagem[formato] = contagem.get(formato, 0) + 1
+        sem = sum(1 for _, f in self._folhas if not f)
+        self.lbl_detectado.setText(" e ".join(contagem) or "Não detectado")
+        partes = [f"{previa.doc_name}"] if len(contagem) < 2 else [f"{f}: {n} folha(s)" for f, n in contagem.items()]
+        if len(contagem) < 2:
+            partes.append(f"{len(self._folhas)} folha(s)")
+        if sem and contagem:
+            partes.append(f"{sem} sem formato: usa o da primeira")
+        if self._escolhidos:
+            partes.append("escolhido manualmente")
+        self.lbl_detalhe_tamanho.setText("  ·  ".join(partes))
+        # Com o tamanho escolhido a mao, quem confere o template e a propria conversao.
+        problema = ""
         if not previa.pasta_ok:
-            self.linha_template.definir("erro", "Pasta dos templates inacessível")
-        elif previa.faltando:
-            self.linha_template.definir("erro", f"Template não encontrado: {', '.join(previa.faltando)}")
-        elif previa.encontrados:
-            self.linha_template.definir("ok", f"Templates {' e '.join(previa.encontrados)} encontrados")
-        else:
-            self.linha_template.definir("neutro", "Template: depende do formato")
-        formatos = list(dict.fromkeys(f for _, f in self._folhas if f))
-        self.resumo_previa.definir("Documento", previa.doc_name)
-        self.resumo_previa.definir("Folhas", len(self._folhas))
-        self.resumo_previa.definir("Formatos", ", ".join(formatos) or "-")
-        self.resumo_previa.definir("Templates", f"{len(previa.encontrados)} de {len(previa.encontrados) + len(previa.faltando)}")
+            problema = "Pasta dos templates inacessível"
+        elif previa.faltando and not self._escolhidos:
+            problema = f"Template não encontrado: {', '.join(previa.faltando)}"
+        self.linha_template.definir("erro", problema)
+        self.linha_template.setVisible(bool(problema))
         preencher(self.tabela_folhas, [(n, f or "Sem formato") for n, f in self._folhas])
 
-    def _on_folha(self, atual, _anterior) -> None:
-        if not atual.isValid() or atual.row() >= len(self._folhas):
-            return
-        nome, formato = self._folhas[atual.row()]
-        self.lbl_pergunta.setText(f"O formato de {nome} está correto?")
+    def _mostrar_manual(self, mostrar: bool) -> None:
+        self.painel_manual.setVisible(mostrar)
+        self._espaco.setVisible(not mostrar)
+        self.btn_manual.setText("USAR O TAMANHO DETECTADO" if mostrar else "ESCOLHER MANUALMENTE")
+
+    def _alternar_manual(self) -> None:
+        if self.painel_manual.isVisible():
+            self._show_preview(self._previa)  # descarta o que foi escolhido
+            self._mostrar_manual(False)
+        else:
+            self._mostrar_manual(True)
+
+    def _linhas_selecionadas(self) -> List[int]:
+        return sorted(i.row() for i in self.tabela_folhas.selectionModel().selectedRows() if i.row() < len(self._folhas))
+
+    def _marcar_formato(self, *_args) -> None:
+        """O botao marcado mostra o tamanho das folhas selecionadas, se for um so."""
+        tamanhos = {self._folhas[i][1] for i in self._linhas_selecionadas()}
         self._grupo_formatos.setExclusive(False)
         for b in self._grupo_formatos.buttons():
-            b.setChecked(b.text() == formato)
+            b.setChecked(tamanhos == {b.text()})
         self._grupo_formatos.setExclusive(True)
 
     def _on_formato(self, botao_formato) -> None:
-        linha = self.tabela_folhas.currentRow()
-        if linha < 0:
-            return
-        self._folhas[linha][1] = botao_formato.text()
-        self._escolhidos[self._folhas[linha][0]] = botao_formato.text()
+        linhas = self._linhas_selecionadas()
+        if not linhas:
+            self.tabela_folhas.selectAll()
+            linhas = self._linhas_selecionadas()
+        for linha in linhas:
+            self._folhas[linha][1] = botao_formato.text()
+            self._escolhidos[self._folhas[linha][0]] = botao_formato.text()
         self.formats_changed.emit(dict(self._escolhidos))
         self._atualizar_previa()
-        self.tabela_folhas.selectRow(linha)
+        self._marcar_formato()
 
     def _build_results(self, col: QVBoxLayout) -> None:
         self.lbl_note = largura_livre(label("Confira o desenho e salve para confirmar.", "detalheForte"))
@@ -158,193 +178,6 @@ class UpdateTemplatePage(ToolPage):
         preencher(self.table, report.sheets)
         self.lbl_warnings.setText("\n".join(f"• {a}" for a in report.warnings))
         self._warnings_box.setVisible(bool(report.warnings))
-
-
-# ---------------------------------------------------------------------
-# Position and Zone
-# ---------------------------------------------------------------------
-class PosZonePage(ToolPage):
-    TOOL = "poszone"
-    TITULO = "Position and Zone"
-    DESCRICAO = (
-        "Acha os callouts de todas as folhas, a zona e a quantidade de cada um, e abre a tabela "
-        "numa cópia da planilha de Callouts. O desenho não é alterado."
-    )
-    BOTAO = "MAPEAR CALLOUTS"
-    BOTAO_DE_NOVO = "Mapear de novo"
-    ANDAMENTO = "Lendo as folhas"
-    ETIQUETA = "SÓ CONFERE"
-    TIPO_ETIQUETA = "confere"
-    ICONE = "box"
-    PODE_PARAR = False  # sem todas as folhas, as quantidades somadas ficariam erradas
-
-    go_requested = Signal(object, object, int)
-    latest_nav = Signal(int)
-
-    def __init__(self):
-        self._pendencias = []
-        self._atual = -1
-        self._pedido = 0
-        super().__init__()
-
-    def _build_results(self, col: QVBoxLayout) -> None:
-        cartoes = QHBoxLayout()
-        cartoes.setSpacing(8)
-        self.card_validos = Cartao("válidos", "verde")
-        self.card_grupo = Cartao("grupo ou ambíguo", "ambar")
-        self.card_conflito = Cartao("inconsistentes", "vermelho")
-        for c in (self.card_validos, self.card_grupo, self.card_conflito):
-            cartoes.addWidget(c, 1)
-        col.addLayout(cartoes)
-
-        filtros = QHBoxLayout()
-        filtros.setSpacing(6)
-        self._grupo = QButtonGroup(self)
-        self.btn_pendencias = button("", "filtro")
-        self.btn_todos = button("", "filtro")
-        for i, b in enumerate((self.btn_pendencias, self.btn_todos)):
-            b.setCheckable(True)
-            self._grupo.addButton(b, i)
-            filtros.addWidget(b)
-        filtros.addStretch(1)
-        self._grupo.idClicked.connect(self._on_filtro)
-        col.addLayout(filtros)
-
-        self._pilha = QStackedWidget()
-        self.tabela_pendencias = tabela(("", "FOLHA", "VISTA", "CALLOUT", "MOTIVO"), {0: 40, 1: 110, 2: 110, 3: 90}, 4)
-        self.tabela_pendencias.setItemDelegateForColumn(0, MarkDelegate(self.tabela_pendencias))
-        self.tabela_pendencias.selectionModel().currentRowChanged.connect(self._on_linha)
-        self.table = tabela(("POSIÇÃO", "ZONA", "QTD", "ONDE"), {0: 76, 1: 140, 2: 50}, 3)
-        self._pilha.addWidget(self.tabela_pendencias)
-        self._pilha.addWidget(self.table)
-        col.addWidget(self._pilha, 1)
-
-        detalhe = moldura("detalhe")
-        d = QHBoxLayout(detalhe)
-        d.setContentsMargins(14, 8, 14, 8)
-        textos = QVBoxLayout()
-        textos.setSpacing(0)
-        self.lbl_detail = largura_livre(label("", "detalheForte"))
-        self.lbl_where = largura_livre(label("", "detalheFraco"))
-        textos.addWidget(self.lbl_detail)
-        textos.addWidget(self.lbl_where)
-        d.addLayout(textos, 1)
-        self.lbl_nav_state = label("", "chipEstado")
-        d.addWidget(self.lbl_nav_state)
-        self._detalhe = detalhe
-        col.addWidget(detalhe)
-
-        nav = QHBoxLayout()
-        self.btn_prev = botao("ANTERIOR", "secundario", "left")
-        self.btn_next = botao("PRÓXIMO", "primario", "right", T.CYAN_INK)
-        self.btn_next.setLayoutDirection(Qt.RightToLeft)
-        self.lbl_pos = label("", "posicao")
-        self.lbl_pos.setAlignment(Qt.AlignCenter)
-        self.btn_prev.clicked.connect(lambda: self._mover(-1))
-        self.btn_next.clicked.connect(lambda: self._mover(1))
-        nav.addWidget(self.btn_prev, 2)
-        nav.addWidget(self.lbl_pos, 1)
-        nav.addWidget(self.btn_next, 2)
-        self._nav = QFrame()
-        self._nav.setLayout(nav)
-        col.addWidget(self._nav)
-
-    def _build_side(self, col: QVBoxLayout) -> bool:
-        col.addWidget(label("Resumo", "titulo"))
-        self.resumo = Resumo(("Objetos válidos", "Linhas multilinha", "Ignoradas por REF", "Quantidades por chave", "Callouts no Excel"))
-        col.addWidget(self.resumo)
-        col.addWidget(label("Planilha", "subtitulo2"))
-        self.lbl_planilha = largura_livre(label("", "detalheFraco"))
-        col.addWidget(self.lbl_planilha)
-        col.addWidget(largura_livre(label(
-            "Cópia temporária. Salve com outro nome para guardar. A comparação com a Part List continua no Excel.",
-            "notaTexto")))
-        col.addStretch(1)
-        self.btn_excel = botao_grande("ABRIR NO EXCEL", "open")
-        self.btn_excel.clicked.connect(lambda: abrir_arquivo(self._report.workbook_path if self._report else ""))
-        col.addWidget(self.btn_excel)
-        return True
-
-    def _show_report(self, report) -> None:
-        c = report.counters
-        self.lbl_sub.setText(f"PN {report.pn}  ·  {report.occurrences - c.referencias} ocorrências válidas")
-        self.card_validos.valor(c.validos)
-        self.card_grupo.valor(c.grupo)
-        self.card_conflito.valor(c.conflito)
-        for nome, valor in (("Objetos válidos", c.validos), ("Linhas multilinha", c.multilinha), ("Ignoradas por REF", c.referencias),
-                            ("Quantidades por chave", c.chaves), ("Callouts no Excel", len(report.callouts))):
-            self.resumo.definir(nome, valor)
-        self.lbl_planilha.setText(os.path.basename(report.workbook_path))
-        self.lbl_planilha.setToolTip(report.workbook_path)
-        self.btn_pendencias.setText(f"Pendências ({len(report.pendencias)})")
-        self.btn_todos.setText(f"Todos os callouts ({len(report.callouts)})")
-        linhas = sorted(report.callouts, key=lambda x: float(x.number))
-        preencher(self.table, [(x.number, x.zone, x.qty, f"{x.sheet} - {x.view}") for x in linhas])
-        self._pendencias = list(report.pendencias)
-        self.tabela_pendencias.blockSignals(True)
-        self.tabela_pendencias.selectionModel().blockSignals(True)
-        preencher(self.tabela_pendencias, [("", p.sheet_name, p.view_name, p.number, p.motivo) for p in self._pendencias])
-        for i in range(len(self._pendencias)):
-            marca = QTableWidgetItem()
-            marca.setData(PAPEL_OK, False)
-            self.tabela_pendencias.setItem(i, 0, marca)
-        self.tabela_pendencias.selectionModel().blockSignals(False)
-        self.tabela_pendencias.blockSignals(False)
-        self._atual = -1
-        (self.btn_pendencias if self._pendencias else self.btn_todos).setChecked(True)
-        self._on_filtro(0 if self._pendencias else 1)
-
-    def _on_filtro(self, filtro: int) -> None:
-        self._pilha.setCurrentIndex(filtro)
-        pendencias = filtro == 0
-        self._nav.setVisible(pendencias and bool(self._pendencias))
-        self._detalhe.setVisible(pendencias)
-        if pendencias:
-            if self._pendencias:
-                if self.tabela_pendencias.currentRow() < 0:
-                    self.tabela_pendencias.selectRow(0)
-                    self.tabela_pendencias.setCurrentCell(0, 3)
-            else:
-                self.lbl_detail.setText("Nenhuma pendência: todos os callouts foram contabilizados")
-                self.lbl_where.setText("")
-                self.lbl_pos.setText("")
-                self.lbl_nav_state.setText("")
-
-    def _on_linha(self, atual, _anterior) -> None:
-        if atual.isValid():
-            self._ir(atual.row())
-
-    def _ir(self, linha: int) -> None:
-        self._atual = linha
-        p = self._pendencias[linha]
-        self.lbl_pos.setText(f"{linha + 1} de {len(self._pendencias)}")
-        self.lbl_detail.setText(f"{p.motivo}, não contabilizado")
-        self.lbl_where.setText(f"{p.sheet_name} › {p.view_name} › callout {p.number}")
-        self._estado("Indo até o callout", T.AMBER)
-        self._pedido += 1
-        self.latest_nav.emit(self._pedido)
-        self.go_requested.emit(self._report, p, self._pedido)
-
-    def on_nav_done(self, pedido: int, ok: bool) -> None:
-        if pedido != self._pedido:
-            return
-        if ok:
-            self._estado("Selecionado no CATIA", T.GREEN)
-        else:
-            self._estado("", T.RED)
-            self.lbl_detail.setText("Callout não encontrado: foi apagado ou o desenho foi fechado.")
-
-    def _estado(self, texto: str, cor: str) -> None:
-        self.lbl_nav_state.setText(f"●  {texto}" if texto else "")
-        self.lbl_nav_state.setStyleSheet(f"color: {cor};")
-
-    def _mover(self, passo: int) -> None:
-        if self._pendencias:
-            linha = (self._atual + passo) % len(self._pendencias)
-            if linha == self._atual:
-                self._ir(linha)
-            else:
-                self.tabela_pendencias.setCurrentCell(linha, 3)
 
 
 # ---------------------------------------------------------------------

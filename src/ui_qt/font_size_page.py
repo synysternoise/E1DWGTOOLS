@@ -35,7 +35,7 @@ def button(texto: str, nome: str) -> QPushButton:
 
 
 class MarkDelegate(QStyledItemDelegate):
-    """Circulo vermelho ou verde da primeira coluna."""
+    """Circulo da primeira coluna: verde, vermelho, ciano (OK manual) ou cinza (sem comparacao)."""
 
     def paint(self, painter: QPainter, option, index) -> None:
         painter.save()
@@ -46,13 +46,15 @@ class MarkDelegate(QStyledItemDelegate):
         d = 18
         r = QRect(option.rect.center().x() - d // 2, option.rect.center().y() - d // 2, d, d)
         painter.setPen(Qt.NoPen)
-        painter.setBrush(QColor(T.GREEN if ok else T.RED))
+        manual = ok == "manual"
+        neutro = ok is None
+        painter.setBrush(QColor(T.CYAN if manual else (T.CARD_2 if neutro else (T.GREEN if ok else T.RED))))
         painter.drawEllipse(r)
         fonte = QFont("Segoe UI", 9)
         fonte.setBold(True)
         painter.setFont(fonte)
-        painter.setPen(QColor(T.GREEN_INK if ok else T.RED_INK))
-        painter.drawText(r, Qt.AlignCenter, "✓" if ok else "✕")
+        painter.setPen(QColor(T.CYAN_INK if manual else (T.MUTED if neutro else (T.GREEN_INK if ok else T.RED_INK))))
+        painter.drawText(r, Qt.AlignCenter, "–" if neutro else ("✓" if ok else "✕"))
         painter.restore()
 
 

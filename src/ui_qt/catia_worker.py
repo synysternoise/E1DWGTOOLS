@@ -7,15 +7,17 @@ from __future__ import annotations
 import threading
 from typing import Optional
 
+import pythoncom
 import pywintypes
-from PySide6.QtCore import QObject, Signal, Slot
+from PySide6.QtCore import QObject, QThread, Signal, Slot
 
 from engine import atualizar_template as at
 from engine import fix_flags as ff
 from engine import font_check as fc
+from engine import part_list as pl
 from engine import pos_zone as pz
 from engine import splits as sp
-from engine.catia_bridge import CatiaBridge, CatiaError
+from engine.catia_bridge import CatiaBridge, CatiaError, titulo_janela_catia
 
 
 class CatiaWorker(QObject):
@@ -49,6 +51,12 @@ class CatiaWorker(QObject):
     tool_nav_done = Signal(str, int, bool)
     font_fixed = Signal(object)
 
+    partlist_ready = Signal(object)
+    partlist_failed = Signal(str)
+    pos_movido = Signal(str, object, str)  # tela, Movimento, erro ("" se deu certo)
+    pos_desfeito = Signal(str, object, str)
+    excel_failed = Signal(str, str)  # tela, mensagem
+
     busy = Signal(bool)  # o CATIA esta trabalhando numa ferramenta
 
     seq_started = Signal(list)
@@ -69,6 +77,9 @@ class CatiaWorker(QObject):
         self._last_tool_nav = 0
         self._stop_seq = threading.Event()
         self._formatos = {}
+        self._ultimo_titulo: Optional[str] = None
+        self.janela_ativa = True  # a janela do HUB esta em uso
+        self._documentos_navegados = set()  # onde o HUB deixou algo selecionado
 
     # Chamados da thread da janela.
     def request_stop(self) -> None:
@@ -104,14 +115,33 @@ class CatiaWorker(QObject):
 
     @Slot()
     def poll(self) -> None:
+        """Pergunta ao CATIA qual e o documento ativo."""
         try:
             app = self._get_bridge().app
             name = app.ActiveDocument.Name if app.Documents.Count else ""
         except (CatiaError, pywintypes.com_error):
             self._bridge = None
+            self._ultimo_titulo = None
             self.status.emit(False, "")
             return
+        self._ultimo_titulo = titulo_janela_catia()
         self.status.emit(True, name)
+
+    @Slot()
+    def poll_leve(self) -> None:
+        """Consulta repetida. So fala com o CATIA se o titulo da janela dele mudou, para nao
+        atrapalhar o que estiver rodando nele, como a conexao do SmarTeam."""
+        titulo = titulo_janela_catia()
+        if titulo is None:
+            self._bridge = None
+            self._ultimo_titulo = None
+            self.status.emit(False, "")
+            return
+        # Sem o nome do documento no titulo (janela interna nao maximizada), so a pergunta ao CATIA
+        # diz qual e. Nesse caso, pergunta apenas enquanto a pessoa esta usando o HUB.
+        if titulo == self._ultimo_titulo and ("[" in titulo or not self.janela_ativa):
+            return
+        self.poll()
 
     def _ask(self, question: str, title: str, default: str) -> str:
         self._answer_ready.clear()
@@ -151,6 +181,7 @@ class CatiaWorker(QObject):
             return
         try:
             ok = fc.go_to_item(self._get_bridge(), report, item)
+            self._documentos_navegados.add(report.doc_full_name)
         except CatiaError:
             self._bridge = None
             ok = False
@@ -180,6 +211,7 @@ class CatiaWorker(QObject):
             return
         try:
             ok = fc.go_to_item(self._get_bridge(), report, item)
+            self._documentos_navegados.add(report.doc_full_name)
         except CatiaError:
             self._bridge = None
             ok = False
@@ -304,11 +336,8 @@ class CatiaWorker(QObject):
             ponte = self._get_bridge()
             if tool == "update":
                 report = at.run_update_template(ponte, perguntar, status=situacao, progress=progresso, formatos=self._formatos)
-            elif tool == "poszone":
-                report = pz.run_pos_zone(ponte, lambda m, t: self.tool_warn.emit(tool, m, t), progress=progresso)
-                if report is not None:
-                    # O Excel fica aberto para o usuario; o objeto COM nao pode sair desta thread.
-                    report.xl_app = report.xl_book = None
+            elif tool in ("poszone", "poszonefix"):
+                report = pz.analisar_desenho(ponte, lambda m, t: self.tool_warn.emit(tool, m, t), progress=progresso)
             elif tool == "flagcheck":
                 report = ff.check_flags(ponte, progress=progresso, should_stop=self._stop.is_set)
             elif tool == "fontfix":
@@ -391,7 +420,91 @@ class CatiaWorker(QObject):
             return
         try:
             ok = ff.go_to_flag(self._get_bridge(), report, item)
+            self._documentos_navegados.add(report.doc_full_name)
         except CatiaError:
             self._bridge = None
             ok = False
         self.flags_nav_done.emit(request, ok)
+
+    # ------------------------------------------------------------------
+    # Position and Zone
+    # ------------------------------------------------------------------
+    @Slot(list)
+    def ler_part_list(self, caminhos: list) -> None:
+        """Abre um Excel escondido so para ler e fecha. Nao usa o CATIA."""
+        self.busy.emit(True)
+        try:
+            self._iniciar_com()
+            parte = pl.ler_part_list(caminhos)
+        except pl.PartListError as exc:
+            self.partlist_failed.emit(str(exc))
+            return
+        except Exception as exc:  # o Excel pode falhar de muitas formas
+            self.partlist_failed.emit(f"Não foi possível importar os dados do SAP.\r\n\r\n{exc}")
+            return
+        finally:
+            self.busy.emit(False)
+        self.partlist_ready.emit(parte)
+
+    @staticmethod
+    def _iniciar_com() -> None:
+        pythoncom.CoInitialize()  # o Excel pode ser a primeira coisa que esta thread usa
+
+    @Slot(str, object, object, str)
+    def mover_balao(self, tool: str, report, occ, zona: str) -> None:
+        self.busy.emit(True)
+        try:
+            mov = pz.mover_balao(self._get_bridge(), report, occ, zona)
+        except CatiaError as exc:
+            self.pos_movido.emit(tool, None, str(exc))
+            return
+        finally:
+            self.busy.emit(False)
+        self.pos_movido.emit(tool, mov, "")
+
+    @Slot(str, object, object)
+    def desfazer_movimento(self, tool: str, report, mov) -> None:
+        self.busy.emit(True)
+        try:
+            pz.desfazer_movimento(self._get_bridge(), report, mov)
+        except CatiaError as exc:
+            self.pos_desfeito.emit(tool, mov, str(exc))
+            return
+        finally:
+            self.busy.emit(False)
+        self.pos_desfeito.emit(tool, mov, "")
+
+    @Slot(str, object)
+    def abrir_excel(self, tool: str, report) -> None:
+        """A copia da planilha, para quem ainda quiser o Excel. Ele fica aberto para o usuario."""
+        self.busy.emit(True)
+        try:
+            self._iniciar_com()
+            pz.exportar_planilha(report)
+        except CatiaError as exc:
+            self.excel_failed.emit(tool, str(exc))
+        finally:
+            self.busy.emit(False)
+
+    # ------------------------------------------------------------------
+    # Fim
+    # ------------------------------------------------------------------
+    @Slot()
+    def encerrar(self) -> None:
+        """Ao fechar o HUB: tira a selecao que ele deixou e devolve o CATIA como a macro deixaria."""
+        ponte = self._bridge
+        if ponte is not None:
+            try:
+                app = ponte.app
+                for i in range(1, app.Documents.Count + 1):
+                    d = app.Documents.Item(i)
+                    if d.FullName in self._documentos_navegados:
+                        d.Selection.Clear()
+                app.Interactive = True
+                app.DisplayFileAlerts = True
+                app.RefreshDisplay = True
+            except (CatiaError, pywintypes.com_error):
+                pass
+        thread = QThread.currentThread()
+        if thread is not None:
+            thread.quit()

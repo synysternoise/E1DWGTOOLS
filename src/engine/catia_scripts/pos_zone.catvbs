@@ -1,5 +1,5 @@
 ' Position and Zone: leitura do desenho, dentro do CATIA (porte de vba_referencia/poszone, V3.5.1).
-' Este script so le: nada no desenho e alterado. As regras ficam em src/engine/pos_zone.py.
+' So o MoverTexto altera o desenho, quando a pessoa pede. As regras ficam em src/engine/pos_zone.py.
 ' Protocolo da resposta: ver src/engine/catia_bridge.py.
 
 Const CALLOUT_TEXT_PROPERTY_BORDER = 12
@@ -298,6 +298,37 @@ Sub PercorrerGeometria(ge, total, buf, n)
             If Err.Number = 0 Then Anota buf, n, Registro(Array("L", pts(0), pts(1), pts(2), pts(3)))
         End If
     Next
+    Err.Clear
+End Sub
+
+' ---------------------------------------------------------------------
+' Move um texto. x e y em coordenadas da vista. Registro: x e y lidos de volta.
+' ---------------------------------------------------------------------
+Function MoverTexto(docCheio, nomeFolha, iVista, nomeVista, iTexto, nomeTexto, x, y)
+    On Error Resume Next
+    Dim r
+    r = MoverTexto_(docCheio, nomeFolha, iVista, nomeVista, iTexto, nomeTexto, x, y)
+    If Err.Number <> 0 Then MoverTexto = Falha() Else MoverTexto = r
+End Function
+
+Function MoverTexto_(docCheio, nomeFolha, iVista, nomeVista, iTexto, nomeTexto, x, y)
+    Dim doc, sh, v, t
+    Set doc = AcharDocumento(docCheio)
+    Set sh = doc.Sheets.Item(nomeFolha)
+    Set v = sh.Views.Item(iVista)
+    If v.Name <> nomeVista Then Err.Raise 1004, , "A vista mudou. Mapeie de novo."
+    If v.LockStatus Then Err.Raise 1005, , "A vista " & nomeVista & " esta travada. Destrave para mover."
+    Set t = v.Texts.Item(iTexto)
+    If t.Name <> nomeTexto Then Err.Raise 1004, , "O texto mudou. Mapeie de novo."
+    t.x = x
+    t.y = y
+    AtualizarTela
+    MoverTexto_ = "OK" & Registro(Array(t.x, t.y))
+End Function
+
+Sub AtualizarTela()
+    On Error Resume Next
+    CATIA.ActiveWindow.ActiveViewer.Update
     Err.Clear
 End Sub
 

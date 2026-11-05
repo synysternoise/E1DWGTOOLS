@@ -97,8 +97,10 @@ def python_uma(bridge, respostas, pasta_modelos) -> tuple:
 
 
 def normaliza_msgs(linhas: list) -> list:
-    # O VBA usa "Erro numero"; o resto so difere em acentos.
-    return [apoio.sem_acento(l) for l in linhas]
+    # O VBA usa "Erro numero"; o resto so difere em acentos. Melhoria: com o template ja aberto o
+    # desenho nao chegou a mudar, e o Python nao avisa que ele pode ter ficado parcialmente convertido.
+    aviso = re.compile(r"(<CRLF>)*O desenho pode ter ficado parcialmente convertido\..*$", re.S)
+    return [aviso.sub("", apoio.sem_acento(l)) if "ja esta aberto" in apoio.sem_acento(l) else apoio.sem_acento(l) for l in linhas]
 
 
 def medir_alternando(xl, bridge, trabalho, pasta_modelos, caminhos, respostas, vezes=3) -> None:

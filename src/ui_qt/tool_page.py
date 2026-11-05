@@ -198,6 +198,7 @@ class ToolPage(QWidget):
         fora = QHBoxLayout(w)
         fora.setContentsMargins(0, 0, 0, 0)
         fora.setSpacing(12)
+        self._fora_resultado = fora
         caixa = moldura()
         col = QVBoxLayout(caixa)
         col.setContentsMargins(18, 14, 18, 14)

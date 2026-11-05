@@ -468,24 +468,33 @@ class _Conversao:
             pass
 
     def abrir_template(self, caminho: str):
-        documentos = self.app.Documents
-        for i in range(1, documentos.Count + 1):
-            try:
-                cheio = documentos.Item(i).FullName
-            except COM_ERROR:
-                continue
-            if cheio.lower() == caminho.lower():
-                # doc.Saved nao serve para saber se ele foi alterado: e True ate depois de mudar um
-                # parametro. A macro recusa sempre um template ja aberto, e aqui tambem.
-                raise self.erro(
-                    f"O template já está aberto:\r\n{caminho}\r\n\r\nFeche-o sem salvar e execute novamente.",
-                    1006, "OpenTemplate",
-                )
-        # Abre com o CATIA interativo: uma janela do CATIA ou do SmarTeam ficaria invisivel e travaria.
+        # Depois de uma conversao o CATIA mantem o template carregado, sem janela, porque o desenho
+        # convertido fica ligado a ele. Esse nao atrapalha: o Open abaixo volta a usa-lo e o Close
+        # so fecha a janela. Recusa apenas o que a pessoa abriu, que pode ter alteracoes: doc.Saved
+        # nao serve para saber, porque e True ate depois de mudar um parametro.
+        if self._tem_janela(caminho):
+            raise self.erro(
+                f"O template já está aberto:\r\n{caminho}\r\n\r\nFeche-o sem salvar e execute novamente.",
+                1006, "OpenTemplate",
+            )
+        # Abre com o CATIA interativo e a tela ligada: uma janela do CATIA ou do SmarTeam ficaria
+        # invisivel e travaria.
         self.app.Interactive = True
-        modelo = documentos.Open(caminho)
+        self.app.RefreshDisplay = True
+        modelo = self.app.Documents.Open(caminho)
+        self.app.RefreshDisplay = False
         self.app.Interactive = False
         return modelo
+
+    def _tem_janela(self, caminho: str) -> bool:
+        janelas = self.app.Windows
+        for i in range(1, janelas.Count + 1):
+            try:
+                if janelas.Item(i).Parent.FullName.lower() == caminho.lower():
+                    return True
+            except COM_ERROR:
+                continue
+        return False
 
     def selecionar_conteudo(self, sel, vista) -> int:
         buscou = False
@@ -514,15 +523,19 @@ class _Conversao:
         modelo = None
         try:
             modelo = self.abrir_template(caminho)
+            self.modified = True  # daqui em diante o desenho comeca a mudar
             self._aplicar(modelo, caminho, folhas, todas)
         except COM_ERROR as exc:
             raise TemplateError(_descricao_com(exc), exc.hresult, "ApplyTemplateToSheets", self.modified) from exc
         finally:
+            self.fechar_template(modelo)
+
+    def fechar_template(self, modelo) -> None:
+        """Como o On Error Resume Next da macro: um passo que falha nao impede os outros."""
+        passos = [self.doc.Activate] if modelo is None else [modelo.Selection.Clear, modelo.Close, self.doc.Activate]
+        for passo in passos:
             try:
-                if modelo is not None:
-                    modelo.Selection.Clear()
-                    modelo.Close()
-                self.doc.Activate()
+                passo()
             except COM_ERROR:
                 pass
 
@@ -872,7 +885,6 @@ def run_update_template(
         # Redesenhar a tela a cada comando deixa a conversao duas vezes mais lenta.
         app.RefreshDisplay = False
         # Cada template e aberto uma unica vez.
-        c.modified = True
         for formato, caminho in templates.items():
             c.aplicar_template(caminho, grupos[formato], folhas)
         if status:
@@ -885,6 +897,10 @@ def run_update_template(
     except COM_ERROR as exc:
         c.restaurar(False)
         raise TemplateError(_descricao_com(exc), exc.hresult, modified=c.modified) from exc
+    except Exception:
+        # Qualquer outro erro tambem nao pode deixar o CATIA sem alertas e sem tela.
+        c.restaurar(False)
+        raise
     c.restaurar(True)
     return report
 

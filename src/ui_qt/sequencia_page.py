@@ -26,7 +26,7 @@ ETAPAS = (
     ("flags", "Fix Flags", "Corrige as flag notes", "flag"),
     ("fontfix", "Font Size Fix", "Mostra o que está errado para você corrigir", "sheet"),
 )
-PRESET_COMPLETA, PRESET_SEM_UPDATE, PRESET_MINHA = range(3)
+PRESET_COMPLETA, PRESET_MINHA = range(2)
 PAGINA_ESCOLHA, PAGINA_RODANDO = range(2)
 
 
@@ -150,7 +150,7 @@ class SequenciaPage(QWidget):
         topo, sub = cabecalho("Sequência de aplicação", etiqueta("ALTERA O DESENHO"))
         sub.setText("Marque o que quer aplicar. O número mostra a ordem.")
         col.addLayout(topo)
-        self.presets = Segmentos(("Completa", "Sem Update Template", "Minha seleção"))
+        self.presets = Segmentos(("Completa", "Minha seleção"))
         self.presets.grupo.idClicked.connect(self._on_preset)
         col.addWidget(self.presets)
         self.linhas = {}
@@ -205,10 +205,6 @@ class SequenciaPage(QWidget):
         if preset == PRESET_COMPLETA:
             for chave in self.linhas:
                 self.linhas[chave].caixa.setChecked(True)
-        elif preset == PRESET_SEM_UPDATE:
-            self.linhas["update"].caixa.setChecked(False)
-            self.linhas["flags"].caixa.setChecked(True)
-            self.linhas["fontfix"].caixa.setChecked(True)
         self._atualizar()
 
     def _on_marcar(self) -> None:
@@ -224,7 +220,7 @@ class SequenciaPage(QWidget):
                 self.linhas[chave].lbl_ordem.setText(str(n))
             else:
                 self.linhas[chave].lbl_ordem.setText("")
-        self.lbl_preset.setText(("Sequência completa", "Sem Update Template", "Minha seleção")[self.presets.grupo.checkedId()])
+        self.lbl_preset.setText(("Sequência completa", "Minha seleção")[self.presets.grupo.checkedId()])
         self.linha_catia.definir("ok" if self._connected else "erro", "CATIA ativo" if self._connected else "CATIA fechado")
         if self._has_drawing:
             self.linha_doc.definir("ok", f"{self._documento} detectado")
@@ -497,7 +493,9 @@ class CheckGeralPage(QWidget):
         return self._font.total_nok if self._font else 0
 
     def pendencias_pos(self) -> int:
-        return len(self._pos.pendencias) if self._pos else 0
+        if not self._pos:
+            return 0
+        return len(self._pos.pendencias) if self._pos.abertas is None else self._pos.abertas
 
     def _marcados(self) -> list:
         saida = []
@@ -534,9 +532,9 @@ class CheckGeralPage(QWidget):
             self.linha_pos.lbl_resultado.setText("Ainda não rodou")
         else:
             r = self._pos
-            self.linha_pos.sub.setText(f"{len(r.callouts)} callouts, Excel gerado")
+            self.linha_pos.sub.setText(f"{len(r.callouts)} callouts, {self.pendencias_pos()} para revisar")
             self.linha_pos.lbl_resultado.setText(f"{r.counters.validos} válidos · {r.counters.grupo} ambíguos · {r.counters.conflito} inconsistentes")
-            if r.pendencias:
+            if self.pendencias_pos():
                 revisar += 1
                 self.linha_pos.marcar("aviso")
             else:

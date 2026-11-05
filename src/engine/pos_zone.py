@@ -2,7 +2,8 @@
 
 Porte de vba_referencia/poszone (V3.5.1-SEM-PINTURA). A leitura roda dentro do CATIA
 (catia_scripts/pos_zone.catvbs); as regras ficam aqui, testaveis sem o CATIA. Nenhum objeto
-do desenho e alterado. O resultado vai para uma copia da planilha de Callouts.
+do desenho e alterado na leitura. A tabela fica no HUB e pode ir para uma copia da planilha de
+Callouts. So o mover_balao altera o desenho, quando a pessoa pede.
 """
 from __future__ import annotations
 
@@ -12,7 +13,7 @@ import re
 import shutil
 import time
 from dataclasses import dataclass, field
-from typing import Callable, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 from engine.catia_bridge import CatiaBridge, CatiaError, parse_number
 
@@ -182,6 +183,13 @@ class ViewRead:
                 self.y + px * self.scale * s + py * self.scale * c,
             )
         return self.x + px * self.scale, self.y + py * self.scale
+
+    def delta_to_view(self, dx: float, dy: float) -> Tuple[float, float]:
+        """Deslocamento em mm de papel na folha para o mesmo deslocamento na vista."""
+        if abs(self.angle) > 0.001:
+            c, s = math.cos(self.angle), math.sin(self.angle)
+            return (dx * c + dy * s) / self.scale, (-dx * s + dy * c) / self.scale
+        return dx / self.scale, dy / self.scale
 
 
 @dataclass
@@ -432,6 +440,22 @@ class Occurrence:
     half_h: float = 0.0
     half_w: float = 0.0
     cluster: int = 0
+    view_index: int = 0
+    item_name: str = ""
+    is_dim = False
+
+    # Os nomes que o navegador do CATIA usa.
+    @property
+    def sheet_name(self) -> str:
+        return self.sheet
+
+    @property
+    def view_name(self) -> str:
+        return self.view
+
+    @property
+    def item_index(self) -> int:
+        return self.text_index
 
 
 @dataclass
@@ -475,12 +499,16 @@ class Analyzer:
         self.occs: List[Occurrence] = []
         self.c = Counters()
         self.pendencias: List[Pending] = []
+        self.folhas: Dict[str, SheetRead] = {}
+        self.zonas: Dict[str, List[Zone]] = {}
         self._numero_folha = 0
 
     def process_sheet(self, indice: int, folha: SheetRead) -> None:
         if not folha.is_detail:
             self._numero_folha += 1
         zonas = map_zones(folha, self._numero_folha)
+        self.folhas[folha.name] = folha
+        self.zonas[folha.name] = zonas
         for v in folha.views:
             if v.is_background or is_aux_view(v.name):
                 continue
@@ -503,8 +531,11 @@ class Analyzer:
             self._references(v, tem_ref, vista_occs)
             self._quantities(indice, v, tem_ref, qtd, vista_occs)
 
-    def _add(self, v, folha, numero, qty, zona, x, y, source, indice) -> Occurrence:
-        o = Occurrence(numero, qty if qty > 0 else 1, zona, folha.name, v.name, x, y, source, indice, cx=x, cy=y)
+    def _add(self, v, folha, numero, qty, zona, x, y, source, t) -> Occurrence:
+        o = Occurrence(
+            numero, qty if qty > 0 else 1, zona, folha.name, v.name, x, y, source, t.index, cx=x, cy=y,
+            view_index=v.index, item_name=t.name,
+        )
         self.occs.append(o)
         return o
 
@@ -527,7 +558,7 @@ class Analyzer:
         else:
             return
         x, y = v.to_sheet(t.x, t.y)
-        o = self._add(v, folha, normalize_callout(value), qty, nearest_zone(x, y, zonas), x, y, source, t.index)
+        o = self._add(v, folha, normalize_callout(value), qty, nearest_zone(x, y, zonas), x, y, source, t)
         o.cx, o.cy, o.font, o.half_h, o.half_w = text_center(v, t)
         if qty > 0:
             o.has_qty = True
@@ -541,7 +572,7 @@ class Analyzer:
         for i, linha in enumerate(linhas):
             numero = trim(linha)
             if only_digits(numero):
-                o = self._add(v, folha, normalize_callout(numero), qty, nearest_zone(x, y, zonas), x, y, SOURCE_MULTILINE, t.index)
+                o = self._add(v, folha, normalize_callout(numero), qty, nearest_zone(x, y, zonas), x, y, SOURCE_MULTILINE, t)
                 o.cx, o.cy, o.font, o.half_h, o.half_w = text_center(v, t)
                 # Cada linha fica na sua altura, para o "2 PL" ao lado ir para a linha certa.
                 if o.font > 0:
@@ -831,6 +862,10 @@ class PosZoneReport:
     doc_full_name: str = ""
     xl_app: object = None
     xl_book: object = None
+    occs: List[Occurrence] = field(default_factory=list)
+    folhas: Dict[str, SheetRead] = field(default_factory=dict)
+    zonas: Dict[str, List[Zone]] = field(default_factory=dict)
+    abertas: Optional[int] = None  # o que falta revisar na tela; None antes de a tela calcular
 
     @property
     def mensagem(self) -> str:
@@ -849,31 +884,7 @@ class PosZoneReport:
         )
 
 
-def run_pos_zone(
-    bridge: CatiaBridge,
-    warn: Callable[[str, str], None],
-    progress: Optional[Callable[[int, int], None]] = None,
-    template: str = TEMPLATE_PLANILHA,
-    pasta_saida: Optional[str] = None,
-) -> Optional[PosZoneReport]:
-    """Le o desenho ativo e grava a tabela numa copia da planilha, que fica aberta no Excel."""
-    situacao = bridge.call(SCRIPT, "LerDesenho")[0]
-    if situacao[0] == "0":
-        warn("Nenhum Drawing ativo foi encontrado.", TITULO)
-        return None
-    _, cheio, nome, total = situacao
-    total = int(total)
-    pn = nome[: nome.rfind(".")] if nome.rfind(".") > 0 else nome
-
-    if not os.path.exists(template):
-        warn(f"O template não foi encontrado:\r\n\r\n{template}", "Template não encontrado")
-        return None
-    caminho = output_path(pasta_saida or temp_folder(), clean_file_name(pn), time.strftime("%Y%m%d_%H%M%S"))
-    try:
-        shutil.copyfile(template, caminho)
-    except OSError as exc:
-        raise PosZoneError(f"Não foi possível criar a cópia temporária:\r\n{caminho}\r\n{exc}") from exc
-
+def _ler_desenho(bridge: CatiaBridge, cheio: str, total: int, progress) -> Analyzer:
     def linhas(i_folha: int, i_vista: int):
         return [
             tuple(parse_number(c) for c in r[1:5])
@@ -887,21 +898,236 @@ def run_pos_zone(
             analise.process_sheet(i, parse_sheet(bridge.call(SCRIPT, "LerFolha", cheio, i)))
             if progress:
                 progress(i, total)
-    except CatiaError as exc:
-        raise PosZoneError(f"Não foi possível abrir ou preparar a cópia:\r\n{caminho}\r\n{exc}", exc.number) from exc
     finally:
         try:
             bridge.call(SCRIPT, "Tela", True)
         except CatiaError:
             pass
+    return analise
 
-    callouts = consolidate(analise.occs)
-    report = PosZoneReport(pn, caminho, analise.c, len(analise.occs), callouts, analise.pendencias, cheio)
+
+def _relatorio(pn: str, caminho: str, cheio: str, analise: Analyzer) -> PosZoneReport:
+    return PosZoneReport(
+        pn, caminho, analise.c, len(analise.occs), consolidate(analise.occs), analise.pendencias, cheio,
+        occs=analise.occs, folhas=analise.folhas, zonas=analise.zonas,
+    )
+
+
+def _situacao(bridge: CatiaBridge, warn) -> Optional[Tuple[str, str, int]]:
+    situacao = bridge.call(SCRIPT, "LerDesenho")[0]
+    if situacao[0] == "0":
+        warn("Nenhum Drawing ativo foi encontrado.", TITULO)
+        return None
+    _, cheio, nome, total = situacao
+    return cheio, (nome[: nome.rfind(".")] if nome.rfind(".") > 0 else nome), int(total)
+
+
+def analisar_desenho(
+    bridge: CatiaBridge,
+    warn: Callable[[str, str], None],
+    progress: Optional[Callable[[int, int], None]] = None,
+) -> Optional[PosZoneReport]:
+    """Le o desenho ativo. A tabela fica no HUB: nada abre no Excel."""
+    lido = _situacao(bridge, warn)
+    if lido is None:
+        return None
+    cheio, pn, total = lido
+    report = _relatorio(pn, "", cheio, _ler_desenho(bridge, cheio, total, progress))
+    bridge.call(SCRIPT, "RestaurarVistas", cheio)
+    return report
+
+
+def exportar_planilha(report: PosZoneReport, template: str = TEMPLATE_PLANILHA, pasta_saida: Optional[str] = None) -> str:
+    """Grava a tabela numa copia da planilha, que fica aberta no Excel. Devolve o caminho."""
+    if not os.path.exists(template):
+        raise PosZoneError(f"O template não foi encontrado:\r\n\r\n{template}")
+    caminho = output_path(pasta_saida or temp_folder(), clean_file_name(report.pn), time.strftime("%Y%m%d_%H%M%S"))
     try:
-        report.xl_app, report.xl_book = write_workbook(caminho, pn, callouts)
+        shutil.copyfile(template, caminho)
+    except OSError as exc:
+        raise PosZoneError(f"Não foi possível criar a cópia temporária:\r\n{caminho}\r\n{exc}") from exc
+    try:
+        write_workbook(caminho, report.pn, report.callouts)
+    except PosZoneError:
+        raise
+    except Exception as exc:  # o Excel pode falhar de muitas formas; a mensagem e a mesma da macro
+        raise PosZoneError(f"Não foi possível abrir ou preparar a cópia:\r\n{caminho}\r\n{exc}") from exc
+    report.workbook_path = caminho
+    return caminho
+
+
+def run_pos_zone(
+    bridge: CatiaBridge,
+    warn: Callable[[str, str], None],
+    progress: Optional[Callable[[int, int], None]] = None,
+    template: str = TEMPLATE_PLANILHA,
+    pasta_saida: Optional[str] = None,
+) -> Optional[PosZoneReport]:
+    """O caminho da macro: le o desenho e grava a tabela numa copia da planilha, aberta no Excel."""
+    lido = _situacao(bridge, warn)
+    if lido is None:
+        return None
+    cheio, pn, total = lido
+    if not os.path.exists(template):
+        warn(f"O template não foi encontrado:\r\n\r\n{template}", "Template não encontrado")
+        return None
+    caminho = output_path(pasta_saida or temp_folder(), clean_file_name(pn), time.strftime("%Y%m%d_%H%M%S"))
+    try:
+        shutil.copyfile(template, caminho)
+    except OSError as exc:
+        raise PosZoneError(f"Não foi possível criar a cópia temporária:\r\n{caminho}\r\n{exc}") from exc
+    try:
+        analise = _ler_desenho(bridge, cheio, total, progress)
+    except CatiaError as exc:
+        raise PosZoneError(f"Não foi possível abrir ou preparar a cópia:\r\n{caminho}\r\n{exc}", exc.number) from exc
+    report = _relatorio(pn, caminho, cheio, analise)
+    try:
+        report.xl_app, report.xl_book = write_workbook(caminho, pn, report.callouts)
     except PosZoneError:
         raise
     except Exception as exc:  # o Excel pode falhar de muitas formas; a mensagem e a mesma da macro
         raise PosZoneError(f"Não foi possível abrir ou preparar a cópia:\r\n{caminho}\r\n{exc}") from exc
     bridge.call(SCRIPT, "RestaurarVistas", cheio)
     return report
+
+
+# ---------------------------------------------------------------------
+# Mover um balao para outra zona
+# ---------------------------------------------------------------------
+TEXTO_COLADO_FOLGA = 0.75  # em alturas de fonte: entre dois textos encostados
+TEXTO_COLADO_FOLGA_BALAO = 1.5  # o circulo do balao e maior que o texto dentro dele
+TEXTO_COLADO_MAX = 20  # caracteres: uma nota comprida perto do balao nao anda junto
+MARGEM_ZONA = 0.8  # fica um pouco para dentro da divisa, e nao em cima dela
+
+
+@dataclass
+class Movimento:
+    occ: Occurrence
+    zona_antes: str
+    zona_depois: str
+    # (vista, texto, x antes, y antes, x depois, y depois), em coordenadas da vista
+    textos: List[Tuple[ViewRead, TextRead, float, float, float, float]] = field(default_factory=list)
+    x_antes: float = 0.0
+    y_antes: float = 0.0
+    cx_antes: float = 0.0
+    cy_antes: float = 0.0
+
+
+def _eh_balao(t: TextRead) -> bool:
+    _, numero = count_callout_lines(non_empty_lines(t.text))
+    return bool(numero) and classify(t, numero) != STATUS_IGNORE
+
+
+def textos_colados(v: ViewRead, t: TextRead) -> List[TextRead]:
+    """Flag, quantidade e numero encostados no balao: andam junto, senao ficam para tras."""
+    colados: List[TextRead] = []
+    fila = [t]
+    vistos = {t.index}
+    while fila:
+        a = fila.pop()
+        ax, ay, af, ah, aw = text_center(v, a)
+        for b in v.texts:
+            if b.index in vistos or _eh_balao(b) or len(trim(b.text)) > TEXTO_COLADO_MAX:
+                continue
+            bx, by, bf, bh, bw = text_center(v, b)
+            f = max(af, bf)
+            if f <= 0:
+                continue
+            folga = TEXTO_COLADO_FOLGA_BALAO if a is t else TEXTO_COLADO_FOLGA
+            if max(abs(ax - bx) - aw - bw, abs(ay - by) - ah - bh) <= f * folga:
+                vistos.add(b.index)
+                colados.append(b)
+                fila.append(b)
+    return colados
+
+
+def ponto_na_zona(x: float, y: float, alvo: str, zonas: List[Zone]) -> Tuple[float, float]:
+    """O ponto da zona pedida mais perto de onde o balao esta, para o leader mudar o minimo."""
+    centro = next(z for z in zonas if z.name == alvo)
+    dentro, fora = 0.0, 1.0
+    for _ in range(30):
+        meio = (dentro + fora) / 2
+        px, py = centro.x + (x - centro.x) * meio, centro.y + (y - centro.y) * meio
+        if nearest_zone(px, py, zonas) == alvo:
+            dentro = meio
+        else:
+            fora = meio
+    t = dentro * MARGEM_ZONA
+    return centro.x + (x - centro.x) * t, centro.y + (y - centro.y) * t
+
+
+def zonas_da_folha(report: PosZoneReport, folha: str) -> List[str]:
+    return sorted(z.name for z in report.zonas.get(folha, []))
+
+
+def _localizar(report: PosZoneReport, occ: Occurrence) -> Tuple[ViewRead, TextRead]:
+    folha = report.folhas[occ.sheet]
+    v = next(x for x in folha.views if x.index == occ.view_index)
+    t = next(x for x in v.texts if x.index == occ.text_index)
+    return v, t
+
+
+def colados_do_balao(report: PosZoneReport, occ: Occurrence) -> List[str]:
+    v, t = _localizar(report, occ)
+    return [trim(b.text).replace("\r", "").replace("\n", " / ") for b in textos_colados(v, t)]
+
+
+def _gravar_posicao(bridge: CatiaBridge, report: PosZoneReport, occ: Occurrence, v: ViewRead, t: TextRead, x: float, y: float) -> Tuple[float, float]:
+    r = bridge.call(SCRIPT, "MoverTexto", report.doc_full_name, occ.sheet, v.index, v.name, t.index, t.name, x, y)[0]
+    return parse_number(r[0]), parse_number(r[1])
+
+
+def mover_balao(bridge: CatiaBridge, report: PosZoneReport, occ: Occurrence, alvo: str) -> Movimento:
+    """Move o balao para a zona pedida, com o que esta colado nele. Confere lendo de volta."""
+    if occ.source != SOURCE_BALLOON:
+        raise CatiaError("Só o balão define a zona: este número é sublinhado.")
+    zonas = report.zonas.get(occ.sheet, [])
+    if not zonas:
+        raise CatiaError(f"A folha {occ.sheet} não tem zonas mapeadas.")
+    if alvo not in {z.name for z in zonas}:
+        raise CatiaError(f"A zona {alvo} não existe na folha {occ.sheet}.")
+    if alvo == occ.zone:
+        raise CatiaError(f"O balão já está na zona {alvo}.")
+    v, t = _localizar(report, occ)
+    nx, ny = ponto_na_zona(occ.x, occ.y, alvo, zonas)
+    dvx, dvy = v.delta_to_view(nx - occ.x, ny - occ.y)
+    mov = Movimento(occ, occ.zone, alvo, x_antes=occ.x, y_antes=occ.y, cx_antes=occ.cx, cy_antes=occ.cy)
+    try:
+        for u in [t] + textos_colados(v, t):
+            x0, y0 = u.x, u.y
+            x1, y1 = _gravar_posicao(bridge, report, occ, v, u, x0 + dvx, y0 + dvy)
+            mov.textos.append((v, u, x0, y0, x1, y1))
+        sx, sy = v.to_sheet(mov.textos[0][4], mov.textos[0][5])
+        lida = nearest_zone(sx, sy, zonas)
+        if lida != alvo:
+            raise CatiaError(f"O balão ficou na zona {lida}, e não na {alvo}. Voltei para onde estava.")
+    except CatiaError:
+        for vista, u, x0, y0, _, _ in reversed(mov.textos):
+            try:
+                _gravar_posicao(bridge, report, occ, vista, u, x0, y0)
+            except CatiaError:
+                pass
+        raise
+    _aplicar(report, occ, mov, depois=True)
+    return mov
+
+
+def desfazer_movimento(bridge: CatiaBridge, report: PosZoneReport, mov: Movimento) -> None:
+    for v, t, x0, y0, _, _ in reversed(mov.textos):
+        _gravar_posicao(bridge, report, mov.occ, v, t, x0, y0)
+    _aplicar(report, mov.occ, mov, depois=False)
+
+
+def _aplicar(report: PosZoneReport, occ: Occurrence, mov: Movimento, depois: bool) -> None:
+    """Atualiza o que foi lido e a tabela, sem ler o desenho inteiro de novo."""
+    for _, t, x0, y0, x1, y1 in mov.textos:
+        t.x, t.y = (x1, y1) if depois else (x0, y0)
+    v, t = mov.textos[0][0], mov.textos[0][1]
+    if depois:
+        occ.x, occ.y = v.to_sheet(t.x, t.y)
+        occ.cx, occ.cy = occ.cx + occ.x - mov.x_antes, occ.cy + occ.y - mov.y_antes
+        occ.zone = mov.zona_depois
+    else:
+        occ.x, occ.y, occ.cx, occ.cy = mov.x_antes, mov.y_antes, mov.cx_antes, mov.cy_antes
+        occ.zone = mov.zona_antes
+    report.callouts = consolidate(report.occs)

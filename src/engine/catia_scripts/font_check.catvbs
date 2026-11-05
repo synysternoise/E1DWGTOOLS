@@ -148,6 +148,53 @@ Sub LerCota(val, mm, cont)
 End Sub
 
 ' ---------------------------------------------------------------------
+' Quais destes itens estao ocultos. Lista: tipo:vista:item separados por ponto e virgula.
+' Registro: as posicoes dos ocultos na lista, a partir de 0, separadas por virgula.
+' So os fora do padrao passam por aqui: conferir um por um em toda a folha seria lento.
+' ---------------------------------------------------------------------
+Function Ocultos(iFolha, lista)
+    On Error Resume Next
+    Dim r
+    r = Ocultos_(iFolha, lista)
+    If Err.Number <> 0 Then Ocultos = Falha() Else Ocultos = r
+End Function
+
+Function Ocultos_(iFolha, lista)
+    Dim doc, sh, sel, itens, k, p, v, achados
+    Set doc = CATIA.ActiveDocument
+    Set sh = doc.Sheets.Item(iFolha)
+    Set sel = doc.Selection
+    itens = Split(lista, ";")
+    achados = ""
+    For k = 0 To UBound(itens)
+        p = Split(itens(k), ":")
+        Set v = sh.Views.Item(CLng(p(1)))
+        If p(0) = "C" Then
+            If Oculto(sel, v.Dimensions.Item(CLng(p(2)))) Then achados = achados & "," & k
+        Else
+            If Oculto(sel, v.Texts.Item(CLng(p(2)))) Then achados = achados & "," & k
+        End If
+    Next
+    sel.Clear
+    Ocultos_ = "OK" & Registro(Array(Mid(achados, 2)))
+End Function
+
+' Item oculto nao sai na folha: a macro o pintava sem ninguem ver, mas numa lista ele so confunde.
+' Se nao der para saber, o item continua na conferencia.
+Function Oculto(sel, item)
+    Dim vis
+    Oculto = False
+    On Error Resume Next
+    vis = 0
+    sel.Clear
+    sel.Add item
+    sel.VisProperties.GetShow vis
+    If Err.Number = 0 And vis = 1 Then Oculto = True
+    Err.Clear
+    sel.Clear
+End Function
+
+' ---------------------------------------------------------------------
 ' Navegador: mostra a folha do item, centraliza nele com zoom e seleciona.
 ' Vista e item sao procurados pelo indice e conferidos pelo nome, porque os
 ' indices mudam quando algo e apagado. Item que nao existe mais volta como ERR.

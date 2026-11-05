@@ -149,5 +149,8 @@ QDialog QPushButton {{ background: {CARD}; border: 1px solid {LINE}; border-radi
 QSpinBox {{ background: {APP}; border: 1px solid {LINE}; border-radius: 6px; padding: 4px 6px; font-weight: 700; }}
 QSpinBox:disabled {{ color: {DIM}; }}
 QLineEdit {{ background: {APP}; border: 1px solid {LINE}; border-radius: 6px; padding: 5px; }}
+QComboBox {{ background: {APP}; border: 1px solid {LINE}; border-radius: 6px; padding: 5px 8px; font-weight: 700; }}
+QComboBox:disabled {{ color: {DIM}; }}
+QComboBox QAbstractItemView {{ background: {PANEL}; border: 1px solid {LINE}; selection-background-color: {BRAND}; outline: 0; }}
 QToolTip {{ background: {CARD}; color: {TEXT}; border: 1px solid {LINE}; }}
 """

@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Dict, List
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QButtonGroup, QFileDialog, QFrame, QHBoxLayout, QTableWidgetItem, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QBoxLayout, QButtonGroup, QFileDialog, QFrame, QHBoxLayout, QTableWidgetItem, QVBoxLayout, QWidget
 
 from engine import compare_dwg as cd
 from engine import fix_flags as ff
@@ -13,7 +13,7 @@ from ui_qt import theme as T
 from ui_qt.fix_flags_page import mostrar
 from ui_qt.font_size_page import PAPEL_OK, MarkDelegate, button, label
 from ui_qt.pecas import Cartao, LinhaSituacao, Resumo, botao, botao_grande, icone_grande, largura_livre, moldura
-from ui_qt.tool_page import ToolPage, tabela
+from ui_qt.tool_page import LARGURA_LATERAL, ToolPage, tabela
 
 PENDENTE, CORRIGIDO, COMO_ESTAVA, FALHOU, SO_NO_CATIA = "Pendente", "Corrigido", "Como estava", "Falhou", "Cota: corrija no CATIA"
 
@@ -196,7 +196,7 @@ class FontSizeFixPage(ToolPage):
     TITULO = "Font Size Fix"
     DESCRICAO = (
         "Mostra os textos fora do padrão da folha para você corrigir um por um ou todos de uma vez. "
-        "Muda só o tamanho. Background, vistas travadas e vistas ocultas ficam de fora."
+        "Muda só o tamanho. Background, vistas travadas, vistas ocultas e itens ocultos ficam de fora."
     )
     BOTAO = "ANALISAR AS FONTES"
     BOTAO_DE_NOVO = "Analisar de novo"
@@ -222,7 +222,7 @@ class FontSizeFixPage(ToolPage):
         self.table.setItemDelegateForColumn(0, MarkDelegate(self.table))
         self.table.selectionModel().currentRowChanged.connect(self._on_linha)
         col.addWidget(self.table, 1)
-        col.addWidget(largura_livre(label("Muda só o tamanho. Background, vistas travadas e vistas ocultas ficam de fora.", "notaTexto")))
+        col.addWidget(largura_livre(label("Muda só o tamanho. Background, vistas travadas, vistas ocultas e itens ocultos ficam de fora.", "notaTexto")))
 
     def _build_side(self, col: QVBoxLayout) -> bool:
         topo = QHBoxLayout()
@@ -290,7 +290,8 @@ class FontSizeFixPage(ToolPage):
             self._situacao[it.order] = SO_NO_CATIA if it.is_dim else PENDENTE
             self._alvo[it.order] = fc.closest_standard(it)
         parou = "  ·  Parado antes do fim" if report.stopped else ""
-        self.lbl_sub.setText(f"{report.total_nok} fora do padrão de {report.total_items} itens  ·  Formato {', '.join(report.formats)}{parou}")
+        ocultos = f"  ·  {report.nota_ocultos}" if report.total_hidden else ""
+        self.lbl_sub.setText(f"{report.total_nok} fora do padrão de {report.total_items} itens{ocultos}  ·  Formato {', '.join(report.formats)}{parou}")
         self._atual = -1
         self._preencher()
         if self._rows:
@@ -401,6 +402,18 @@ class FontSizeFixPage(ToolPage):
         for b in (self.btn_fix, self.btn_keep, self.btn_all):
             b.setEnabled(False)
         self.fix_requested.emit(self._report, lista)
+
+    def set_compact(self, compact: bool) -> None:
+        """No compacto, o painel do item vai para baixo da lista: sem ele nao da para ver nem corrigir."""
+        self._tag.setVisible(not compact)
+        self._fora_resultado.setDirection(QBoxLayout.TopToBottom if compact else QBoxLayout.LeftToRight)
+        if compact:
+            self._lateral.setMinimumWidth(0)
+            self._lateral.setMaximumWidth(16777215)
+        else:
+            self._lateral.setFixedWidth(LARGURA_LATERAL)
+        for coluna in (0, 2, 4, 5):
+            self.table.setColumnHidden(coluna, compact)
 
     def _deixar(self) -> None:
         if 0 <= self._atual < len(self._rows):

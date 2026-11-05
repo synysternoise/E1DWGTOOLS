@@ -20,8 +20,9 @@ from ui_qt.fix_flags_page import FixFlagsPage
 from ui_qt.font_size_page import FontSizePage, button, label
 from ui_qt.icones import icone
 from ui_qt.pecas import largura_livre
+from ui_qt.poszone_page import PosZoneFixPage, PosZonePage
 from ui_qt.sequencia_page import CheckGeralPage, SequenciaPage
-from ui_qt.tool_pages import PosZonePage, Split2DPage, Split3DPage, UpdateTemplatePage
+from ui_qt.tool_pages import Split2DPage, Split3DPage, UpdateTemplatePage
 
 LARGURA, ALTURA = 1180, 720
 LARGURA_COMPACTA = 460
@@ -30,8 +31,8 @@ AINDA_NO_VBA = "Esta ferramenta ainda roda no painel VBA."
 ABA_DESIGN, ABA_CHECK, ABA_ENVIO = range(3)
 (
     PAGINA_SEQUENCIA, PAGINA_UPDATE, PAGINA_FLAGS, PAGINA_GERAL, PAGINA_FONT, PAGINA_POSZONE, PAGINA_SPLIT3D, PAGINA_SPLIT2D,
-    PAGINA_FONTFIX, PAGINA_CHECKFLAGS, PAGINA_COMPARE,
-) = range(11)
+    PAGINA_FONTFIX, PAGINA_CHECKFLAGS, PAGINA_COMPARE, PAGINA_POSZONEFIX,
+) = range(12)
 
 
 def _so_a_atual_conta(pilha: QStackedWidget) -> None:
@@ -59,6 +60,11 @@ class HubWindow(QWidget):
     request_analyze = Signal()
     request_tool = Signal(str)
     request_go = Signal(str, object, object, int)
+    request_partlist = Signal(list)
+    request_excel = Signal(str, object)
+    request_mover = Signal(str, object, object, str)
+    request_desfazer = Signal(str, object, object)
+    request_encerrar = Signal()
 
     def __init__(self):
         super().__init__()
@@ -79,6 +85,7 @@ class HubWindow(QWidget):
         self.geral_page = CheckGeralPage()
         self.font_page = FontSizePage()
         self.poszone_page = PosZonePage()
+        self.poszonefix_page = PosZoneFixPage()
         self.split3d_page = Split3DPage()
         self.split2d_page = Split2DPage()
         self.fontfix_page = FontSizeFixPage()
@@ -86,7 +93,8 @@ class HubWindow(QWidget):
         self.compare_page = CompareDwgPage()
         self.tool_pages = {
             p.TOOL: p for p in (
-                self.update_page, self.poszone_page, self.split3d_page, self.split2d_page, self.fontfix_page, self.flagcheck_page,
+                self.update_page, self.poszone_page, self.poszonefix_page, self.split3d_page, self.split2d_page, self.fontfix_page,
+                self.flagcheck_page,
             )
         }
 
@@ -116,7 +124,8 @@ class HubWindow(QWidget):
              ("FERRAMENTAS", (("Update Template", "refresh", PAGINA_UPDATE, ""),
                               ("Symbol Shape Converter", "arrow", None, AINDA_NO_VBA),
                               ("Fix Flags", "flag", PAGINA_FLAGS, ""),
-                              ("Font Size Fix", "sheet", PAGINA_FONTFIX, "")))),
+                              ("Font Size Fix", "sheet", PAGINA_FONTFIX, ""),
+                              ("Pos and Zone Fix", "box", PAGINA_POSZONEFIX, "")))),
             "Cada ferramenta também roda sozinha, fora da sequência.",
         ))
         self._rail.addWidget(self._build_rail(
@@ -139,6 +148,7 @@ class HubWindow(QWidget):
         for pagina in (
             self.seq_page, self.update_page, self.flags_page, self.geral_page, self.font_page,
             self.poszone_page, self.split3d_page, self.split2d_page, self.fontfix_page, self.flagcheck_page, self.compare_page,
+            self.poszonefix_page,
         ):
             self._pages.addWidget(pagina)
             _so_a_atual_conta(pagina._stack) if hasattr(pagina, "_stack") else None
@@ -291,7 +301,7 @@ class HubWindow(QWidget):
         self.worker.moveToThread(self._thread)
         pg, wk = self.font_page, self.worker
 
-        self.request_poll.connect(wk.poll)
+        self.request_poll.connect(wk.poll_leve)
         self.request_analyze.connect(wk.analyze)
         self.request_tool.connect(wk.run_tool)
         self.request_go.connect(wk.go_to_tool_item)
@@ -339,8 +349,28 @@ class HubWindow(QWidget):
             pagina.answered.connect(wk.answer_format, Qt.DirectConnection)
             pagina.preview_requested.connect(wk.preview)
         self.update_page.formats_changed.connect(wk.set_update_formats, Qt.DirectConnection)
+        self.request_partlist.connect(wk.ler_part_list)
+        self.request_excel.connect(wk.abrir_excel)
+        self.request_mover.connect(wk.mover_balao)
+        self.request_desfazer.connect(wk.desfazer_movimento)
+        self.request_encerrar.connect(wk.encerrar)
+        wk.partlist_ready.connect(self._on_part_list)
+        wk.partlist_failed.connect(self._on_part_list_falhou)
+        wk.pos_movido.connect(self._on_pos_movido)
+        wk.pos_desfeito.connect(self._on_pos_desfeito)
+        wk.excel_failed.connect(self._on_tool_warn_excel)
+        for pos in (self.poszone_page, self.poszonefix_page):
+            pos.latest_nav.connect(wk.mark_latest_tool_nav, Qt.DirectConnection)
+            pos.partlist_requested.connect(self._pedir_part_list)
+            pos.partlist_clear_requested.connect(self._limpar_part_list)
+            pos.excel_requested.connect(self.request_excel)
+            pos.alterado.connect(self._on_pos_alterado)
         self.poszone_page.go_requested.connect(self._on_pos_go)
-        self.poszone_page.latest_nav.connect(wk.mark_latest_tool_nav, Qt.DirectConnection)
+        self.poszonefix_page.go_requested.connect(self._on_posfix_go)
+        self.poszonefix_page.mover_requested.connect(self._on_pos_mover)
+        self.poszonefix_page.desfazer_requested.connect(self._on_pos_desfazer)
+        self.poszone_page.trocar_requested.connect(self._ir_para_pos_fix)
+        self.poszonefix_page.trocar_requested.connect(self._revisar_pos)
         self.flagcheck_page.go_requested.connect(self._on_flagcheck_go)
         self.flagcheck_page.latest_nav.connect(wk.mark_latest_tool_nav, Qt.DirectConnection)
         self.flagcheck_page.corrigir_requested.connect(self._ir_para_fix_flags)
@@ -397,7 +427,11 @@ class HubWindow(QWidget):
     @Slot(str, object)
     def _on_tool_ready(self, tool: str, report) -> None:
         self.tool_pages[tool].on_ready(report)
-        if tool == "poszone":
+        if tool in ("poszone", "poszonefix"):
+            # As duas telas mostram a mesma leitura: nao precisa mapear de novo ao trocar de aba.
+            outra = self.poszonefix_page if tool == "poszone" else self.poszone_page
+            if report is not None:
+                outra.on_ready(report)
             self.geral_page.on_poszone(report)
             self._atualizar_contagens()
         elif tool == "flagcheck":
@@ -429,6 +463,72 @@ class HubWindow(QWidget):
     @Slot(object, object, int)
     def _on_pos_go(self, report, item, pedido: int) -> None:
         self.request_go.emit("poszone", report, item, pedido)
+
+    @Slot(object, object, int)
+    def _on_posfix_go(self, report, item, pedido: int) -> None:
+        self.request_go.emit("poszonefix", report, item, pedido)
+
+    @Slot(list)
+    def _pedir_part_list(self, caminhos: list) -> None:
+        for pos in (self.poszone_page, self.poszonefix_page):
+            pos.lendo_part_list(True)
+        self.request_partlist.emit(caminhos)
+
+    @Slot()
+    def _limpar_part_list(self) -> None:
+        self._on_part_list(None)
+
+    @Slot(object)
+    def _on_part_list(self, parte) -> None:
+        for pos in (self.poszone_page, self.poszonefix_page):
+            pos.definir_part_list(parte)
+        self._atualizar_visao_pos()
+
+    @Slot(str)
+    def _on_part_list_falhou(self, mensagem: str) -> None:
+        for pos in (self.poszone_page, self.poszonefix_page):
+            pos.lendo_part_list(False)
+        self.poszone_page.on_warn(mensagem, "Erro na importação")
+
+    @Slot()
+    def _on_pos_alterado(self) -> None:
+        origem = self.sender()
+        for pos in (self.poszone_page, self.poszonefix_page):
+            if pos is not origem:
+                pos.atualizar_tabela()
+        self._atualizar_visao_pos()
+
+    def _atualizar_visao_pos(self) -> None:
+        self.geral_page.on_poszone(self.poszone_page._report or self.poszonefix_page._report)
+        self._atualizar_contagens()
+
+    @Slot(object, object, str)
+    def _on_pos_mover(self, report, occ, zona: str) -> None:
+        self.request_mover.emit("poszonefix", report, occ, zona)
+
+    @Slot(object, object)
+    def _on_pos_desfazer(self, report, mov) -> None:
+        self.request_desfazer.emit("poszonefix", report, mov)
+
+    @Slot(str, object, str)
+    def _on_pos_movido(self, tool: str, mov, erro: str) -> None:
+        self.tool_pages[tool].on_movido(mov, erro)
+
+    @Slot(str, object, str)
+    def _on_pos_desfeito(self, tool: str, mov, erro: str) -> None:
+        self.tool_pages[tool].on_desfeito(mov, erro)
+
+    @Slot(str, str)
+    def _on_tool_warn_excel(self, tool: str, mensagem: str) -> None:
+        self.tool_pages[tool].on_warn(mensagem, "Abrir no Excel")
+
+    @Slot()
+    def _ir_para_pos_fix(self) -> None:
+        self.ir_para(ABA_DESIGN, "Design", "Pos and Zone Fix", PAGINA_POSZONEFIX)
+
+    @Slot()
+    def _revisar_pos(self) -> None:
+        self._revisar("poszone")
 
     @Slot(object, object, int)
     def _on_flagcheck_go(self, report, item, pedido: int) -> None:
@@ -551,13 +651,22 @@ class HubWindow(QWidget):
         else:
             self.setGeometry(self._normal_geometry)
 
+    def changeEvent(self, event) -> None:
+        super().changeEvent(event)
+        worker = getattr(self, "worker", None)
+        if worker is not None and event.type() == QEvent.ActivationChange:
+            worker.janela_ativa = self.isActiveWindow()
+            if worker.janela_ativa:
+                self.request_poll.emit()
+
     def closeEvent(self, event) -> None:
         self._timer.stop()
         self.worker.request_stop()
         self.worker.request_stop_sequence()
         self.worker.answer_format("")
         self.worker.answer_confirm(False)
-        self._thread.quit()
+        # O worker devolve o CATIA limpo e so entao encerra a propria thread.
+        self.request_encerrar.emit()
         if not self._thread.wait(5000):
             # O CATIA nao respondeu: nao segura o HUB aberto por causa dele.
             os._exit(0)

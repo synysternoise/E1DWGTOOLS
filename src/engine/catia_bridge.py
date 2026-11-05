@@ -14,8 +14,10 @@ vai usa-lo.
 """
 from __future__ import annotations
 
+import ctypes
 import os
-from typing import List
+from ctypes import wintypes
+from typing import List, Optional
 
 import pythoncom
 import pywintypes
@@ -26,6 +28,7 @@ SCRIPT_LIBRARY_DIRECTORY = 1  # catScriptLibraryTypeDirectory
 
 REGISTRO = chr(30)
 CAMPO = chr(31)
+PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
 
 
 class CatiaError(Exception):
@@ -58,6 +61,61 @@ def parse_response(raw) -> List[List[str]]:
 def parse_number(texto: str) -> float:
     """Le um numero vindo do script (CStr usa a virgula decimal do Windows)."""
     return float(texto.replace(",", "."))
+
+
+def titulo_janela_catia() -> Optional[str]:
+    """Titulo da janela principal do CATIA, ou None se ele estiver fechado.
+
+    Le so do Windows, sem falar com o CATIA: serve para consultas repetidas, que nao podem
+    atrapalhar o que estiver rodando nele, como a conexao do SmarTeam.
+    """
+    user32 = ctypes.windll.user32
+    kernel32 = ctypes.windll.kernel32
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32.QueryFullProcessImageNameW.argtypes = (wintypes.HANDLE, wintypes.DWORD, wintypes.LPWSTR, ctypes.POINTER(wintypes.DWORD))
+    kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+    user32.GetWindowTextLengthW.argtypes = (wintypes.HWND,)
+    user32.GetWindowTextW.argtypes = (wintypes.HWND, wintypes.LPWSTR, ctypes.c_int)
+    user32.IsWindowVisible.argtypes = (wintypes.HWND,)
+    user32.GetWindowThreadProcessId.argtypes = (wintypes.HWND, ctypes.POINTER(wintypes.DWORD))
+    achado: List[str] = []
+    processos = {}
+
+    def eh_do_catia(pid: int) -> bool:
+        processo = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if not processo:
+            return False
+        try:
+            tamanho = wintypes.DWORD(1024)
+            caminho = ctypes.create_unicode_buffer(tamanho.value)
+            if not kernel32.QueryFullProcessImageNameW(processo, 0, caminho, ctypes.byref(tamanho)):
+                return False
+            return os.path.basename(caminho.value).lower() == "cnext.exe"
+        finally:
+            kernel32.CloseHandle(processo)
+
+    @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    def olhar(hwnd, _dados):
+        if not user32.IsWindowVisible(hwnd):
+            return True
+        # O processo vem antes do titulo: ler o titulo de uma janela do proprio HUB esperaria a
+        # thread da tela, e o HUB travaria ao fechar.
+        pid = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        if pid.value not in processos:
+            processos[pid.value] = eh_do_catia(pid.value)
+        if not processos[pid.value]:
+            return True
+        n = user32.GetWindowTextLengthW(hwnd)
+        texto = ctypes.create_unicode_buffer(n + 1)
+        user32.GetWindowTextW(hwnd, texto, n + 1)
+        if texto.value.startswith("CATIA"):
+            achado.append(texto.value)
+            return False
+        return True
+
+    user32.EnumWindows(olhar, 0)
+    return achado[0] if achado else None
 
 
 class CatiaBridge:

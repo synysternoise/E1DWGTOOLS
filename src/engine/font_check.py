@@ -124,27 +124,34 @@ class FontReport:
     total_items: int = 0
     total_ok: int = 0
     total_nok: int = 0
+    total_hidden: int = 0  # ocultos, fora da conferencia
     items: List[FontItem] = field(default_factory=list)  # fora do padrao
     ok_items: List[FontItem] = field(default_factory=list)
     stopped: bool = False
 
     @property
+    def nota_ocultos(self) -> str:
+        return f"{self.total_hidden} ocultos ignorados" if self.total_hidden else ""
+
+    @property
     def resumo(self) -> str:
+        ocultos = f"  ·  {self.nota_ocultos}" if self.total_hidden else ""
         return (
             f"PN {self.drawing_no}   |   Formato {', '.join(self.formats)}\r\n"
-            f"{self.total_nok} fora do padrão de {self.total_items} itens analisados"
+            f"{self.total_nok} fora do padrão de {self.total_items} itens analisados{ocultos}"
         )
 
     @property
     def mensagem(self) -> str:
         padroes = "".join("\r\n" + p for p in self.standards)
+        ocultos = f"\r\nOcultos ignorados: {self.total_hidden}" if self.total_hidden else ""
         return (
             "Análise concluída!\r\n\r\n"
             f"PN: {self.drawing_no}\r\n"
             f"Formato: {', '.join(self.formats)}{padroes}\r\n\r\n"
             f"Itens analisados: {self.total_items}\r\n"
             f"Corretos: {self.total_ok}\r\n"
-            f"Incorretos: {self.total_nok}"
+            f"Incorretos: {self.total_nok}{ocultos}"
         )
 
 
@@ -157,6 +164,22 @@ def _ask_sheet_format(ask_format, warn) -> str:
         if get_standard_sizes(formato):
             return formato
         warn(f"Formato '{formato}' não reconhecido.", TITULO_PEDIDO)
+
+
+def _tirar_ocultos(bridge: CatiaBridge, report: FontReport, folha: int, itens: List[FontItem]) -> None:
+    """Item oculto fora do padrao nao entra na lista. Se nao der para saber, ele continua nela."""
+    if not itens:
+        return
+    lista = ";".join(f"{'C' if it.is_dim else 'T'}:{it.view_index}:{it.item_index}" for it in itens)
+    try:
+        achados = bridge.call(SCRIPT, "Ocultos", folha, lista)[0][0]
+    except CatiaError:
+        return
+    for posicao in filter(None, achados.split(",")):
+        report.items.remove(itens[int(posicao)])
+        report.total_nok -= 1
+        report.total_items -= 1
+        report.total_hidden += 1
 
 
 def run_font_inspection(
@@ -181,6 +204,7 @@ def run_font_inspection(
         return None
 
     report = FontReport(doc_full_name, drawing_no)
+    ordem = 0
     for i in range(1, total_folhas + 1):
         if should_stop and should_stop():
             report.stopped = True
@@ -194,6 +218,7 @@ def run_font_inspection(
             report.standards.append(f'Padrões {formato}: {padrao_1}" e {padrao_2}"')
         registros = bridge.call(SCRIPT, "LerFolha", i)
         nome_folha = registros[0][0]
+        fora_da_folha = []
         for registro in registros[1:]:
             if len(registro) < 7:  # folha sem itens: o script manda um registro vazio
                 continue
@@ -201,6 +226,7 @@ def run_font_inspection(
             eh_cota = tipo == "C"
             valor = round_vba(parse_number(mm) / MM_POR_POLEGADA)
             report.total_items += 1
+            ordem += 1
             correto = is_standard(valor, padroes)
             item = FontItem(
                 sheet_name=nome_folha,
@@ -213,7 +239,7 @@ def run_font_inspection(
                 size=format_inch(valor, sep),
                 standard=f'{formato}: {padrao_1}" ou {padrao_2}"',
                 ok=correto,
-                order=report.total_items,
+                order=ordem,
                 padroes=padroes,
                 inches=valor,
             )
@@ -223,6 +249,8 @@ def run_font_inspection(
             else:
                 report.total_nok += 1
                 report.items.append(item)
+                fora_da_folha.append(item)
+        _tirar_ocultos(bridge, report, i, fora_da_folha)
         if progress:
             progress(i, total_folhas)
     return report
