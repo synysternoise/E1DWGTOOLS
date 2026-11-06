@@ -17,6 +17,7 @@ from engine import font_check as fc
 from engine import part_list as pl
 from engine import pos_zone as pz
 from engine import splits as sp
+from engine import template_check as tc
 from engine.catia_bridge import CatiaBridge, CatiaError, titulo_janela_catia
 
 
@@ -210,7 +211,8 @@ class CatiaWorker(QObject):
         if request != self._last_tool_nav:
             return
         try:
-            ok = fc.go_to_item(self._get_bridge(), report, item)
+            ir = tc.ir_para_folha if tool == "templatecheck" else fc.go_to_item
+            ok = ir(self._get_bridge(), report, item)
             self._documentos_navegados.add(report.doc_full_name)
         except CatiaError:
             self._bridge = None
@@ -340,6 +342,8 @@ class CatiaWorker(QObject):
                 report = pz.analisar_desenho(ponte, lambda m, t: self.tool_warn.emit(tool, m, t), progress=progresso)
             elif tool == "flagcheck":
                 report = ff.check_flags(ponte, progress=progresso, should_stop=self._stop.is_set)
+            elif tool == "templatecheck":
+                report = tc.conferir_template(ponte, progress=progresso, should_stop=self._stop.is_set)
             elif tool == "fontfix":
                 report = fc.run_font_inspection(
                     ponte, perguntar, lambda m, t: self.tool_warn.emit(tool, m, t),

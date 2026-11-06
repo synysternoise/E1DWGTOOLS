@@ -442,6 +442,7 @@ class Occurrence:
     cluster: int = 0
     view_index: int = 0
     item_name: str = ""
+    underlined: bool = False
     is_dim = False
 
     # Os nomes que o navegador do CATIA usa.
@@ -534,7 +535,7 @@ class Analyzer:
     def _add(self, v, folha, numero, qty, zona, x, y, source, t) -> Occurrence:
         o = Occurrence(
             numero, qty if qty > 0 else 1, zona, folha.name, v.name, x, y, source, t.index, cx=x, cy=y,
-            view_index=v.index, item_name=t.name,
+            view_index=v.index, item_name=t.name, underlined=t.underline,
         )
         self.occs.append(o)
         return o
@@ -739,10 +740,19 @@ def _bracket_callouts(k, x_qtd, fs_qtd, qty, occs) -> int:
 def consolidate(occs: List[Occurrence]) -> List[Callout]:
     saida: List[Callout] = []
     por_numero = {}
+    # A zona vem do balao sem sublinhado. O sublinhado so conta a quantidade. Um balao que tambem
+    # esta sublinhado so da a zona se a posicao nao tiver outro balao.
+    com_balao_limpo = {
+        o.number.lower() for o in occs if not o.is_reference and o.source == SOURCE_BALLOON and not o.underlined
+    }
+
+    def da_zona(o: Occurrence) -> bool:
+        return o.source == SOURCE_BALLOON and (not o.underlined or o.number.lower() not in com_balao_limpo)
+
     for o in occs:
         if o.is_reference:
             continue
-        zona = o.zone if o.source == SOURCE_BALLOON else ""
+        zona = o.zone if da_zona(o) else ""
         c = por_numero.get(o.number.lower())
         if c is None:
             c = Callout(o.number, o.qty, zona, o.sheet, o.view)
@@ -750,7 +760,7 @@ def consolidate(occs: List[Occurrence]) -> List[Callout]:
             saida.append(c)
         else:
             c.qty += o.qty
-            if o.source == SOURCE_BALLOON and trim(o.zone) and trim(o.zone).lower() != "n/a":
+            if da_zona(o) and trim(o.zone) and trim(o.zone).lower() != "n/a":
                 c.zone = add_unique(c.zone, o.zone)
             c.sheet = add_unique(c.sheet, o.sheet)
             c.view = add_unique(c.view, o.view)

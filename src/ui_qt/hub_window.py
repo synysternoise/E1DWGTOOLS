@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
 
 from ui_qt import theme as T
 from ui_qt.catia_worker import CatiaWorker
-from ui_qt.check_fix_pages import CompareDwgPage, FlagCheckPage, FontSizeFixPage
+from ui_qt.check_fix_pages import CompareDwgPage, FlagCheckPage, FontSizeFixPage, TemplateCheckPage
 from ui_qt.fix_flags_page import FixFlagsPage
 from ui_qt.font_size_page import FontSizePage, button, label
 from ui_qt.icones import icone
@@ -31,8 +31,8 @@ AINDA_NO_VBA = "Esta ferramenta ainda roda no painel VBA."
 ABA_DESIGN, ABA_CHECK, ABA_ENVIO = range(3)
 (
     PAGINA_SEQUENCIA, PAGINA_UPDATE, PAGINA_FLAGS, PAGINA_GERAL, PAGINA_FONT, PAGINA_POSZONE, PAGINA_SPLIT3D, PAGINA_SPLIT2D,
-    PAGINA_FONTFIX, PAGINA_CHECKFLAGS, PAGINA_COMPARE, PAGINA_POSZONEFIX,
-) = range(12)
+    PAGINA_FONTFIX, PAGINA_CHECKFLAGS, PAGINA_COMPARE, PAGINA_POSZONEFIX, PAGINA_CHECKTEMPLATE,
+) = range(13)
 
 
 def _so_a_atual_conta(pilha: QStackedWidget) -> None:
@@ -90,11 +90,12 @@ class HubWindow(QWidget):
         self.split2d_page = Split2DPage()
         self.fontfix_page = FontSizeFixPage()
         self.flagcheck_page = FlagCheckPage()
+        self.templatecheck_page = TemplateCheckPage()
         self.compare_page = CompareDwgPage()
         self.tool_pages = {
             p.TOOL: p for p in (
                 self.update_page, self.poszone_page, self.poszonefix_page, self.split3d_page, self.split2d_page, self.fontfix_page,
-                self.flagcheck_page,
+                self.flagcheck_page, self.templatecheck_page,
             )
         }
 
@@ -134,6 +135,7 @@ class HubWindow(QWidget):
                         ("Font Size Check", "sheet", PAGINA_FONT, ""),
                         ("Position and Zone", "box", PAGINA_POSZONE, ""),
                         ("Check de Flags", "flag", PAGINA_CHECKFLAGS, ""),
+                        ("Check de Template", "file", PAGINA_CHECKTEMPLATE, ""),
                         ("Compare DWG", "monitor", PAGINA_COMPARE, ""))),),
             "O Check não altera o desenho.",
         ))
@@ -148,7 +150,7 @@ class HubWindow(QWidget):
         for pagina in (
             self.seq_page, self.update_page, self.flags_page, self.geral_page, self.font_page,
             self.poszone_page, self.split3d_page, self.split2d_page, self.fontfix_page, self.flagcheck_page, self.compare_page,
-            self.poszonefix_page,
+            self.poszonefix_page, self.templatecheck_page,
         ):
             self._pages.addWidget(pagina)
             _so_a_atual_conta(pagina._stack) if hasattr(pagina, "_stack") else None
@@ -374,6 +376,8 @@ class HubWindow(QWidget):
         self.flagcheck_page.go_requested.connect(self._on_flagcheck_go)
         self.flagcheck_page.latest_nav.connect(wk.mark_latest_tool_nav, Qt.DirectConnection)
         self.flagcheck_page.corrigir_requested.connect(self._ir_para_fix_flags)
+        self.templatecheck_page.go_requested.connect(self._on_templatecheck_go)
+        self.templatecheck_page.latest_nav.connect(wk.mark_latest_tool_nav, Qt.DirectConnection)
         self.fontfix_page.go_requested.connect(self._on_fontfix_go)
         self.fontfix_page.latest_nav.connect(wk.mark_latest_tool_nav, Qt.DirectConnection)
         self.fontfix_page.fix_requested.connect(wk.fix_fonts)
@@ -436,6 +440,9 @@ class HubWindow(QWidget):
             self._atualizar_contagens()
         elif tool == "flagcheck":
             self.geral_page.on_flags(report)
+            self._atualizar_contagens()
+        elif tool == "templatecheck":
+            self.geral_page.on_template(report)
             self._atualizar_contagens()
         elif tool == "update" and report is not None:
             self.update_page.pedir_previa()
@@ -535,6 +542,10 @@ class HubWindow(QWidget):
         self.request_go.emit("flagcheck", report, item, pedido)
 
     @Slot(object, object, int)
+    def _on_templatecheck_go(self, report, item, pedido: int) -> None:
+        self.request_go.emit("templatecheck", report, item, pedido)
+
+    @Slot(object, object, int)
     def _on_fontfix_go(self, report, item, pedido: int) -> None:
         self.request_go.emit("fontfix", report, item, pedido)
 
@@ -550,16 +561,17 @@ class HubWindow(QWidget):
     def _atualizar_contagens(self) -> None:
         font, pos = self.geral_page.pendencias_font(), self.geral_page.pendencias_pos()
         flags = self.geral_page.pendencias_flags()
+        template = self.geral_page.pendencias_template()
         for nome, n, cor, fundo in (
             ("Font Size Check", font, T.RED, T.RED_BG), ("Position and Zone", pos, T.AMBER, T.AMBER_BG),
-            ("Check de Flags", flags, T.RED, T.RED_BG),
+            ("Check de Flags", flags, T.RED, T.RED_BG), ("Check de Template", template, T.RED, T.RED_BG),
         ):
             selo = self.rail_badges[nome]
             selo.setText(str(n))
             selo.setStyleSheet(f"color: {cor}; background: {fundo};")
             selo.setVisible(n > 0)
-        self.contagem_check.setText(str(font + pos + flags))
-        self.contagem_check.setVisible(font + pos + flags > 0)
+        self.contagem_check.setText(str(font + pos + flags + template))
+        self.contagem_check.setVisible(font + pos + flags + template > 0)
 
     @Slot(list)
     def _rodar_checks(self, checks: list) -> None:
@@ -569,6 +581,8 @@ class HubWindow(QWidget):
             self.request_tool.emit("poszone")
         if "flagcheck" in checks:
             self.request_tool.emit("flagcheck")
+        if "templatecheck" in checks:
+            self.request_tool.emit("templatecheck")
 
     @Slot(str)
     def _revisar(self, qual: str) -> None:
@@ -576,6 +590,8 @@ class HubWindow(QWidget):
             self.ir_para(ABA_CHECK, "Check", "Font Size Check", PAGINA_FONT)
         elif qual == "flagcheck":
             self.ir_para(ABA_CHECK, "Check", "Check de Flags", PAGINA_CHECKFLAGS)
+        elif qual == "templatecheck":
+            self.ir_para(ABA_CHECK, "Check", "Check de Template", PAGINA_CHECKTEMPLATE)
         else:
             self.ir_para(ABA_CHECK, "Check", "Position and Zone", PAGINA_POSZONE)
 

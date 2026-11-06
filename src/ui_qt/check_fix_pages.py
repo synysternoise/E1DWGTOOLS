@@ -9,6 +9,7 @@ from PySide6.QtWidgets import QBoxLayout, QButtonGroup, QFileDialog, QFrame, QHB
 from engine import compare_dwg as cd
 from engine import fix_flags as ff
 from engine import font_check as fc
+from engine import template_check as tc
 from ui_qt import theme as T
 from ui_qt.fix_flags_page import mostrar
 from ui_qt.font_size_page import PAPEL_OK, MarkDelegate, button, label
@@ -187,6 +188,152 @@ class FlagCheckPage(ToolPage):
                 self._ir(linha)
             else:
                 self.table.setCurrentCell(linha, 2)
+
+
+class TemplateCheckPage(ToolPage):
+    """Numeracao, formato e escala da legenda de cada folha, sem gravar nada no desenho."""
+
+    TOOL = "templatecheck"
+    TITULO = "Check de Template"
+    DESCRICAO = (
+        "Confere a legenda de cada folha: numeração (primeira folha 1/total, as outras só o número), "
+        "formato contra o papel e escala contra as vistas. O desenho não é alterado."
+    )
+    BOTAO = "CONFERIR O TEMPLATE"
+    BOTAO_DE_NOVO = "Conferir de novo"
+    ANDAMENTO = "Conferindo o template"
+    ETIQUETA = "SÓ CONFERE"
+    TIPO_ETIQUETA = "confere"
+    ICONE = "file"
+
+    go_requested = Signal(object, object, int)
+    latest_nav = Signal(int)
+
+    def __init__(self):
+        self._rows: List = []
+        self._atual = -1
+        self._pedido = 0
+        super().__init__()
+
+    def _build_results(self, col: QVBoxLayout) -> None:
+        cartoes = QHBoxLayout()
+        cartoes.setSpacing(8)
+        self.card_errados = Cartao("errados", "vermelho")
+        self.card_conferir = Cartao("para conferir", "ambar")
+        self.card_certos = Cartao("certos", "verde")
+        for c in (self.card_errados, self.card_conferir, self.card_certos):
+            cartoes.addWidget(c, 1)
+        col.addLayout(cartoes)
+        filtros = QHBoxLayout()
+        filtros.setSpacing(6)
+        self._grupo = QButtonGroup(self)
+        self.btn_revisar = button("", "filtro")
+        self.btn_certos = button("", "filtro")
+        self.btn_todos = button("", "filtro")
+        for i, b in enumerate((self.btn_revisar, self.btn_certos, self.btn_todos)):
+            b.setCheckable(True)
+            self._grupo.addButton(b, i)
+            filtros.addWidget(b)
+        filtros.addStretch(1)
+        self._grupo.idClicked.connect(lambda _: self._preencher())
+        col.addLayout(filtros)
+        self.table = tabela(("", "FOLHA", "CONFERÊNCIA", "LIDO", "ESPERADO", "SITUAÇÃO"), {0: 40, 1: 110, 3: 130, 4: 130, 5: 100}, 2)
+        self.table.setItemDelegateForColumn(0, MarkDelegate(self.table))
+        self.table.selectionModel().currentRowChanged.connect(self._on_linha)
+        col.addWidget(self.table, 1)
+        detalhe = moldura("detalhe")
+        d = QHBoxLayout(detalhe)
+        d.setContentsMargins(14, 8, 14, 8)
+        textos = QVBoxLayout()
+        textos.setSpacing(0)
+        self.lbl_detail = largura_livre(label("", "detalheForte"))
+        self.lbl_detail.setWordWrap(True)
+        self.lbl_where = largura_livre(label("", "detalheFraco"))
+        self.lbl_where.setWordWrap(True)
+        textos.addWidget(self.lbl_detail)
+        textos.addWidget(self.lbl_where)
+        d.addLayout(textos, 1)
+        self.lbl_nav_state = label("", "chipEstado")
+        d.addWidget(self.lbl_nav_state)
+        col.addWidget(detalhe)
+
+    def _show_report(self, report) -> None:
+        parou = "  ·  Parado antes do fim" if report.stopped else ""
+        self.lbl_sub.setText(f"{report.total_folhas} folhas{parou}")
+        self.card_errados.valor(report.errados)
+        self.card_conferir.valor(report.conferir)
+        self.card_certos.valor(report.certos)
+        revisar = report.errados + report.conferir
+        self.btn_revisar.setText(f"Para revisar ({revisar})")
+        self.btn_certos.setText(f"Certos ({report.certos})")
+        self.btn_todos.setText(f"Todos ({len(report.items)})")
+        (self.btn_revisar if revisar else self.btn_todos).setChecked(True)
+        self._preencher()
+
+    def _preencher(self) -> None:
+        filtro = self._grupo.checkedId()
+        itens = self._report.items
+        self._rows = [i for i in itens if filtro == 2 or ((i.situacao == tc.CERTO) == (filtro == 1))]
+        self._atual = -1
+        self.table.blockSignals(True)
+        self.table.selectionModel().blockSignals(True)
+        self.table.clearContents()
+        self.table.setRowCount(len(self._rows))
+        for n, it in enumerate(self._rows):
+            marca = QTableWidgetItem()
+            marca.setData(PAPEL_OK, None if it.situacao == tc.CONFERIR else it.situacao == tc.CERTO)
+            self.table.setItem(n, 0, marca)
+            for coluna, texto in ((1, it.sheet_name), (2, it.regra), (3, it.lido or "(vazio)"), (4, it.esperado), (5, it.situacao)):
+                cel = QTableWidgetItem(texto)
+                cel.setToolTip(it.detalhe or texto)
+                self.table.setItem(n, coluna, cel)
+        self.table.selectionModel().blockSignals(False)
+        self.table.blockSignals(False)
+        if self._rows:
+            self.table.setCurrentCell(0, 2)
+        else:
+            self.lbl_nav_state.setText("")
+            self.lbl_detail.setText("Nenhum item nesta lista")
+            self.lbl_where.setText("")
+
+    def _on_linha(self, atual, _a) -> None:
+        if atual.isValid():
+            self._ir(atual.row())
+
+    def _ir(self, linha: int) -> None:
+        self._atual = linha
+        it = self._rows[linha]
+        lido = it.lido or "(vazio)"
+        if it.situacao == tc.CERTO:
+            self.lbl_detail.setText(f"{it.regra}: {lido}, certo")
+        elif it.esperado:
+            self.lbl_detail.setText(f"{it.regra}: {lido}  ›  esperado {it.esperado}")
+        else:
+            self.lbl_detail.setText(f"{it.regra}: {lido}")
+        self.lbl_where.setText(it.detalhe)
+        self._estado("Indo até a folha", T.AMBER)
+        self._pedido += 1
+        self.latest_nav.emit(self._pedido)
+        self.go_requested.emit(self._report, it, self._pedido)
+
+    def on_nav_done(self, pedido: int, ok: bool) -> None:
+        if pedido != self._pedido:
+            return
+        if ok:
+            self._estado("Folha aberta no CATIA", T.GREEN)
+        else:
+            self._estado("Folha não encontrada", T.RED)
+
+    def _estado(self, texto: str, cor: str) -> None:
+        self.lbl_nav_state.setText(f"●  {texto}" if texto else "")
+        self.lbl_nav_state.setStyleSheet(f"color: {cor};")
+
+    def set_compact(self, compact: bool) -> None:
+        """No compacto, o que a legenda tem e o esperado continuam visiveis: sao o resultado."""
+        super().set_compact(compact)
+        self.table.setColumnHidden(5, compact)
+        for coluna, normal, estreita in ((1, 110, 66), (3, 130, 76), (4, 130, 76)):
+            self.table.setColumnWidth(coluna, estreita if compact else normal)
 
 
 class FontSizeFixPage(ToolPage):

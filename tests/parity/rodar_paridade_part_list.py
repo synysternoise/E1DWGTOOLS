@@ -43,6 +43,9 @@ DESENHO = [
     (21, "B002", 2),        # quantidade quebrada
 ]
 
+# Diferenca pedida: com duas zonas, basta uma bater. A macro deixa essa posicao vermelha.
+POSICAO_DIFERENTE = "14"
+
 # PN, posicao, zona, programa, SN inicial, SN final, quantidade.
 ARQUIVO_1 = [
     ("PN10", "10", "A001", "0170", "1", "9", 2),
@@ -177,15 +180,24 @@ def main() -> int:
             if macro_tabela != py_tabela:
                 dif += 1
                 print(f"  tabela diferente:\n   VBA {macro_tabela}\n   PY  {py_tabela}")
-            if macro_des != py_des:
+            # O resto tem de continuar igual. A posicao diferente e conferida a parte, nos dois lados.
+            des_iguais = [str(d[0]) != POSICAO_DIFERENTE for d in DESENHO]
+            sap_iguais = [t[1] != POSICAO_DIFERENTE for t in macro_tabela]
+            so_iguais = lambda valores, filtro: [v for v, f in zip(valores, filtro) if f]  # noqa: E731
+            if so_iguais(macro_des, des_iguais) != so_iguais(py_des, des_iguais):
                 dif += 1
                 print(f"  cores do desenho:\n   VBA {macro_des}\n   PY  {py_des}")
-            if macro_sap != py_sap:
+            if so_iguais(macro_sap, sap_iguais) != so_iguais(py_sap, sap_iguais):
                 dif += 1
                 print(f"  cores do SAP:\n   VBA {macro_sap}\n   PY  {py_sap}")
-            if macro_pn != [x[0] for x in py_sap]:
+            if so_iguais(macro_pn, sap_iguais) != [x[0] for x in so_iguais(py_sap, sap_iguais)]:
                 dif += 1
                 print(f"  PN acompanha a posicao:\n   VBA {macro_pn}")
+            if nome != "aba PSA":  # esse arquivo nao tem a posicao 14
+                i_des = des_iguais.index(False)
+                if macro_des[i_des][1] or not py_des[i_des][1]:
+                    dif += 1
+                    print(f"  posicao {POSICAO_DIFERENTE}: esperava macro vermelha e Python verde. VBA {macro_des[i_des]}, PY {py_des[i_des]}")
             m = re.search(r"Linhas v.lidas lidas: (\d+).*?Registros consolidados: (\d+)", msg.replace("<CRLF>", " "))
             if not m or (int(m.group(1)), int(m.group(2))) != (parte.linhas_lidas, len(parte.registros)):
                 dif += 1

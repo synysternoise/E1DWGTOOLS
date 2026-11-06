@@ -19,6 +19,7 @@ usuário em 04/11/2026. A pasta `legacy_vba/` está **desatualizada** e não ser
 | Position and Zone | `vba_referencia/poszone` (V3.5.1) | Convertido |
 | Split 2D e 3D | `vba_referencia/SPLIT 2D`, `SPLIT 3D` | Convertido |
 | Check de Flags | Mesmas regras do Fix Flags, sem gravar | Novo, na aba Check |
+| Check de Template | Legenda real das fotos do desenho 171-54397-801 | Novo, na aba Check |
 | Font Size Fix | Mesmas regras do Font Size Check, mudando o tamanho | Novo, na aba Design |
 | Comparação no Excel | `vba_referencia/excel` | Continua no Excel |
 | Painel | `vba_referencia/symbol shape` | Substituído pelo HUB, menos o Symbol Shape |
@@ -99,6 +100,27 @@ python tests\parity\rodar_paridade_poszone.py
 
 As telas têm testes com cliques reais: `testar_tela_font.py`, `testar_tela_flags.py` e
 `testar_tela_ferramentas.py`, que usam as pastas criadas pelos testes de paridade.
+
+## Check de Template
+
+Só lê. Não ativa folha, não seleciona e não escreve no desenho. `tests/parity/testar_check_template.py`
+compara uma foto do desenho antes e depois.
+
+- **Como acha os campos.** Pelo rótulo: `SCALE` e `SHEET / OF`, com o valor embaixo, na mesma célula. O
+  nome dos textos não é usado. O número da folha também é procurado na Main View.
+- **Numeração.** A primeira folha mostra `1/total`. As outras mostram só o próprio número. O parâmetro
+  `No_of_Sheets`, se existir, precisa ser igual ao número de folhas.
+- **Formato.** A etiqueta precisa bater com o papel. 3A0 e E3 são papel personalizado, sem medida de
+  referência aqui: ficam em Conferir.
+- **Escala.** O campo é comparado com as vistas da folha. Não contam as vistas com `ISOMETRIC`, `ISO`,
+  `SECTION` ou `VIEW` no nome, nem as zonas. A exceção é `VIEW LOOKING` (FWD, AFT etc.), que conta.
+  `PLAN VIEW` fica fora porque a escala dela não é garantida. Se todas baterem, Certo. Se nenhuma bater,
+  Errado. Se só parte bater, Conferir.
+- **Nome.** Não é conferido, a pedido.
+- **Conferir.** É o que o programa não tem como afirmar: campo não achado, folha sem vista para comparar,
+  escala que não é número (NTS). Não conta no selo da aba.
+- **O que não foi testado.** Template real. O teste monta a legenda no arranjo das fotos, com as medidas
+  estimadas pela régua da foto.
 
 ## Fix Flags: o que o teste cobre
 
@@ -184,15 +206,19 @@ As telas têm testes com cliques reais: `testar_tela_font.py`, `testar_tela_flag
   (`vba_referencia/excel`), em `src/engine/part_list.py`. A leitura usa um Excel escondido, fechado no
   fim, e dá o mesmo resultado da macro (`rodar_paridade_part_list.py`). O desenho e o SAP aparecem
   lado a lado por posição, em vez de duas tabelas separadas.
-- **Como na macro.** Um callout com duas zonas no desenho (`A005; A006`) fica vermelho, mesmo que o SAP
-  tenha as duas. A planilha fazia assim. Nesse caso, confira e use o OK manual.
+- **De onde vem a zona.** Do balão sem sublinhado. O sublinhado só conta a quantidade. Um balão que
+  também está sublinhado só dá a zona se a posição não tiver outro balão.
+- **Diferente da macro, a pedido.** Com mais de uma zona, no desenho (`A005; A006`) ou no SAP, a posição
+  fica verde se uma delas bater. A planilha deixava vermelho, porque comparava o texto inteiro com a
+  primeira zona do SAP. Com isso, um balão fora do lugar não aparece se outro da mesma posição bater, e
+  uma zona do SAP sem balão no desenho também não, desde que a quantidade total bata.
 - **OK manual (novo).** Vale por posição e fica em `%APPDATA%\E1DWGTools\poszone_ok.json`, separado por
   desenho. Deixa de valer se a zona ou a quantidade mudarem, no desenho ou no SAP. Fica neste PC: não
   vai junto com o desenho para o PC de outra pessoa.
 - **Mover o balão (novo, só no Design).** A zona vem do lugar do balão, então corrigir é mover. O balão
   vai para o ponto da zona pedida mais perto de onde está, com os textos encostados (flag, número,
   quantidade), e a tela avisa quais. A ponta do leader não sai do lugar. Lê de volta para conferir e
-  tem DESFAZER. Vista travada não move. O HUB não verifica se o novo lugar ficou em cima de outro
+  tem DESFAZER. Se a posição já bate, não sugere mover os outros balões. Vista travada não move. O HUB não verifica se o novo lugar ficou em cima de outro
   desenho: quem confere é a pessoa, com o balão selecionado na tela.
 
 ## Fechar o HUB

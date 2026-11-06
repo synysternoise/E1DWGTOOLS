@@ -103,8 +103,9 @@ def montar_linhas(report: pz.PosZoneReport, parte: Optional[pl.PartList], oks: p
             li.zonas_sap = comp.zonas_sap.get(p, [])
             li.qtd_sap = comp.qtd_sap.get(p)
             if li.sap:
-                li.zona_sap_ok = all(x.zona for x in resultados[p])
-                li.qtd_sap_ok = all(x.quantidade for x in resultados[p])
+                # Mesma regra da coluna do desenho: basta uma zona do Part List bater.
+                li.zona_sap_ok = any(x.zona for x in resultados[p])
+                li.qtd_sap_ok = any(x.quantidade for x in resultados[p])
         linhas.append(li)
     if parte:
         faltam = sorted(comp.faltam_no_desenho(parte.registros), key=_ordem)
@@ -477,7 +478,7 @@ class PosZonePage(ToolPage):
         if li.occs:
             o = li.occs[self._occ]
             item = o
-            tipo = "balão" if o.source == pz.SOURCE_BALLOON else "sublinhado"
+            tipo = "sublinhado" if o.source != pz.SOURCE_BALLOON else ("balão sublinhado" if o.underlined else "balão")
             zona = f" › zona {o.zone}" if o.source == pz.SOURCE_BALLOON else ""
             self.lbl_where.setText(f"{o.sheet} › {o.view} › {tipo} {self._occ + 1} de {total}{zona}")
         elif li.pendencia:
@@ -584,7 +585,8 @@ class PosZonePage(ToolPage):
             self.combo_zona.addItems(zonas)
             alvo = o.zone
             pedidas = li.zonas_sap
-            if pedidas and pl.normalizar_zona(o.zone) not in pedidas:
+            # Se a posicao ja bate, os outros baloes so mostram onde a peca aparece: nao sugere mover.
+            if pedidas and not li.zona_ok and pl.normalizar_zona(o.zone) not in pedidas:
                 alvo = next((z for z in pedidas if z in zonas), "")
                 if not alvo:
                     junto = f"O Part List pede {', '.join(pedidas)}, que não é desta folha. "

@@ -80,12 +80,62 @@ class TestComparar(unittest.TestCase):
         self.assertEqual(c.sap[0], pl.Resultado())
         self.assertEqual(c.faltam_no_desenho([pl.RegistroSAP("P", "20", "A001", 2.0)]), ["20"])
 
-    def test_varias_zonas_no_sap_soma_a_quantidade_e_compara_a_primeira(self):
+    def test_varias_zonas_no_sap_soma_a_quantidade(self):
         reg = [pl.RegistroSAP("P", "10", "A001", 2.0), pl.RegistroSAP("P", "10", "A002", 3.0)]
         c = pl.comparar([_callout("10", "A001", 5)], reg)
         self.assertEqual(c.desenho["10"], pl.Resultado(True, True, True))
         self.assertEqual(c.sap[1].zona, False)
         self.assertEqual(c.zonas_sap["10"], ["A001", "A002"])
+
+    def test_duas_zonas_no_desenho_basta_uma_bater(self):
+        for sap in ("A005", "A006"):
+            c = pl.comparar([_callout("10", "A005; A006", 2)], [pl.RegistroSAP("P", "10", sap, 2.0)])
+            self.assertEqual(c.desenho["10"], pl.Resultado(True, True, True), sap)
+            self.assertEqual(c.sap[0], pl.Resultado(True, True, True), sap)
+
+    def test_duas_zonas_no_desenho_nenhuma_bate(self):
+        c = pl.comparar([_callout("10", "A005; A006", 2)], [pl.RegistroSAP("P", "10", "A007", 2.0)])
+        self.assertEqual(c.desenho["10"], pl.Resultado(True, False, False))
+        self.assertEqual(c.sap[0], pl.Resultado(True, False, False))
+
+    def test_zona_certa_e_a_segunda_do_sap(self):
+        reg = [pl.RegistroSAP("P", "10", "A001", 1.0), pl.RegistroSAP("P", "10", "A002", 1.0)]
+        c = pl.comparar([_callout("10", "A002", 2)], reg)
+        self.assertEqual(c.desenho["10"], pl.Resultado(True, True, True))
+
+    def test_uma_zona_nao_bate_com_outra_que_comeca_igual(self):
+        c = pl.comparar([_callout("10", "A0051", 2)], [pl.RegistroSAP("P", "10", "A005", 2.0)])
+        self.assertFalse(c.desenho["10"].zona)
+
+    def test_sublinhado_sem_balao_nao_tem_zona(self):
+        c = pl.comparar([_callout("10", "", 1)], [pl.RegistroSAP("P", "10", "A005", 1.0)])
+        self.assertEqual(c.desenho["10"], pl.Resultado(True, False, False))
+
+
+def _occ(numero, zona, fonte, sublinhado=False, qtd=1):
+    return pz.Occurrence(numero, qtd, zona, "S", "V", 0, 0, fonte, 1, underlined=sublinhado)
+
+
+class TestZonaDoBalao(unittest.TestCase):
+    def test_sublinhado_so_conta_a_quantidade(self):
+        c = pz.consolidate([_occ("10", "A001", pz.SOURCE_UNDERLINED), _occ("10", "A005", pz.SOURCE_BALLOON)])
+        self.assertEqual((c[0].zone, c[0].qty), ("A005", 2))
+
+    def test_balao_sublinhado_nao_da_zona_se_tem_balao_sem_sublinhado(self):
+        c = pz.consolidate([_occ("10", "A001", pz.SOURCE_BALLOON, True), _occ("10", "A005", pz.SOURCE_BALLOON), _occ("10", "A002", pz.SOURCE_BALLOON, True)])
+        self.assertEqual((c[0].zone, c[0].qty), ("A005", 3))
+
+    def test_so_balao_sublinhado_ainda_da_a_zona(self):
+        c = pz.consolidate([_occ("10", "A001", pz.SOURCE_BALLOON, True)])
+        self.assertEqual(c[0].zone, "A001")
+
+    def test_dois_baloes_sem_sublinhado_ficam_as_duas_zonas(self):
+        c = pz.consolidate([_occ("10", "A005", pz.SOURCE_BALLOON), _occ("10", "A006", pz.SOURCE_BALLOON)])
+        self.assertEqual(c[0].zone, "A005; A006")
+
+    def test_regra_de_uma_posicao_nao_vale_para_outra(self):
+        c = pz.consolidate([_occ("10", "A005", pz.SOURCE_BALLOON), _occ("11", "A006", pz.SOURCE_BALLOON, True)])
+        self.assertEqual([x.zone for x in c], ["A005", "A006"])
 
 
 class TestOkManual(unittest.TestCase):

@@ -190,6 +190,10 @@ def linha_de(pagina, numero):
 
 i = linha_de(p, "22")
 confere("quantidade errada fica vermelha na tabela", p.table.item(i, pp.COL_QTD).foreground().color() == QColor(T.RED) and p.table.item(i, pp.COL_ZONA).foreground().color() == QColor(T.GREEN))
+i = linha_de(p, "21")
+confere("duas zonas no desenho: fica verde se uma bater", ";" in callouts["21"].zone and p.table.item(i, pp.COL_ZONA).foreground().color() == QColor(T.GREEN) and p.table.item(i, pp.COL_PL_ZONA).foreground().color() == QColor(T.GREEN), callouts["21"].zone)
+p.table.setCurrentCell(i, pp.COL_POS)
+confere("com a zona batendo, não sugere mover os outros balões", not p.btn_mover.isEnabled(), p.btn_mover.text())
 i = next(n for n, li in enumerate(p._rows) if li.tipo == pp.SO_PART_LIST)
 p.table.setCurrentCell(i, pp.COL_POS)
 confere("só no Part List: nada para percorrer", p.lbl_where.text() == "Sem balão no desenho" and p.lbl_nav_state.text() == "" and p.table.item(i, pp.COL_PN).text() == "PN-EXTRA", p.lbl_detail.text())

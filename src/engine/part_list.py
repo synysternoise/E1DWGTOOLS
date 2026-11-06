@@ -2,7 +2,8 @@
 
 Porte de vba_referencia/excel (macros ImportarDadosSAP, CompararPosicaoZona e LimparDadosSAP da
 planilha _Callouts.xlsm). As regras sao as mesmas: tests/parity/rodar_paridade_part_list.py compara
-com a macro de verdade. O OK manual e novo: fica no perfil do usuario, separado por desenho.
+com a macro de verdade. Uma diferenca, a pedido: com mais de uma zona, basta uma bater; a macro
+deixava vermelho. O OK manual e novo: fica no perfil do usuario, separado por desenho.
 """
 from __future__ import annotations
 
@@ -224,25 +225,28 @@ def iguais(a: float, b: float) -> bool:
     return abs(a - b) <= TOLERANCIA
 
 
+def zonas_do_callout(zona) -> List[str]:
+    """As zonas dos baloes de uma posicao: "A005; A006" sao duas."""
+    return [normalizar_zona(z) for z in str(zona or "").split(";")]
+
+
 def comparar(callouts, registros: List[RegistroSAP]) -> Comparacao:
-    """callouts: objetos com number, zone e qty. A mesma logica de CompararPosicaoZona."""
-    zona_des: Dict[str, str] = {}
+    """callouts: objetos com number, zone e qty. A logica de CompararPosicaoZona, com uma diferenca:
+    a macro comparava o texto inteiro com a primeira zona do SAP. Aqui, basta uma zona bater."""
+    zona_des: Dict[str, List[str]] = {}
     qtd_des: Dict[str, float] = {}
     for c in callouts:
         p = normalizar_posicao(c.number)
         if p:
-            zona_des.setdefault(p, normalizar_zona(c.zone))
+            zona_des.setdefault(p, zonas_do_callout(c.zone))
             qtd_des[p] = qtd_des.get(p, 0.0) + float(c.qty)
 
-    # A primeira zona de cada posicao, na ordem da tabela, e a que a macro compara.
-    zona_sap: Dict[str, str] = {}
     qtd_sap: Dict[str, float] = {}
     zonas_sap: Dict[str, List[str]] = {}
     for r in registros:
         p = normalizar_posicao(r.posicao)
         if p:
             z = normalizar_zona(r.zona)
-            zona_sap.setdefault(p, z)
             if z not in zonas_sap.setdefault(p, []):
                 zonas_sap[p].append(z)
             qtd_sap[p] = qtd_sap.get(p, 0.0) + r.quantidade
@@ -251,9 +255,9 @@ def comparar(callouts, registros: List[RegistroSAP]) -> Comparacao:
     for c in callouts:
         p = normalizar_posicao(c.number)
         res = Resultado()
-        if p and p in zona_sap:
+        if p and p in zonas_sap:
             res.posicao = True
-            res.zona = normalizar_zona(c.zone) == zona_sap[p]
+            res.zona = any(z in zonas_sap[p] for z in zonas_do_callout(c.zone))
             res.quantidade = res.zona and iguais(qtd_des[p], qtd_sap[p])
         desenho[p] = res
 
@@ -263,7 +267,7 @@ def comparar(callouts, registros: List[RegistroSAP]) -> Comparacao:
         res = Resultado()
         if p and p in zona_des:
             res.posicao = True
-            res.zona = normalizar_zona(r.zona) == zona_des[p]
+            res.zona = normalizar_zona(r.zona) in zona_des[p]
             res.quantidade = res.zona and iguais(qtd_des[p], qtd_sap[p])
         sap.append(res)
     return Comparacao(desenho, sap, qtd_sap, zonas_sap)

@@ -300,13 +300,13 @@ g = j.geral_page
 abre(os.path.join(P_POS, "POS_RICO.CATDrawing"))
 espera(lambda: "POS_RICO" in j.chip_doc.text(), 6)
 espera(lambda: g.btn_rodar.isEnabled(), 6)
-confere("Visão geral roda os três checks", g.btn_rodar.text() == "RODAR 3 CHECKS", g.btn_rodar.text())
+confere("Visão geral roda os quatro checks", g.btn_rodar.text() == "RODAR 4 CHECKS", g.btn_rodar.text())
 respostas.append(("A1", True))  # este desenho nao tem formato, e o Font Check pergunta
 clica(g.btn_rodar)
-confere("o resultado aparece", espera(lambda: g._font is not None and g._pos is not None and g._flags is not None, 90), f"{g.card_revisar.numero.text()} para revisar")
+confere("o resultado aparece", espera(lambda: g._font is not None and g._pos is not None and g._flags is not None and g._template is not None, 90), f"{g.card_revisar.numero.text()} para revisar")
 espera(lambda: False, 0.5)
 foto_tela(j, "check_geral")
-confere("o contador da aba soma as pendências", j.contagem_check.text() == str(g.pendencias_font() + g.pendencias_pos() + g.pendencias_flags()), j.contagem_check.text())
+confere("o contador da aba soma as pendências", j.contagem_check.text() == str(g.pendencias_font() + g.pendencias_pos() + g.pendencias_flags() + g.pendencias_template()), j.contagem_check.text())
 
 fechar_tudo()
 espera(lambda: False, 3)

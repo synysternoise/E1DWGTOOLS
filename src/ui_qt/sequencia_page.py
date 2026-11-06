@@ -424,6 +424,7 @@ class CheckGeralPage(QWidget):
         self._font = None
         self._pos = None
         self._flags = None
+        self._template = None
         self._connected = False
         self._has_drawing = False
         h = QVBoxLayout(self)
@@ -450,9 +451,11 @@ class CheckGeralPage(QWidget):
         self.linha_pos = _LinhaCheck("Position and Zone Check", "Callouts, zonas e quantidades")
         self.linha_flags = _LinhaCheck("Check de Flags", "Confere sem corrigir")
         self.linha_flags.btn_revisar.clicked.connect(lambda: self.revisar_requested.emit("flagcheck"))
+        self.linha_template = _LinhaCheck("Check de Template", "Numeração, formato e escala de cada folha")
+        self.linha_template.btn_revisar.clicked.connect(lambda: self.revisar_requested.emit("templatecheck"))
         self.linha_font.btn_revisar.clicked.connect(lambda: self.revisar_requested.emit("font"))
         self.linha_pos.btn_revisar.clicked.connect(lambda: self.revisar_requested.emit("poszone"))
-        for l in (self.linha_font, self.linha_pos, self.linha_flags):
+        for l in (self.linha_font, self.linha_pos, self.linha_flags, self.linha_template):
             l.caixa.clicked.connect(self._atualizar)
             col.addWidget(l)
         # Programa externo: nao tem resultado para mostrar aqui, so abre.
@@ -486,8 +489,16 @@ class CheckGeralPage(QWidget):
             self._flags = report
             self._atualizar()
 
+    def on_template(self, report) -> None:
+        if report is not None:
+            self._template = report
+            self._atualizar()
+
     def pendencias_flags(self) -> int:
         return self._flags.erradas if self._flags else 0
+
+    def pendencias_template(self) -> int:
+        return self._template.errados if self._template else 0
 
     def pendencias_font(self) -> int:
         return self._font.total_nok if self._font else 0
@@ -505,6 +516,8 @@ class CheckGeralPage(QWidget):
             saida.append("poszone")
         if self.linha_flags.caixa.isChecked():
             saida.append("flagcheck")
+        if self.linha_template.caixa.isChecked():
+            saida.append("templatecheck")
         return saida
 
     def _rodar(self) -> None:
@@ -553,6 +566,19 @@ class CheckGeralPage(QWidget):
             else:
                 ok += 1
                 self.linha_flags.marcar("ok")
+        if self._template is None:
+            nao += 1
+            self.linha_template.marcar("neutro")
+            self.linha_template.lbl_resultado.setText("Ainda não rodou")
+        else:
+            r = self._template
+            self.linha_template.lbl_resultado.setText(f"{r.certos} certos · {r.errados} errados · {r.conferir} para conferir")
+            if r.errados or r.conferir:
+                revisar += 1
+                self.linha_template.marcar("erro" if r.errados else "aviso")
+            else:
+                ok += 1
+                self.linha_template.marcar("ok")
         self.card_revisar.valor(revisar)
         self.card_ok.valor(ok)
         self.card_nao.valor(nao)
