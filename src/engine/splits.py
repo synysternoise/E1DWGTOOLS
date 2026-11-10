@@ -135,6 +135,9 @@ def _exportar_folha(app, temporario: str, nome_folha: str, final: str) -> None:
                     sel.Clear()
                     sel.Add(folhas.Item(j))
                     sel.Delete()
+        # O arquivo exportado vem do disco, sem as travas aplicadas agora no desenho aberto:
+        # trava de novo aqui, para ele sair com todas as vistas travadas.
+        _travar_vistas(copia)
         copia.SaveAs(final)
     except COM_ERROR:
         # Melhoria sobre a macro: a copia nao fica aberta depois de um erro.

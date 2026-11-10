@@ -248,5 +248,6 @@ botão de macro não foi testado aqui. `python verificar.py --catia` mostra o es
 - **Documento incompleto.** Depois de um erro, a cópia ou a peça incompleta não fica aberta, e os
   alertas e a tela do CATIA voltam ao normal. No Split 3D, a macro deixava os dois desligados.
 - **Parar.** Dá para parar entre uma folha ou parte e a seguinte.
-- **Como na macro.** O Split 2D copia o arquivo do disco: alterações não salvas e as travas aplicadas
-  agora não vão para os arquivos exportados.
+- **Vistas travadas no arquivo exportado (09/11/2026).** O Split 2D copia o arquivo do disco, então as
+  travas aplicadas no desenho aberto não iam para os arquivos exportados. Agora cada arquivo é travado
+  antes de salvar, no Python e em `vba/split2d.txt`. Alterações não salvas continuam fora, como na macro.

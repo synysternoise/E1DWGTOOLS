@@ -1,4 +1,4 @@
-"""Verificador do DWG Tools. Confere a instalacao, instala o que faltar e diz o que fazer.
+"""Verificador do E1 Tools. Confere a instalacao, instala o que faltar e diz o que fazer.
 
 Uso:  python verificar.py
 
@@ -33,7 +33,7 @@ MANIFESTO = {
     "src/engine/fix_flags.py": (272, 'aab35321882e9640'),
     "src/engine/atualizar_template.py": (923, '3c872235ffba39c3'),
     "src/engine/pos_zone.py": (1152, '23e278610959b4dd'),
-    "src/engine/splits.py": (418, 'd9baf50a4547e4fa'),
+    "src/engine/splits.py": (421, '1355a489c548390e'),
     "src/engine/part_list.py": (329, '0ba1c0b77078656a'),
     "src/engine/compare_dwg.py": (55, '88a0ef05fa82038f'),
     "src/engine/template_check.py": (406, 'b2a324cbcdb828fb'),
@@ -51,7 +51,7 @@ MANIFESTO = {
     "src/ui_qt/sequencia_page.py": (590, '2bbc7765a5d21f1a'),
     "src/ui_qt/check_fix_pages.py": (706, '9917aa1c26307fab'),
     "src/ui_qt/poszone_page.py": (767, '7f8a54339c35b5c1'),
-    "src/ui_qt/hub_window.py": (689, '7d821a2f897ad5ac'),
+    "src/ui_qt/hub_window.py": (697, '4bcc377791f62b85'),
 }
 
 REDE = re.compile(
@@ -329,7 +329,7 @@ def main() -> int:
         return 0
     if "--catia" in sys.argv:
         return diagnosticar_catia()
-    print("\nVERIFICADOR DO DWG TOOLS\n", flush=True)
+    print("\nVERIFICADOR DO E1 TOOLS\n", flush=True)
     if not conferir_python():
         return 1
     tudo_certo = True

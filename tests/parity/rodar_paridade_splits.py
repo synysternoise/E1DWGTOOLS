@@ -1,4 +1,4 @@
-"""Compara o Split 2D e o Split 3D em Python com as macros em vba_referencia.
+"""Compara o Split 2D e o Split 3D em Python com as macros da pasta vba.
 
 Cada arquivo gerado e aberto e fotografado: folhas, vistas, travas, textos, Bodies e planos.
 O estado do documento original e do CATIA tambem e comparado.
@@ -24,7 +24,7 @@ sys.path.insert(0, os.path.join(RAIZ, "src"))
 
 import apoio  # noqa: E402
 from engine import splits as sp  # noqa: E402
-from engine.catia_bridge import CAMPO, CatiaBridge  # noqa: E402
+from engine.catia_bridge import CAMPO, REGISTRO, CatiaBridge  # noqa: E402
 
 SCRIPT = "montar_fixtures_splits.catvbs"
 
@@ -45,8 +45,11 @@ End Sub
 '''
 
 
+ARQUIVOS_VBA = {"SPLIT 2D": "split2d.txt", "SPLIT 3D": "split3d.txt"}
+
+
 def preparar(nome: str, destino: str, pasta_downloads: str = "") -> None:
-    fonte = apoio.trocar_janelas(apoio.ler_fonte(os.path.join(RAIZ, "vba_referencia", nome)))
+    fonte = apoio.trocar_janelas(apoio.ler_fonte(os.path.join(RAIZ, "vba", ARQUIVOS_VBA[nome])))
     # So no teste: no Excel, Application e o proprio Excel.
     fonte = re.sub(r"\bAs Application\b", "As Object", fonte)
     fonte = re.sub(r"^\s*DoEvents\s*$", "", fonte, flags=re.M)
@@ -151,6 +154,13 @@ def caso_2d(xl, bridge, trabalho, nome, caminho, baixa_vba, baixa_py, travadas=0
         for a, b in zip(f_vba, f_py):
             if a != b:
                 print(f"    VBA: {a}\n    PY : {b}")
+    # Todo arquivo exportado sai com as vistas travadas, menos o Background. Campo 6 da VISTA: a trava.
+    for lado, fotos in (("VBA", f_vba), ("PY", f_py)):
+        soltas = [r.split(CAMPO)[1:3] for f in fotos for r in f.split(REGISTRO)
+                  if r.startswith("VISTA" + CAMPO) and r.split(CAMPO)[2] != "Background View" and r.split(CAMPO)[6] not in ("True", "Verdadeiro")]
+        if soltas:
+            falha = 1
+            print(f"  {lado}: vistas destravadas no arquivo exportado: {soltas[:5]}")
     print(f"[{'DIFERENTE' if falha else 'IGUAL'}] 2D, {nome}: {len(f_py)} arquivos; VBA {t_vba:.1f} s, Python {t_py:.2f} s", flush=True)
     return falha
 

@@ -71,7 +71,9 @@ class HubWindow(QWidget):
         self.setObjectName("janela")
         self.setAttribute(Qt.WA_StyledBackground, True)
         self.setWindowFlag(Qt.FramelessWindowHint)
-        self.setWindowTitle("DWG Tools")
+        # Sem moldura, o Windows so minimiza pela barra de tarefas se a janela disser que aceita.
+        self.setWindowFlag(Qt.WindowMinimizeButtonHint)
+        self.setWindowTitle("E1 Tools")
         self.setStyleSheet(T.QSS)
         self._compact = False
         self._normal_geometry = None
@@ -180,7 +182,7 @@ class HubWindow(QWidget):
         nomes = QVBoxLayout()
         nomes.setSpacing(0)
         nomes.addStretch(1)
-        nomes.addWidget(label("DWG TOOLS", "marca"))
+        nomes.addWidget(label("E1 TOOLS", "marca"))
         self._brand_sub = label("DESIGN ASSURANCE HUB", "marcaSub")
         nomes.addWidget(self._brand_sub)
         nomes.addStretch(1)
@@ -220,6 +222,12 @@ class HubWindow(QWidget):
         h.addWidget(self.chip_catia)
         h.addWidget(self.chip_doc)
 
+        self.btn_min = button("", "janelaBtn")
+        self.btn_min.setIcon(icone("minus", T.MUTED, 16))
+        self.btn_min.setFixedSize(40, 66)
+        self.btn_min.setToolTip("Minimizar")
+        self.btn_min.clicked.connect(self.showMinimized)
+        h.addWidget(self.btn_min)
         self.btn_compact = button("", "janelaBtn")
         self.btn_compact.setIcon(icone("dock", T.MUTED, 16))
         self.btn_compact.setFixedSize(40, 66)

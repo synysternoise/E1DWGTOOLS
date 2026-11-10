@@ -109,6 +109,10 @@ If FSO.FileExists(ArquivoFinal) Then
 FSO.DeleteFile ArquivoFinal, True
 End If
  
+' O arquivo exportado vem do disco, sem as travas aplicadas agora no
+' desenho aberto: trava de novo, para sair com todas as vistas travadas.
+BloquearVistasDesbloqueadas DocCopia, False
+ 
 DocCopia.SaveAs ArquivoFinal
  
 DocCopia.Close
@@ -146,7 +150,8 @@ End Sub
  
  
 Private Sub BloquearVistasDesbloqueadas( _
-ByVal oDoc As drawingDocument)
+ByVal oDoc As drawingDocument, _
+Optional ByVal avisar As Boolean = True)
  
 On Error Resume Next
  
@@ -175,7 +180,7 @@ Next oView
  
 Next oSheet
  
-If QtdeBloqueadas > 0 Then
+If QtdeBloqueadas > 0 And avisar Then
  
 MsgBox QtdeBloqueadas & _
 " vista(s) foram bloqueadas automaticamente.", _
