@@ -140,6 +140,15 @@ Sub Montar_(pasta)
     On Error Resume Next
     t.Leaders.Add 40, -240: Tenta "leader 3"
     On Error GoTo 0
+    ' Largura da quebra justa: o codigo cresce e o ultimo numero nao pode cair para a linha de baixo.
+    Set t = Add(v, "NL146", 0, -270): t.SetParameterOnSubString BORDA, 1, 5, 8
+    On Error Resume Next
+    t.WrappingWidth = 0: Tenta "largura justa"
+    On Error GoTo 0
+    Set t = Add(v, "NL156", 0, -300): Fr t, 7
+    On Error Resume Next
+    t.WrappingWidth = 0: Tenta "largura justa 2"
+    On Error GoTo 0
 
     Set v = Vista(sh, "ESCALA", 620, 500)
     v.Scale = 0.5: v.Angle = 0.5

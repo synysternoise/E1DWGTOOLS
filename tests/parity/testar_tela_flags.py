@@ -103,7 +103,7 @@ abre("NAO_E_DESENHO.CATPart")
 espera(lambda: "NAO_E_DESENHO" in j.chip_doc.text(), 6)
 confere("peça aberta não libera", p.btn_run.text() == "PROCURAR DE NOVO", p._intro_title.text())
 
-# Janela real de confirmacao: o padrao e o Nao, e responder Nao nao muda nada.
+# Clicar em Corrigir ja corrige: a janela de confirmacao saiu a pedido.
 abre("FLAGS_RICO.CATDrawing")
 confere("percebe o desenho sozinho", espera(lambda: p.btn_run.text() == "CORRIGIR FLAGS", 6))
 foto_tela(j, "flags_2_inicio")
@@ -111,30 +111,15 @@ antes = foto_desenho()
 visto = {}
 
 
-def responde_a_janela(sim):
-    caixa = QApplication.activeModalWidget()
-    if not isinstance(caixa, QMessageBox):
-        QTimer.singleShot(50, lambda: responde_a_janela(sim))
-        return
-    visto["padrao"] = caixa.defaultButton().text()
-    visto["texto"] = caixa.text()
-    visto["titulo"] = caixa.windowTitle()
-    if IMAGENS:
-        caixa.grab().save(os.path.join(IMAGENS, "flags_3_confirmacao.png"))
-    if sim:
-        alvo = next(b for b in caixa.buttons() if b.text() == "Sim")
-        QTest.mouseClick(alvo, Qt.LeftButton)
-    else:
-        QTest.keyClick(caixa, Qt.Key_Escape)
+def vigia_janela():
+    if isinstance(QApplication.activeModalWidget(), QMessageBox):
+        visto["janela"] = QApplication.activeModalWidget().windowTitle()
+        QTest.keyClick(QApplication.activeModalWidget(), Qt.Key_Escape)
 
 
-QTimer.singleShot(50, lambda: responde_a_janela(False))
-clica(p.btn_run)
-espera(lambda: "padrao" in visto, 15)
-confere("botão padrão da confirmação é Não", visto.get("padrao") == "Não", visto.get("padrao"))
-confere("confirmação com o texto certo", visto.get("texto") == ff.CONFIRMACAO.replace("\r\n", "\n") and visto.get("titulo") == ff.TITULO_CONFIRMA)
-confere("Esc volta para o início", espera(lambda: p._stack.currentIndex() == 0, 15))
-confere("responder Não não muda o desenho", foto_desenho() == antes)
+vigia = QTimer()
+vigia.timeout.connect(vigia_janela)
+vigia.start(30)
 
 # Correcao de verdade.
 visto.clear()
@@ -153,9 +138,10 @@ relogio.timeout.connect(batida)
 parada["ultima"] = time.perf_counter()
 relogio.start(50)
 t0 = time.perf_counter()
-QTimer.singleShot(50, lambda: responde_a_janela(True))
 clica(p.btn_run)
 confere("termina a correção", espera(lambda: p._stack.currentIndex() == 2))
+vigia.stop()
+confere("corrige sem janela de confirmação", "janela" not in visto, visto.get("janela"))
 tempo = time.perf_counter() - t0
 relogio.stop()
 confere("tela continua respondendo", parada["maior"] < 1.0, f'maior parada {parada["maior"]:.2f} s em {tempo:.1f} s')
@@ -171,6 +157,11 @@ confere("contagens completas na tela", f"{rep.textos} textos" in p.lbl_sub.text(
 
 depois = foto_desenho()
 confere("o desenho mudou", depois != antes)
+# Campo 6 da foto: cor do texto. Campo 7: cor de cada letra (o texto pode ter ganho uma letra).
+cores = lambda f: [(x.split(CAMPO)[6], sorted(set(x.split(CAMPO)[7].split(",")))) for x in f]  # noqa: E731
+# Texto com letras de cores misturadas fica de fora: ao regravar, o CATIA da a todas a cor da primeira.
+mudou_cor = [(a, d) for a, d in zip(cores(antes), cores(depois)) if a != d and len(a[1]) == 1]
+confere("não pinta a flag no desenho", not mudou_cor, mudou_cor[:3])
 por_chave = {tuple(x.split(CAMPO)[:3]): x.split(CAMPO) for x in depois}
 erradas = [i for i in rep.items if por_chave[(i.sheet_name, i.view_name, i.item_name)][3] != i.after.replace("\r", "<CR>").replace("\n", "<LF>")]
 confere("coluna DEPOIS mostra o texto real do desenho", not erradas, erradas[:3])

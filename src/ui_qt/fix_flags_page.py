@@ -286,7 +286,7 @@ class FixFlagsPage(QWidget):
         else:
             self._intro_title.setText("Fix Flags")
             self._intro_sub.setText(
-                "Corrige as flag notes: NL006 vira NL0006, e o código corrigido fica verde. "
+                "Corrige as flag notes: NL006 vira NL0006. O resultado aparece aqui, sem pintar o desenho. "
                 "Flags já corretas não são tocadas. Altera o desenho: salve uma cópia antes."
             )
             self.btn_run.setText("CORRIGIR FLAGS")
@@ -319,7 +319,8 @@ class FixFlagsPage(QWidget):
         self.stop_requested.emit()
 
     def on_ask_confirm(self, message: str, title: str) -> None:
-        self.confirm_answered.emit(self._perguntar(message, title))
+        # Clicar em Corrigir ja e a confirmacao: a janela de pergunta saiu a pedido.
+        self.confirm_answered.emit(True)
 
     def _perguntar(self, message: str, title: str) -> bool:
         # Como no VBA, o botao padrao e o Nao: o desenho so muda se a pessoa escolher Sim.

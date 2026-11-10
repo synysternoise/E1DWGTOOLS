@@ -39,7 +39,7 @@ Dim fixTotalCorrigidas, fixTotalJaCorretas, fixTotalIgnoradas
 Dim fixTotalFalhasValidacao, fixTotalRestauradas, fixTotalErros
 
 ' Estado do texto em processamento, usado para restaurar depois de um erro.
-Dim mTextoOriginal, mFrameOriginal, mOrigemFlag, mAlterouTexto
+Dim mTextoOriginal, mFrameOriginal, mOrigemFlag, mAlterouTexto, mLarguraQuebra
 Dim mRegex
 
 ' ---------------------------------------------------------------------
@@ -207,6 +207,7 @@ Sub ProcessarFlagSegura(drawingText)
     Dim restaurou
     On Error Resume Next
     mAlterouTexto = False
+    mLarguraQuebra = -1
     mTextoOriginal = ""
     mFrameOriginal = FIX_FRAME_NONE
     mOrigemFlag = FIX_ORIGEM_NENHUMA
@@ -276,9 +277,11 @@ Sub ProcessarFlagSegura_(drawingText)
         Exit Sub
     End If
 
+    mLarguraQuebra = LerLarguraDaQuebra(drawingText)
     drawingText.Text = textoCorrigido
     mAlterouTexto = True
     AtualizarPropriedadesTexto drawingText
+    AjustarLarguraDaQuebra drawingText, mLarguraQuebra
 
     If Not PreservarFlagOriginal(drawingText, mOrigemFlag, mFrameOriginal, Len(textoCorrigido)) Then
         FalhaERestaurar drawingText, mTextoOriginal, mOrigemFlag, mFrameOriginal
@@ -488,43 +491,46 @@ Function ValidarFrameNoTextoInteiro(drawingText, frameEsperado, tamanhoTexto)
 End Function
 
 ' Dois mecanismos, para o zero inserido tambem ficar verde.
+' O resultado aparece so na tela do E1 Tools: a flag nao e mais pintada no desenho.
 Function AplicarCorTextoInteiro(drawingText, corCodificada)
-    Dim tp, sucessoSubstring, sucessoProperties
-    sucessoSubstring = False
-    sucessoProperties = False
-    GravarCor drawingText, corCodificada, sucessoSubstring, sucessoProperties
-    AtualizarPropriedadesTexto drawingText
-    AplicarCorTextoInteiro = sucessoSubstring Or sucessoProperties
+    AplicarCorTextoInteiro = True
 End Function
 
-Sub GravarCor(drawingText, corCodificada, sucessoSubstring, sucessoProperties)
-    Dim tp
+
+Function ValidarCorTextoInteiro(drawingText, tamanhoTexto, corEsperada)
+    ValidarCorTextoInteiro = True
+End Function
+
+' ---------------------------------------------------------------------
+' Largura da quebra. Um texto com largura fixa nao deixa o codigo crescer: o ultimo numero
+' caia para a linha de baixo e a flag ficava partida em duas.
+' ---------------------------------------------------------------------
+Function LerLarguraDaQuebra(drawingText)
+    Dim x
     On Error Resume Next
+    LerLarguraDaQuebra = -1
+    x = CDbl(drawingText.WrappingWidth)
+    If Err.Number = 0 Then LerLarguraDaQuebra = x
     Err.Clear
-    drawingText.SetParameterOnSubString FIX_PROPERTY_COLOR, 0, 0, corCodificada
-    If Err.Number = 0 Then sucessoSubstring = True
-    Err.Clear
-    Set tp = Nothing
-    Set tp = drawingText.TextProperties
-    If Not tp Is Nothing Then
-        Err.Clear
-        tp.Color = corCodificada
-        If Err.Number = 0 Then sucessoProperties = True
-        Err.Clear
-        tp.Update
-    End If
+End Function
+
+' Largura 0 faz o CATIA ajustar a caixa ao texto. Se a antiga era maior, ela volta.
+Sub AjustarLarguraDaQuebra(drawingText, larguraAntes)
+    Dim natural
+    If larguraAntes <= 0 Then Exit Sub
+    On Error Resume Next
+    drawingText.WrappingWidth = 0
+    natural = LerLarguraDaQuebra(drawingText)
+    If natural > 0 And larguraAntes > natural Then drawingText.WrappingWidth = larguraAntes
     Err.Clear
 End Sub
 
-Function ValidarCorTextoInteiro(drawingText, tamanhoTexto, corEsperada)
-    Dim indice
-    ValidarCorTextoInteiro = False
-    If tamanhoTexto <= 0 Then Exit Function
-    For indice = 1 To tamanhoTexto
-        If LerCorTrechoFix(drawingText, indice, 1) <> corEsperada Then Exit Function
-    Next
-    ValidarCorTextoInteiro = True
-End Function
+Sub RestaurarLarguraDaQuebra(drawingText)
+    If mLarguraQuebra <= 0 Then Exit Sub
+    On Error Resume Next
+    drawingText.WrappingWidth = mLarguraQuebra
+    Err.Clear
+End Sub
 
 Function RestaurarEstadoOriginal(drawingText, textoOriginal, origemFlag, frameOriginal)
     Dim r
@@ -540,6 +546,7 @@ Function RestaurarEstadoOriginal_(drawingText, textoOriginal, origemFlag, frameO
     Dim restaurouFrame
     drawingText.Text = textoOriginal
     AtualizarPropriedadesTexto drawingText
+    RestaurarLarguraDaQuebra drawingText
     restaurouFrame = PreservarFlagOriginal(drawingText, origemFlag, frameOriginal, Len(textoOriginal))
     AplicarCorTextoInteiro drawingText, FIX_COLOR_RED
     AtualizarPropriedadesTexto drawingText

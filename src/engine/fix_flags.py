@@ -29,7 +29,6 @@ CONFIRMACAO = (
     "- Flags fixas com cadeado;\r\n"
     "- Flags aplicadas pelo Text Editor.\r\n\r\n"
     "O tipo exato da Flag será preservado.\r\n"
-    "O código corrigido ficará verde.\r\n"
     "Flags já corretas não são alteradas.\r\n"
     "Nenhum espaço será adicionado ao texto.\r\n\r\n"
     "Salve uma cópia do desenho antes do teste.\r\n\r\n"
@@ -220,7 +219,7 @@ def _ler_folha(report: FixReport, registros: List[List[str]]) -> None:
 
 def go_to_flag(bridge: CatiaBridge, report: FixReport, item: FlagItem) -> bool:
     """Leva a tela ate a flag. Retorna False se ela ou o desenho nao existem mais."""
-    return fc.go_to_item(bridge, report, item)
+    return fc.go_to_item(bridge, report, item, com_seta=True)
 
 
 # ---------------------------------------------------------------------

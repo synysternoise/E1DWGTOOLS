@@ -199,15 +199,29 @@ End Function
 ' Vista e item sao procurados pelo indice e conferidos pelo nome, porque os
 ' indices mudam quando algo e apagado. Item que nao existe mais volta como ERR.
 ' ---------------------------------------------------------------------
+Dim mComSeta
+
 Function IrPara(docCheio, nomeFolha, iVista, nomeVista, ehCota, iItem, nomeItem, zoomVezes)
     On Error Resume Next
     Dim r
+    mComSeta = False
     r = IrPara_(docCheio, nomeFolha, iVista, nomeVista, ehCota, iItem, nomeItem, zoomVezes)
     If Err.Number <> 0 Then IrPara = Falha() Else IrPara = r
 End Function
 
+' Igual ao IrPara, mas enquadra o texto junto com a ponta das setas (leaders) dele.
+Function IrParaComSeta(docCheio, nomeFolha, iVista, nomeVista, ehCota, iItem, nomeItem, zoomVezes)
+    On Error Resume Next
+    Dim r
+    mComSeta = True
+    r = IrPara_(docCheio, nomeFolha, iVista, nomeVista, ehCota, iItem, nomeItem, zoomVezes)
+    mComSeta = False
+    If Err.Number <> 0 Then IrParaComSeta = Falha() Else IrParaComSeta = r
+End Function
+
 Function IrPara_(docCheio, nomeFolha, iVista, nomeVista, ehCota, iItem, nomeItem, zoomVezes)
     Dim doc, d, sh, v, item, viewer, z, px, py, a, sc, x, y, bb(7)
+    Dim x0, x1, y0, y1, zf, cabe
     Set doc = Nothing
     For Each d In CATIA.Documents
         If d.FullName = docCheio Then
@@ -243,16 +257,66 @@ Function IrPara_(docCheio, nomeFolha, iVista, nomeVista, ehCota, iItem, nomeItem
     x = v.x + (px * Cos(a) - py * Sin(a)) * sc
     y = v.y + (px * Sin(a) + py * Cos(a)) * sc
 
+    x0 = x: x1 = x: y0 = y: y1 = y
+    If mComSeta And Not ehCota Then IncluirSetas item, v, a, sc, x0, x1, y0, y1
+
     Set viewer = CATIA.ActiveWindow.ActiveViewer
     viewer.Reframe
     z = viewer.Viewpoint2D.Zoom
-    viewer.Viewpoint2D.PutOrigin Array(x, y)
-    viewer.Viewpoint2D.Zoom = z * zoomVezes
+    zf = z * zoomVezes
+    If x1 > x0 Or y1 > y0 Then
+        ' Com o zoom z cabe a folha inteira. Abre o quanto for preciso para caber a seta, com folga.
+        cabe = CabeNaTela(sh, x1 - x0, y1 - y0)
+        If cabe > 0 And z * cabe < zf Then zf = z * cabe
+        If zf < z Then zf = z
+    End If
+    viewer.Viewpoint2D.PutOrigin Array((x0 + x1) / 2, (y0 + y1) / 2)
+    viewer.Viewpoint2D.Zoom = zf
     viewer.Update
 
     doc.Selection.Clear
     doc.Selection.Add item
     IrPara_ = "OK"
+End Function
+
+' Estende a caixa ate a ponta de cada seta do texto, em coordenadas da folha.
+Sub IncluirSetas(item, v, a, sc, x0, x1, y0, y1)
+    Dim i, n, lx, ly, sx, sy
+    On Error Resume Next
+    n = 0
+    n = item.Leaders.Count
+    For i = 1 To n
+        Err.Clear
+        item.Leaders.Item(i).GetPoint 1, lx, ly
+        If Err.Number = 0 Then
+            sx = v.x + (lx * Cos(a) - ly * Sin(a)) * sc
+            sy = v.y + (lx * Sin(a) + ly * Cos(a)) * sc
+            If sx < x0 Then x0 = sx
+            If sx > x1 Then x1 = sx
+            If sy < y0 Then y0 = sy
+            If sy > y1 Then y1 = sy
+        End If
+    Next
+    Err.Clear
+End Sub
+
+' Quantas vezes o zoom da folha inteira ainda mostra uma caixa desse tamanho, com metade de folga.
+Function CabeNaTela(sh, largura, altura)
+    Dim w, h, c
+    On Error Resume Next
+    CabeNaTela = 0
+    w = sh.GetPaperWidth
+    h = sh.GetPaperHeight
+    If Err.Number <> 0 Or w <= 0 Or h <= 0 Then
+        Err.Clear
+        Exit Function
+    End If
+    c = 1000000
+    If largura > 0 Then c = w / largura
+    If altura > 0 Then
+        If h / altura < c Then c = h / altura
+    End If
+    CabeNaTela = c * 0.5
 End Function
 
 Sub LerAngulo(v, a)

@@ -155,6 +155,12 @@ compara uma foto do desenho antes e depois.
 - **Janelas.** O resumo que o VBA mostrava numa mensagem agora fica na própria tela. A confirmação
   continua igual, com o Não como botão padrão. As mensagens ganharam os acentos.
 
+- **Pedidos de 09/11/2026, no Python e em `vba/fixflags.txt`.** A flag não é mais pintada de verde nem de
+  vermelho: o resultado fica só na tela. Texto com largura de quebra fixa não parte mais o código em duas
+  linhas: depois da troca, a largura é ajustada ao texto, e a antiga volta se era maior. No HUB, clicar em
+  Corrigir já corrige, sem janela de confirmação, e a navegação enquadra a flag junto com a ponta da seta.
+  Texto com letras de cores misturadas fica com a cor da primeira letra ao ser regravado: é do CATIA.
+
 ## Font Size Check: diferenças conhecidas em relação ao VBA
 
 - **Itens ocultos.** A macro antiga pintava os itens ocultos sem ninguém ver, e a macro do navegador

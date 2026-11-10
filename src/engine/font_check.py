@@ -256,11 +256,14 @@ def run_font_inspection(
     return report
 
 
-def go_to_item(bridge: CatiaBridge, report: FontReport, item: FontItem) -> bool:
-    """Leva a tela ate o item. Retorna False se ele ou o desenho nao existem mais."""
+def go_to_item(bridge: CatiaBridge, report: FontReport, item: FontItem, com_seta: bool = False) -> bool:
+    """Leva a tela ate o item. Retorna False se ele ou o desenho nao existem mais.
+
+    com_seta: enquadra tambem a ponta das setas (leaders) do texto.
+    """
     try:
         bridge.call(
-            SCRIPT, "IrPara", report.doc_full_name, item.sheet_name, item.view_index,
+            SCRIPT, "IrParaComSeta" if com_seta else "IrPara", report.doc_full_name, item.sheet_name, item.view_index,
             item.view_name, item.is_dim, item.item_index, item.item_name, ZOOM_NAVEGADOR,
         )
     except CatiaError:

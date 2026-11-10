@@ -93,6 +93,9 @@ Private fixTotalFalhasValidacao As Long
 Private fixTotalRestauradas As Long
 Private fixTotalErros As Long
 
+' Largura da quebra do texto em processamento, para restaurar depois de um erro.
+Private mLarguraQuebra As Double
+
 
 ' ============================================================
 ' FEATURE PRINCIPAL
@@ -193,9 +196,6 @@ Public Sub CorrigirFlagNotes()
 
     AdicionarLinha mensagem, _
                    "O tipo exato da Flag sera preservado."
-
-    AdicionarLinha mensagem, _
-                   "O codigo corrigido ficara verde."
 
     AdicionarLinha mensagem, _
                    "Flags ja corretas nao sao alteradas."
@@ -432,6 +432,7 @@ Private Sub ProcessarFlagSegura( _
 
     On Error GoTo TratarErroTexto
 
+    mLarguraQuebra = -1
     textoOriginal = CStr(drawingText.Text)
 
     ' --------------------------------------------------------
@@ -526,10 +527,12 @@ Private Sub ProcessarFlagSegura( _
             textoCorrigido, _
             vbBinaryCompare) <> 0 Then
 
+            mLarguraQuebra = LerLarguraDaQuebra(drawingText)
             drawingText.Text = textoCorrigido
             alterouTexto = True
 
             AtualizarPropriedadesTexto drawingText
+            AjustarLarguraDaQuebra drawingText, mLarguraQuebra
 
         End If
 
@@ -646,10 +649,12 @@ Private Sub ProcessarFlagSegura( _
         '
         ' Nao usa Left, Mid ou espacos do texto anterior.
         ' ----------------------------------------------------
+        mLarguraQuebra = LerLarguraDaQuebra(drawingText)
         drawingText.Text = textoCorrigido
         alterouTexto = True
 
         AtualizarPropriedadesTexto drawingText
+        AjustarLarguraDaQuebra drawingText, mLarguraQuebra
 
         ' ----------------------------------------------------
         ' PRESERVAR O FRAMETYPE EXATO
@@ -1268,57 +1273,12 @@ End Function
 '
 ' Isso garante que o zero inserido tambem fique verde.
 ' ============================================================
+' O resultado aparece so na tela do E1 Tools: a flag nao e mais pintada no desenho.
 Private Function AplicarCorTextoInteiro( _
     ByVal drawingText As Object, _
     ByVal corCodificada As Long) As Boolean
 
-    Dim textProperties As Object
-    Dim sucessoSubstring As Boolean
-    Dim sucessoProperties As Boolean
-
-    sucessoSubstring = False
-    sucessoProperties = False
-
-    On Error Resume Next
-    Err.Clear
-
-    drawingText.SetParameterOnSubString _
-        FIX_PROPERTY_COLOR, _
-        0, _
-        0, _
-        corCodificada
-
-    If Err.number = 0 Then
-        sucessoSubstring = True
-    End If
-
-    Err.Clear
-
-    Set textProperties = Nothing
-    Set textProperties = drawingText.textProperties
-
-    If Not textProperties Is Nothing Then
-
-        Err.Clear
-
-        textProperties.Color = corCodificada
-
-        If Err.number = 0 Then
-            sucessoProperties = True
-        End If
-
-        Err.Clear
-        textProperties.Update
-
-    End If
-
-    Err.Clear
-    On Error GoTo 0
-
-    AtualizarPropriedadesTexto drawingText
-
-    AplicarCorTextoInteiro = _
-        sucessoSubstring Or sucessoProperties
+    AplicarCorTextoInteiro = True
 
 End Function
 
@@ -1333,32 +1293,6 @@ Private Function ValidarCorTextoInteiro( _
     ByVal tamanhoTexto As Long, _
     ByVal corEsperada As Long) As Boolean
 
-    Dim indice As Long
-    Dim corAtual As Long
-
-    If tamanhoTexto <= 0 Then
-
-        ValidarCorTextoInteiro = False
-        Exit Function
-
-    End If
-
-    For indice = 1 To tamanhoTexto
-
-        corAtual = LerCorTrechoFix( _
-            drawingText, _
-            indice, _
-            1)
-
-        If corAtual <> corEsperada Then
-
-            ValidarCorTextoInteiro = False
-            Exit Function
-
-        End If
-
-    Next indice
-
     ValidarCorTextoInteiro = True
 
 End Function
@@ -1367,6 +1301,37 @@ End Function
 ' ============================================================
 ' RESTAURAR ESTADO ORIGINAL
 ' ============================================================
+' ---------------------------------------------------------------------
+' Largura da quebra. Um texto com largura fixa nao deixa o codigo crescer: o ultimo numero
+' caia para a linha de baixo e a flag ficava partida em duas.
+' ---------------------------------------------------------------------
+Private Function LerLarguraDaQuebra(ByVal drawingText As Object) As Double
+    Dim x
+    On Error Resume Next
+    LerLarguraDaQuebra = -1
+    x = CDbl(drawingText.WrappingWidth)
+    If Err.Number = 0 Then LerLarguraDaQuebra = x
+    Err.Clear
+End Function
+
+' Largura 0 faz o CATIA ajustar a caixa ao texto. Se a antiga era maior, ela volta.
+Private Sub AjustarLarguraDaQuebra(ByVal drawingText As Object, ByVal larguraAntes As Double)
+    Dim natural
+    If larguraAntes <= 0 Then Exit Sub
+    On Error Resume Next
+    drawingText.WrappingWidth = 0
+    natural = LerLarguraDaQuebra(drawingText)
+    If natural > 0 And larguraAntes > natural Then drawingText.WrappingWidth = larguraAntes
+    Err.Clear
+End Sub
+
+Private Sub RestaurarLarguraDaQuebra(ByVal drawingText As Object)
+    If mLarguraQuebra <= 0 Then Exit Sub
+    On Error Resume Next
+    drawingText.WrappingWidth = mLarguraQuebra
+    Err.Clear
+End Sub
+
 Private Function RestaurarEstadoOriginal( _
     ByVal drawingText As Object, _
     ByVal textoOriginal As String, _
@@ -1382,6 +1347,7 @@ Private Function RestaurarEstadoOriginal( _
     restaurouTexto = True
 
     AtualizarPropriedadesTexto drawingText
+    RestaurarLarguraDaQuebra drawingText
 
     restaurouFrame = PreservarFlagOriginal( _
         drawingText, _
