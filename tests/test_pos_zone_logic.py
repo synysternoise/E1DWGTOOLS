@@ -62,7 +62,7 @@ class PalavrasChave(unittest.TestCase):
 
 
 class Zonas(unittest.TestCase):
-    def folha(self, numero_letras=4):
+    def folha(self, numero_letras=4, primeira=1):
         textos = []
         i = 0
         for k, letra in enumerate("ABCDEF"[:numero_letras]):
@@ -70,7 +70,7 @@ class Zonas(unittest.TestCase):
             textos.append(texto(i, letra, 8, 700 - 100 * k))
         for c in range(1, 5):
             i += 1
-            textos.append(texto(i, str(c), 200 * c, 8))
+            textos.append(texto(i, str(primeira - 1 + c), 200 * c, 8))
         return pz.SheetRead("S", False, 1000.0, 800.0, [vista("Background View", *textos, fundo=True, indice=2)])
 
     def test_zonas_pela_margem(self):
@@ -84,6 +84,14 @@ class Zonas(unittest.TestCase):
         self.assertEqual(pz.zone_column(9, 2), 29)
         self.assertEqual(pz.zone_column(9, 3), 39)
         self.assertEqual(pz.nearest_zone(200, 700, pz.zones_from_border(self.folha(), 2)), "A021")
+
+    def test_margem_que_ja_traz_a_dezena_da_folha(self):
+        # Desenho real: a folha 3 vem com 31 a 39 na margem. Nao soma a dezena de novo.
+        zonas = pz.zones_from_border(self.folha(primeira=31), 3)
+        self.assertEqual(pz.nearest_zone(800, 500, zonas), "C034")
+        self.assertEqual(pz.nearest_zone(200, 700, pz.zones_from_border(self.folha(primeira=21), 2)), "A021")
+        # Na folha 1 vale sempre o que esta escrito.
+        self.assertEqual(pz.nearest_zone(200, 700, pz.zones_from_border(self.folha(primeira=11), 1)), "A011")
 
     def test_poucos_marcadores_nao_formam_zona(self):
         self.assertEqual(pz.zones_from_border(self.folha(1), 1), [])

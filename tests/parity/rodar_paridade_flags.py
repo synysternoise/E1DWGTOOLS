@@ -2,7 +2,7 @@
 
 1. Simulacao: o mesmo DrawingText simulado, que falha sob encomenda, roda no VBA (Excel) e
    no script (cscript). Cobre os caminhos que restauram o desenho, que o CATIA nao reproduz.
-2. CATIA: a macro atual (vba_referencia/fixflags) e o Python rodam nos mesmos desenhos. Depois
+2. CATIA: a macro atual (vba/fixflags.txt) e o Python rodam nos mesmos desenhos. Depois
    de cada um, todos os textos sao fotografados: texto, tipo da flag, cor e borda de cada
    letra, tamanho, posicao e leaders. Mensagens e fotografias precisam ser iguais.
 
@@ -107,59 +107,13 @@ def classes_para_vba(fonte: str) -> dict:
     return {"classes": classes, "resto": "\n".join(resto)}
 
 
-def aplicar_decisoes(fonte: str) -> str:
-    """Leva para a referencia as tres mudancas decididas pelo usuario, e so elas (ver MIGRACAO.md).
-
-    Assim a comparacao continua provando que todo o resto da macro foi preservado.
-    """
-    fonte = fonte.replace("\r\n", "\n")
-
-    def troca(de, para, vezes=1):
-        nonlocal fonte
-        assert fonte.count(de) == vezes, de
-        fonte = fonte.replace(de, para)
-
-    # 1. Flag ja correta nao e tocada; tirar espaco externo conta como correcao.
-    troca(
-        "        textoCorrigido = prefixo & parteNumerica\n",
-        "        textoCorrigido = prefixo & parteNumerica\n"
-        "        If StrComp(textoOriginal, textoCorrigido, vbBinaryCompare) = 0 Then\n"
-        "            fixTotalJaCorretas = fixTotalJaCorretas + 1\n"
-        "            Exit Sub\n"
-        "        End If\n",
-    )
-    troca(
-        "        fixTotalJaCorretas = _\n            fixTotalJaCorretas + 1\n\n        Exit Sub\n\n    End If\n\n"
-        "    ' ========================================================\n    ' CODIGO COM TRES NUMEROS",
-        "        fixTotalCorrigidas = _\n            fixTotalCorrigidas + 1\n\n        Exit Sub\n\n    End If\n\n"
-        "    ' ========================================================\n    ' CODIGO COM TRES NUMEROS",
-    )
-    troca(
-        '''                   "O codigo completo ficara verde."
-''',
-        '''                   "O codigo corrigido ficara verde."
-
-    AdicionarLinha mensagem, _
-                   "Flags ja corretas nao sao alteradas."
-''',
-    )
-    # 2. As letras contam a partir de 1.
-    troca("    For indice = 0 To tamanhoTexto - 1\n", "    For indice = 1 To tamanhoTexto\n", 3)
-    troca(
-        "        FIX_PROPERTY_BORDER, _\n        0, _\n        tamanhoTexto, _\n        frameOriginal",
-        "        FIX_PROPERTY_BORDER, _\n        1, _\n        tamanhoTexto, _\n        frameOriginal",
-    )
-    return fonte
-
-
 def preparar_fonte(destino: str) -> None:
-    with open(os.path.join(RAIZ, "vba_referencia", "fixflags"), encoding="cp1252") as f:
+    with open(os.path.join(RAIZ, "vba", "fixflags.txt"), encoding="cp1252") as f:
         fonte = f.read()
     # Janelas nao podem parar o teste; e a simulacao chama direto a rotina de um texto.
     fonte = re.sub(r"\bMsgBox\b", "MsgTeste", fonte)
     fonte = fonte.replace("Private Sub ProcessarFlagSegura", "Public Sub ProcessarFlagSegura")
     fonte = fonte.replace("Private Sub ResetarContadoresFix", "Public Sub ResetarContadoresFix")
-    fonte = aplicar_decisoes(fonte)
     with open(destino, "w", encoding="cp1252", newline="\r\n") as f:
         f.write(fonte + FIM_FONTE)
 

@@ -28,6 +28,15 @@ Function Sublinhado(v, s, x, y)
     Set Sublinhado = t
 End Function
 
+Function BalaoSublinhado(v, s, x, y)
+    Dim t, p
+    Set t = Balao(v, s, x, y)
+    Set p = t.TextProperties
+    p.Underline = 1
+    p.Update
+    Set BalaoSublinhado = t
+End Function
+
 Function Vista(sh, nome, x, y, escala, angulo)
     Dim v
     Set v = sh.Views.Add(nome)
@@ -38,6 +47,11 @@ End Function
 
 ' Carimbo com letras nas laterais e numeros em cima e embaixo.
 Sub Carimbo(sh, largura, altura, colunas)
+    CarimboDe sh, largura, altura, colunas, 1
+End Sub
+
+' primeira: numero da primeira coluna. 21 imita a margem real da folha 2, que ja traz a dezena.
+Sub CarimboDe(sh, largura, altura, colunas, primeira)
     Dim bg, i, letras, t
     sh.Activate
     Set bg = sh.Views.Item(2)
@@ -48,8 +62,8 @@ Sub Carimbo(sh, largura, altura, colunas)
         bg.Texts.Add letras(i), largura - 8, altura - 40 - i * (altura - 80) / 5
     Next
     For i = 1 To colunas
-        bg.Texts.Add CStr(i), largura - i * (largura / (colunas + 1)), 8
-        bg.Texts.Add CStr(i), largura - i * (largura / (colunas + 1)), altura - 8
+        bg.Texts.Add CStr(primeira - 1 + i), largura - i * (largura / (colunas + 1)), 8
+        bg.Texts.Add CStr(primeira - 1 + i), largura - i * (largura / (colunas + 1)), altura - 8
     Next
     bg.Texts.Add "NOTA DO CARIMBO 12", 300, 40
 End Sub
@@ -236,6 +250,34 @@ Sub Montar_(pasta)
         Txt v, "NOTA COMUM " & i, (i Mod 50) * 20, (i \ 50 - 30) * 20 + 8
     Next
     Salvar doc, pasta & "\POS_GRANDE.CATDrawing"
+
+    ' Zona vem do balao sem sublinhado. Balao tambem sublinhado so da zona se a posicao nao tiver outro.
+    Set doc = CATIA.Documents.Add("Drawing")
+    Set sh = doc.Sheets.Item(1)
+    sh.PaperSize = 2
+    sh.Orientation = 1
+    Carimbo sh, sh.GetPaperWidth, sh.GetPaperHeight, 8
+    Set v = Vista(sh, "SUBLINHADOS", 100, 500, 1, 0)
+    Balao v, "71", 0, 0
+    BalaoSublinhado v, "71", 600, 0
+    BalaoSublinhado v, "72", 0, -100
+    BalaoSublinhado v, "72", 600, -100
+    Balao v, "73", 0, -200
+    Sublinhado v, "73", 600, -200
+    ' Folhas 2 e 3 com a margem real: 21 a 28 e 31 a 38. A zona e a que esta escrita.
+    Set sh = doc.Sheets.Add("Margem 2")
+    sh.PaperSize = 2
+    sh.Orientation = 1
+    CarimboDe sh, sh.GetPaperWidth, sh.GetPaperHeight, 8, 21
+    Set v = Vista(sh, "M2", 100, 500, 1, 0)
+    Balao v, "74", 0, 0
+    Set sh = doc.Sheets.Add("Margem 3")
+    sh.PaperSize = 2
+    sh.Orientation = 1
+    CarimboDe sh, sh.GetPaperWidth, sh.GetPaperHeight, 8, 31
+    Set v = Vista(sh, "M3", 100, 500, 1, 0)
+    Balao v, "75", 0, 0
+    Salvar doc, pasta & "\POS_SUBLINHADO.CATDrawing"
 
     Set doc = CATIA.Documents.Add("Part")
     Salvar doc, pasta & "\NAO_E_DESENHO.CATPart"

@@ -1,4 +1,4 @@
-' Position and Zone: leitura do desenho, dentro do CATIA (porte de vba_referencia/poszone, V3.5.1).
+' Position and Zone: leitura do desenho, dentro do CATIA (porte de vba/poszone.txt, V3.5.3).
 ' So o MoverTexto altera o desenho, quando a pessoa pede. As regras ficam em src/engine/pos_zone.py.
 ' Protocolo da resposta: ver src/engine/catia_bridge.py.
 

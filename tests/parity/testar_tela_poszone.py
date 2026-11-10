@@ -343,6 +343,7 @@ foto("pos_8_compacto")
 clica(j.btn_compact)
 espera(lambda: False, 0.5)
 confere("sai do compacto com o painel ao lado", p._lateral.width() == 300, p._lateral.width())
+confere("sai do compacto com as colunas no tamanho certo", p.table.columnWidth(pp.COL_ZONA) == 84 and p.table.horizontalScrollBar().value() == 0 and p.table.columnWidth(pp.COL_VISTA) > 84, p.table.columnWidth(pp.COL_ZONA))
 
 # ---------------- Fechar o HUB devolve o CATIA limpo ----------------
 p.table.setCurrentCell(0, pp.COL_POS)

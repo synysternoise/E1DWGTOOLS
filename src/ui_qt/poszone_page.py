@@ -26,6 +26,7 @@ OK, ERRO, NEUTRO, MANUAL = "ok", "erro", "neutro", "manual"
 FILTRO_REVISAR, FILTRO_OK, FILTRO_SAP, FILTRO_PENDENCIAS, FILTRO_TODOS = range(5)
 COLUNAS = ("", "POS", "ZONA", "QTD", "VISTA ORIGEM", "PL ZONA", "PL QTD", "PN")
 COL_MARCA, COL_POS, COL_ZONA, COL_QTD, COL_VISTA, COL_PL_ZONA, COL_PL_QTD, COL_PN = range(8)
+LARGURAS = {COL_MARCA: 36, COL_POS: 50, COL_ZONA: 84, COL_QTD: 40, COL_PL_ZONA: 76, COL_PL_QTD: 48, COL_PN: 92}
 NAO_ENCONTRADO = "Callout não encontrado: foi apagado ou o desenho foi fechado."
 FILTRO_ARQUIVOS = "Arquivos Excel (*.xlsx *.xlsm *.xls)"
 
@@ -217,7 +218,7 @@ class PosZonePage(ToolPage):
         self._grupo.idClicked.connect(lambda _: self._preencher())
         col.addLayout(filtros)
 
-        self.table = tabela(COLUNAS, {COL_MARCA: 36, COL_POS: 50, COL_ZONA: 84, COL_QTD: 40, COL_PL_ZONA: 76, COL_PL_QTD: 48, COL_PN: 92}, COL_VISTA)
+        self.table = tabela(COLUNAS, LARGURAS, COL_VISTA)
         self.table.setWordWrap(False)
         self.table.setTextElideMode(Qt.ElideRight)
         self.table.setItemDelegateForColumn(COL_MARCA, MarkDelegate(self.table))
@@ -458,6 +459,11 @@ class PosZonePage(ToolPage):
         # Sem a vista, a zona fica com o espaco que sobra.
         cab = self.table.horizontalHeader()
         cab.setSectionResizeMode(COL_ZONA, QHeaderView.Stretch if self._compacto else QHeaderView.Fixed)
+        if not self._compacto:
+            # Ao sair do compacto, a zona guardava a largura esticada e empurrava as outras para fora.
+            for coluna, largura in LARGURAS.items():
+                self.table.setColumnWidth(coluna, largura)
+            self.table.horizontalScrollBar().setValue(0)
 
     # ------------------------------------------------------------------
     # Navegacao: a seta passa por todos os baloes de cada posicao

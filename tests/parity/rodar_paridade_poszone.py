@@ -1,4 +1,4 @@
-"""Compara o Position and Zone em Python com a macro em vba_referencia/poszone.
+"""Compara o Position and Zone em Python com a macro em vba/poszone.txt.
 
 Compara a planilha gerada, celula por celula e com a formatacao, as mensagens, e prova que o
 desenho nao mudou. Tambem compara as expressoes regulares com o VBScript.RegExp de verdade,
@@ -38,7 +38,7 @@ End Sub
 
 
 def preparar(destino: str, modelo: str, copia: str) -> None:
-    fonte = apoio.trocar_janelas(apoio.ler_fonte(os.path.join(RAIZ, "vba_referencia", "poszone"))).replace("\r\n", "\n")
+    fonte = apoio.trocar_janelas(apoio.ler_fonte(os.path.join(RAIZ, "vba", "poszone.txt"))).replace("\r\n", "\n")
     de = '"\\\\SJKFS17\\Mezcal\\Projects\\OEM\\EMB170-190\\05. Quality\\09. Macros\\_Callouts.xlsm"'
     assert de in fonte
     fonte = fonte.replace(de, '"' + modelo + '"')
@@ -151,7 +151,7 @@ def normaliza_msg(l: str) -> str:
     return re.sub(r"[^A-Za-z0-9<>:/.\-_\\]", "", l.split(CAMPO)[-1])
 
 
-def caso(xl, bridge, trabalho, xl_leitor, nome, caminho, modelo, copia_vba, exigir=None, listar=True) -> int:
+def caso(xl, bridge, trabalho, xl_leitor, nome, caminho, modelo, copia_vba, exigir=None, listar=True, zonas=None) -> int:
     abrir(bridge, caminho)
     documento = caminho and caminho.lower().endswith(".catdrawing")
     antes = foto(bridge) if documento else ""
@@ -206,6 +206,17 @@ def caso(xl, bridge, trabalho, xl_leitor, nome, caminho, modelo, copia_vba, exig
             if getattr(rep.counters, campo) < minimo:
                 falha = 1
                 print(f"  o desenho de teste nao cobriu {campo}: {getattr(rep.counters, campo)} < {minimo}")
+        # Quantas zonas cada posicao precisa ter: prova que o caso foi coberto, nos dois lados.
+        for numero, quantas in (zonas or {}).items():
+            achado = [c for c in rep.callouts if c.number == numero]
+            lidas = [z.strip() for z in achado[0].zone.split(";") if z.strip()] if achado else []
+            if isinstance(quantas, str):  # o comeco da zona, como "02": folha 2 sem somar a dezena de novo
+                if len(lidas) != 1 or lidas[0][1:3] != quantas:
+                    falha = 1
+                    print(f"  posicao {numero}: esperava zona ?{quantas}?, veio {lidas}")
+            elif len(lidas) != quantas:
+                falha = 1
+                print(f"  posicao {numero}: esperava {quantas} zona(s), veio {lidas}")
         print("   ", apoio.plano(rep.mensagem).replace("<CRLF>", " | "))
         for c in rep.callouts if listar else []:
             print(f"      {c.number:>6} | {c.zone:24} | {c.qty:>3} | {c.sheet} - {c.view}")
@@ -238,6 +249,8 @@ def main() -> int:
         falhas += caso(xl, bridge, trabalho, leitor, "peca aberta", arq("NAO_E_DESENHO.CATPart"), modelo, copia_vba)
         falhas += caso(xl, bridge, trabalho, leitor, "todos os casos", arq("POS_RICO.CATDrawing"), modelo, copia_vba,
                        {"validos": 40, "grupo": 1, "conflito": 1, "referencias": 2, "multilinha": 3, "chaves": 2})
+        falhas += caso(xl, bridge, trabalho, leitor, "balao sublinhado", arq("POS_SUBLINHADO.CATDrawing"), modelo, copia_vba,
+                       zonas={"71": 1, "72": 2, "73": 1, "74": "02", "75": "03"})
         falhas += caso(xl, bridge, trabalho, leitor, "sem nenhum callout", arq("POS_VAZIO.CATDrawing"), modelo, copia_vba)
         falhas += caso(xl, bridge, trabalho, leitor, "desenho grande, 3000 baloes", arq("POS_GRANDE.CATDrawing"), modelo, copia_vba, listar=False)
         bridge.app.SystemService.ExecuteScript(AQUI, 1, SCRIPT, "Fechar", [])

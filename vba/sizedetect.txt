@@ -1,0 +1,511 @@
+Option Explicit
+
+' Itens fora do padrão da última análise. Nada é pintado no desenho: o
+' navegador frmFontNav percorre esta lista, dando zoom e selecionando cada item.
+Private Const FONTNAV_ZOOM As Double = 8   ' vezes o zoom da folha inteira
+
+Private mErrCount As Long
+Private mErrDoc As Object
+Private mErrSheet() As Object
+Private mErrView() As Object
+Private mErrItem() As Object
+Private mErrIsDim() As Boolean
+Private mErrInfo() As Variant   ' Array(folha, vista, conteúdo, tamanho, padrão)
+Private mResumo As String
+
+' =====================================================================
+' MÓDULO PRINCIPAL
+' =====================================================================
+
+Public Sub RunFontInspection()
+
+    Dim drwDoc As drawingDocument
+    Set drwDoc = CATIA.ActiveDocument
+
+    FecharNavegador
+    mErrCount = 0
+    Set mErrDoc = drwDoc
+
+    Dim oSel As Selection
+    Set oSel = drwDoc.Selection
+
+    Dim sDrawingNo As String
+
+    On Error Resume Next
+    sDrawingNo = drwDoc.Parameters.item("Drawing_No").ValueAsString
+    On Error GoTo 0
+
+    ' --- Formato de cada folha, lido no Background como no conversor de template ---
+    ' Folha sem formato no Background usa o da primeira folha que tem. Só se nenhuma
+    ' folha tiver, o formato é pedido ao usuário.
+    Dim sSheetSize As String
+    Dim sDefaultFormat As String
+    Dim sFormatos As String
+    Dim sPadroes As String
+
+    Dim dStd1 As Double
+    Dim dStd2 As Double
+
+    Dim oSheet As drawingSheet
+
+    For Each oSheet In drwDoc.Sheets
+        sDefaultFormat = GetFormatFromBackground(oSheet)
+        If Len(sDefaultFormat) > 0 Then Exit For
+    Next oSheet
+
+    If Len(sDefaultFormat) = 0 Then
+        sDefaultFormat = AskSheetFormat()
+        If Len(sDefaultFormat) = 0 Then Exit Sub
+    End If
+
+    ' =====================================
+    ' CONTADORES
+    ' =====================================
+
+    Dim totalItens As Long
+    Dim totalOK As Long
+    Dim totalNOK As Long
+
+    totalItens = 0
+    totalOK = 0
+    totalNOK = 0
+
+    ' =====================================
+    ' LOOP POR TODAS AS FOLHAS E VIEWS
+    ' =====================================
+
+    Dim oView As drawingView
+
+    Dim i As Long
+    Dim j As Long
+
+    Dim dSizeMM As Double
+    Dim visStatus As CatVisPropertyShow
+    Dim sContent As String
+
+    For Each oSheet In drwDoc.Sheets
+
+        sSheetSize = GetFormatFromBackground(oSheet)
+        If Len(sSheetSize) = 0 Then sSheetSize = sDefaultFormat
+        GetStandardSizes sSheetSize, dStd1, dStd2
+
+        If InStr(1, "|" & sFormatos & "|", "|" & sSheetSize & "|") = 0 Then
+            If Len(sFormatos) > 0 Then sFormatos = sFormatos & "|"
+            sFormatos = sFormatos & sSheetSize
+            sPadroes = sPadroes & vbCrLf & "Padrões " & sSheetSize & ": " & _
+                dStd1 & Chr(34) & " e " & dStd2 & Chr(34)
+        End If
+
+        For i = 1 To oSheet.Views.count
+
+            Set oView = oSheet.Views.item(i)
+
+            oSel.Clear
+            oSel.Add oView
+            oSel.VisProperties.GetShow visStatus
+
+            If oView.LockStatus = False _
+               And oView.name <> "Background View" _
+               And visStatus = catVisPropertyShowAttr Then
+
+                ' =====================================
+                ' TEXTOS
+                ' =====================================
+
+                For j = 1 To oView.Texts.count
+
+                    Dim oText As drawingText
+
+                    Set oText = oView.Texts.item(j)
+
+                    dSizeMM = oText.GetFontSize(0, 0)
+                    sContent = oText.Text
+
+                    totalItens = totalItens + 1
+
+                    ConferirItem _
+                        dSizeMM, _
+                        sContent, _
+                        oText, _
+                        False, _
+                        oSheet, _
+                        oView, _
+                        sSheetSize, _
+                        dStd1, _
+                        dStd2, _
+                        totalOK, _
+                        totalNOK
+
+                Next j
+
+                ' =====================================
+                ' DIMENSÕES
+                ' =====================================
+
+                For j = 1 To oView.Dimensions.count
+
+                    Dim oDim As DrawingDimension
+                    Dim oDimVal As DrawingDimValue
+
+                    Set oDim = oView.Dimensions.item(j)
+                    Set oDimVal = oDim.GetValue
+
+                    dSizeMM = 0
+
+                    On Error Resume Next
+                    oDimVal.GetFontSize 1, dSizeMM
+                    sContent = oDimVal.value
+                    On Error GoTo 0
+
+                    If dSizeMM > 0 Then
+
+                        totalItens = totalItens + 1
+
+                        ConferirItem _
+                            dSizeMM, _
+                            sContent, _
+                            oDim, _
+                            True, _
+                            oSheet, _
+                            oView, _
+                            sSheetSize, _
+                            dStd1, _
+                            dStd2, _
+                            totalOK, _
+                            totalNOK
+
+                    End If
+
+                Next j
+
+            End If
+
+        Next i
+
+    Next oSheet
+
+    oSel.Clear
+
+    mResumo = "PN " & sDrawingNo & "   |   Formato " & Replace(sFormatos, "|", ", ") & vbCrLf & _
+        totalNOK & " fora do padrão de " & totalItens & " itens analisados"
+
+    Dim sMsg As String
+    sMsg = "Análise concluída!" & vbCrLf & vbCrLf & _
+        "PN: " & sDrawingNo & vbCrLf & _
+        "Formato: " & Replace(sFormatos, "|", ", ") & _
+        sPadroes & vbCrLf & vbCrLf & _
+        "Itens analisados: " & totalItens & vbCrLf & _
+        "Corretos: " & totalOK & vbCrLf & _
+        "Incorretos: " & totalNOK
+
+    If totalNOK = 0 Then
+        MsgBox sMsg, vbInformation, "E1 - Font Size Analysis"
+        Exit Sub
+    End If
+
+    ' O form é chamado pelo nome para o módulo compilar mesmo sem o frmFontNav no
+    ' projeto; sem ele, o resumo aparece numa mensagem como antes.
+    On Error Resume Next
+    VBA.UserForms.Add("frmFontNav").Show vbModeless
+    If Err.number <> 0 Then
+        Err.Clear
+        On Error GoTo 0
+        MsgBox sMsg, vbInformation, "E1 - Font Size Analysis"
+    End If
+    On Error GoTo 0
+
+End Sub
+
+' =====================================================================
+' Retorna os tamanhos padrão por formato
+' =====================================================================
+
+Public Function GetStandardSizes( _
+    sSize As String, _
+    ByRef std1 As Double, _
+    ByRef std2 As Double) As Boolean
+
+    GetStandardSizes = True
+
+    Select Case UCase(Trim(sSize))
+
+        Case "A4"
+
+            std1 = 0.07
+            std2 = 0.125
+
+        Case "A3", "A1"
+
+            std1 = 0.17
+            std2 = 0.25
+
+        Case "A2"
+
+            std1 = 0.108
+            std2 = 0.193
+
+        Case "A0", "E3", "E0", "3A0"
+
+            std1 = 0.197
+            std2 = 0.277
+
+        Case Else
+
+            std1 = 0
+            std2 = 0
+
+            GetStandardSizes = False
+
+    End Select
+
+End Function
+
+' =====================================================================
+' Formato da folha pelo Background (mesma regra do conversor de template):
+' primeiro o texto Text.68, depois qualquer texto cujo conteúdo seja
+' exatamente um formato. Retorna "" se a folha não tiver formato.
+' =====================================================================
+
+Private Function GetFormatFromBackground(ByVal oSheet As drawingSheet) As String
+
+    Dim oBackground As drawingView
+    Dim oText As Object
+    Dim sFormat As String
+    Dim d1 As Double
+    Dim d2 As Double
+
+    On Error Resume Next
+
+    Set oBackground = oSheet.Views.item(2)
+    If oBackground Is Nothing Then Exit Function
+
+    Set oText = oBackground.Texts.GetItem("Text.68")
+    If Not oText Is Nothing Then
+        sFormat = NormalizeSheetFormat(oText.Text)
+        If GetStandardSizes(sFormat, d1, d2) Then
+            GetFormatFromBackground = sFormat
+            Exit Function
+        End If
+    End If
+
+    For Each oText In oBackground.Texts
+        sFormat = NormalizeSheetFormat(oText.Text)
+        If GetStandardSizes(sFormat, d1, d2) Then
+            GetFormatFromBackground = sFormat
+            Exit Function
+        End If
+    Next oText
+
+End Function
+
+Private Function NormalizeSheetFormat(ByVal s As String) As String
+
+    s = Replace(s, vbCr, "")
+    s = Replace(s, vbLf, "")
+    s = Replace(s, vbTab, "")
+    s = Replace(s, Chr$(160), "")
+
+    NormalizeSheetFormat = UCase$(Trim$(s))
+
+End Function
+
+' Só quando nenhuma folha tem o formato no Background. Cancelar retorna "".
+Private Function AskSheetFormat() As String
+
+    Dim sFormat As String
+    Dim d1 As Double
+    Dim d2 As Double
+
+    Do
+        sFormat = InputBox( _
+            "Não foi possível identificar o formato da folha no Background." & vbCrLf & vbCrLf & _
+            "Digite um dos formatos: A0, A1, A2, A3, A4, E0, E3 ou 3A0", _
+            "E1 - Font Check", "A0")
+
+        sFormat = NormalizeSheetFormat(sFormat)
+        If Len(sFormat) = 0 Then Exit Function
+
+        If GetStandardSizes(sFormat, d1, d2) Then
+            AskSheetFormat = sFormat
+            Exit Function
+        End If
+
+        MsgBox "Formato '" & sFormat & "' não reconhecido.", vbExclamation, "E1 - Font Check"
+    Loop
+
+End Function
+
+' =====================================================================
+' Validação: guarda o item fora do padrão para o navegador
+' =====================================================================
+
+Private Sub ConferirItem( _
+    sMM As Double, _
+    cont As String, _
+    obj As Object, _
+    ByVal isDim As Boolean, _
+    oSheet As drawingSheet, _
+    oView As drawingView, _
+    sFormat As String, _
+    std1 As Double, _
+    std2 As Double, _
+    ByRef totalOK As Long, _
+    ByRef totalNOK As Long)
+
+    Dim valInch As Double
+
+    valInch = Round(sMM / 25.4, 4)
+
+    Const tol As Double = 0.001
+
+    Dim isStandard As Boolean
+
+    isStandard = _
+        (Abs(valInch - std1) <= tol) Or _
+        (Abs(valInch - std2) <= tol)
+
+    If isStandard Then
+        totalOK = totalOK + 1
+        Exit Sub
+    End If
+
+    totalNOK = totalNOK + 1
+    mErrCount = mErrCount + 1
+
+    If mErrCount = 1 Then
+        ReDim mErrSheet(1 To 64): ReDim mErrView(1 To 64): ReDim mErrItem(1 To 64)
+        ReDim mErrIsDim(1 To 64): ReDim mErrInfo(1 To 64)
+    ElseIf mErrCount > UBound(mErrItem) Then
+        ReDim Preserve mErrSheet(1 To 2 * mErrCount): ReDim Preserve mErrView(1 To 2 * mErrCount)
+        ReDim Preserve mErrItem(1 To 2 * mErrCount): ReDim Preserve mErrIsDim(1 To 2 * mErrCount)
+        ReDim Preserve mErrInfo(1 To 2 * mErrCount)
+    End If
+
+    Dim sTexto As String
+    sTexto = Replace(Replace(cont, vbCr, ""), vbLf, " / ")
+    If Len(sTexto) > 60 Then sTexto = Left$(sTexto, 57) & "..."
+    If isDim Then sTexto = "Cota " & sTexto
+
+    Set mErrSheet(mErrCount) = oSheet
+    Set mErrView(mErrCount) = oView
+    Set mErrItem(mErrCount) = obj
+    mErrIsDim(mErrCount) = isDim
+    mErrInfo(mErrCount) = Array(oSheet.name, oView.name, sTexto, _
+        Format$(valInch, "0.000") & Chr(34), _
+        sFormat & ": " & std1 & Chr(34) & " ou " & std2 & Chr(34))
+
+End Sub
+
+' =====================================================================
+' Navegador (usado pelo frmFontNav)
+' =====================================================================
+
+Public Function FontNavCount() As Long
+    FontNavCount = mErrCount
+End Function
+
+Public Function FontNavResumo() As String
+    FontNavResumo = mResumo
+End Function
+
+' coluna: 0 folha, 1 vista, 2 conteúdo, 3 tamanho, 4 padrão
+Public Function FontNavInfo(ByVal i As Long, ByVal coluna As Long) As String
+    If i >= 1 And i <= mErrCount Then FontNavInfo = mErrInfo(i)(coluna)
+End Function
+
+' Mostra a folha do item, centraliza a tela nele com zoom e o seleciona.
+' Retorna False se o item ou o desenho não existem mais.
+Public Function FontNavIr(ByVal i As Long) As Boolean
+
+    Dim x As Double, y As Double, z As Double
+    Dim viewer As Object
+
+    If i < 1 Or i > mErrCount Then Exit Function
+
+    On Error GoTo Falhou
+
+    mErrDoc.Activate
+    mErrSheet(i).Activate
+    PosicaoNaFolha mErrView(i), mErrItem(i), mErrIsDim(i), x, y
+
+    Set viewer = CATIA.ActiveWindow.ActiveViewer
+    viewer.Reframe
+    z = viewer.Viewpoint2D.Zoom
+    viewer.Viewpoint2D.PutOrigin Array(x, y)
+    viewer.Viewpoint2D.Zoom = z * FONTNAV_ZOOM
+    viewer.Update
+
+    mErrDoc.Selection.Clear
+    mErrDoc.Selection.Add mErrItem(i)
+
+    FontNavIr = True
+    Exit Function
+
+Falhou:
+    FontNavIr = False
+
+End Function
+
+' Posição do item em mm de papel na folha. Texto: ponto de ancoragem. Cota: centro
+' da caixa do valor. Considera posição, escala e ângulo da vista.
+Private Sub PosicaoNaFolha(ByVal v As Object, ByVal obj As Object, ByVal isDim As Boolean, _
+    ByRef x As Double, ByRef y As Double)
+
+    Dim px As Double, py As Double, a As Double, sc As Double
+    Dim bb(7) As Variant
+
+    If isDim Then
+        obj.GetBoundaryBox bb
+        px = (bb(0) + bb(2) + bb(4) + bb(6)) / 4
+        py = (bb(1) + bb(3) + bb(5) + bb(7)) / 4
+    Else
+        px = obj.x: py = obj.y
+    End If
+
+    sc = v.Scale
+    On Error Resume Next: a = v.angle: On Error GoTo 0
+
+    x = v.x + (px * Cos(a) - py * Sin(a)) * sc
+    y = v.y + (px * Sin(a) + py * Cos(a)) * sc
+
+End Sub
+
+Private Sub FecharNavegador()
+    Dim i As Long
+    On Error Resume Next
+    For i = VBA.UserForms.count - 1 To 0 Step -1
+        If VBA.UserForms(i).name = "frmFontNav" Then Unload VBA.UserForms(i)
+    Next i
+    On Error GoTo 0
+End Sub
+
+' =====================================================================
+' RESET DAS CORES
+' =====================================================================
+
+Public Sub ResetColors()
+
+    Dim drwDoc As drawingDocument
+
+    On Error Resume Next
+    Set drwDoc = CATIA.ActiveDocument
+    On Error GoTo 0
+
+    If drwDoc Is Nothing Then Exit Sub
+
+    Dim oSel As Selection
+    Set oSel = drwDoc.Selection
+
+    oSel.Clear
+
+    oSel.Search "#Color=(255,255,255),All"
+    oSel.VisProperties.SetRealColor 0, 0, 0, 0
+
+    oSel.Clear
+
+    MsgBox "Cores restauradas ao padrão do layer.", _
+           vbInformation, _
+           "E1 - Reset"
+
+End Sub
+

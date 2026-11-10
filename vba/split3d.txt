@@ -1,0 +1,271 @@
+Option Explicit
+ 
+Public Sub ExecutarSplit3D()
+ 
+    Dim CATIA As Application
+    Set CATIA = GetObject(, "CATIA.Application")
+ 
+    If TypeName(CATIA.ActiveDocument) <> "PartDocument" Then
+        MsgBox "Abra um CATPart.", vbExclamation
+        Exit Sub
+    End If
+ 
+    Dim SrcDoc As PartDocument
+    Set SrcDoc = CATIA.ActiveDocument
+ 
+    If SrcDoc.fullName = "" Then
+        MsgBox "Salve o CATPart antes de executar.", vbExclamation
+        Exit Sub
+    End If
+ 
+    Dim SrcPart As Part
+    Set SrcPart = SrcDoc.Part
+ 
+    Dim OriginalPN As String
+ 
+    On Error Resume Next
+    OriginalPN = SrcDoc.Product.PartNumber
+ 
+    If Trim(OriginalPN) = "" Then
+        OriginalPN = SrcDoc.name
+    End If
+ 
+    If Trim(OriginalPN) = "" Then
+        OriginalPN = SrcPart.name
+    End If
+ 
+    On Error GoTo 0
+ 
+    Dim MainBodyName As String
+    MainBodyName = SrcPart.MainBody.name
+ 
+    Dim BodyIndex() As Long
+    Dim BodyNames() As String
+ 
+    ReDim BodyIndex(1 To SrcPart.Bodies.count)
+    ReDim BodyNames(1 To SrcPart.Bodies.count)
+ 
+    Dim RealBodies As Long
+    Dim i As Long
+ 
+    For i = 1 To SrcPart.Bodies.count
+ 
+        If UCase(SrcPart.Bodies.item(i).name) <> "PARTBODY" Then
+ 
+            RealBodies = RealBodies + 1
+ 
+            BodyIndex(RealBodies) = i
+            BodyNames(RealBodies) = SrcPart.Bodies.item(i).name
+ 
+        End If
+ 
+    Next i
+ 
+    If RealBodies = 0 Then
+ 
+        MsgBox "Nenhum Body encontrado.", vbExclamation
+        Exit Sub
+ 
+    End If
+ 
+    Dim NumParts As Long
+ 
+    NumParts = CLng(Val(InputBox( _
+        "Em quantas partes será dividido?", _
+        "Split CATPart", _
+        "2")))
+ 
+    If NumParts < 2 Then Exit Sub
+ 
+    If NumParts > RealBodies Then
+        NumParts = RealBodies
+    End If
+ 
+    Dim BodiesPerPart As Long
+    Dim Remaining As Long
+ 
+    BodiesPerPart = RealBodies \ NumParts
+    Remaining = RealBodies Mod NumParts
+ 
+    Dim fullName As String
+    Dim FolderPath As String
+    Dim BaseName As String
+    Dim pos As Long
+ 
+    fullName = SrcDoc.fullName
+ 
+    pos = InStrRev(fullName, "\")
+ 
+    FolderPath = Left(fullName, pos)
+ 
+    BaseName = Mid(fullName, pos + 1)
+ 
+    pos = InStrRev(BaseName, ".")
+ 
+    If pos > 0 Then
+        BaseName = Left(BaseName, pos - 1)
+    End If
+ 
+    Dim SplitFolder As String
+ 
+    SplitFolder = FolderPath & "SPLIT_PARTS\"
+ 
+    Dim FSO As Object
+    Set FSO = CreateObject("Scripting.FileSystemObject")
+ 
+    If Not FSO.FolderExists(SplitFolder) Then
+        FSO.CreateFolder SplitFolder
+    End If
+ 
+    CATIA.RefreshDisplay = False
+    CATIA.DisplayFileAlerts = False
+ 
+    Dim StartIdx As Long
+    Dim EndIdx As Long
+    Dim PartNum As Long
+ 
+    StartIdx = 1
+ 
+    For PartNum = 1 To NumParts
+ 
+        EndIdx = StartIdx + BodiesPerPart - 1
+ 
+        If PartNum <= Remaining Then
+            EndIdx = EndIdx + 1
+        End If
+ 
+        Dim SelSrc As Selection
+        Set SelSrc = SrcDoc.Selection
+ 
+        SelSrc.Clear
+ 
+        ' Copia o PartBody
+        SelSrc.Add SrcPart.MainBody
+ 
+        ' Copia os Bodies da faixa
+        For i = StartIdx To EndIdx
+ 
+            SelSrc.Add SrcPart.Bodies.item(BodyIndex(i))
+ 
+        Next i
+ 
+        SelSrc.Copy
+ 
+        Dim NewDoc As PartDocument
+        Set NewDoc = CATIA.Documents.Add("Part")
+ 
+        Dim NewPart As Part
+        Set NewPart = NewDoc.Part
+ 
+        Dim NovoPN As String
+ 
+        NovoPN = OriginalPN & "_P" & Format(PartNum, "00")
+ 
+        On Error Resume Next
+        NewDoc.Product.PartNumber = NovoPN
+        On Error GoTo 0
+ 
+        Dim SelDst As Selection
+        Set SelDst = NewDoc.Selection
+ 
+        SelDst.Clear
+        SelDst.Add NewPart.MainBody
+ 
+        On Error Resume Next
+ 
+        SelDst.PasteSpecial "CATPrtResultWithOutLink"
+ 
+        If Err.number <> 0 Then
+ 
+            Err.Clear
+ 
+            SelDst.Clear
+            SelDst.Add NewPart.MainBody
+ 
+            SelDst.PasteSpecial "CATPrtResult"
+ 
+        End If
+ 
+        On Error GoTo 0
+ 
+        NewPart.Update
+ 
+        ' Preserva nome do PartBody
+        On Error Resume Next
+        NewPart.MainBody.name = MainBodyName
+        On Error GoTo 0
+ 
+        ' Renomeia Bodies copiados
+        Dim DestIdx As Long
+ 
+        DestIdx = 2
+ 
+        For i = StartIdx To EndIdx
+ 
+            If DestIdx <= NewPart.Bodies.count Then
+ 
+                On Error Resume Next
+ 
+                NewPart.Bodies.item(DestIdx).name = BodyNames(i)
+ 
+                On Error GoTo 0
+ 
+                DestIdx = DestIdx + 1
+ 
+            End If
+ 
+        Next i
+ 
+        ' Esconde planos
+        Dim SelHide As Selection
+        Set SelHide = NewDoc.Selection
+ 
+        SelHide.Clear
+ 
+        On Error Resume Next
+ 
+        SelHide.Add NewPart.OriginElements.PlaneXY
+        SelHide.Add NewPart.OriginElements.PlaneYZ
+        SelHide.Add NewPart.OriginElements.PlaneZX
+ 
+        SelHide.VisProperties.SetShow 1
+ 
+        SelHide.Clear
+ 
+        If NewPart.AxisSystems.count > 0 Then
+ 
+            SelHide.Add NewPart.AxisSystems.item(1)
+ 
+            SelHide.VisProperties.SetShow 1
+ 
+            SelHide.Clear
+ 
+        End If
+ 
+        On Error GoTo 0
+ 
+        Dim NewFile As String
+ 
+        NewFile = SplitFolder & _
+                  BaseName & "_P" & _
+                  Format(PartNum, "00") & _
+                  ".CATPart"
+ 
+        NewDoc.SaveAs NewFile
+ 
+        NewDoc.Close
+ 
+        StartIdx = EndIdx + 1
+ 
+    Next PartNum
+ 
+    CATIA.DisplayFileAlerts = True
+    CATIA.RefreshDisplay = True
+ 
+    MsgBox "Split concluído!" & vbCrLf & _
+           "PN: " & OriginalPN & vbCrLf & _
+           "Bodies: " & RealBodies & vbCrLf & _
+           "Arquivos: " & NumParts
+ 
+End Sub
+

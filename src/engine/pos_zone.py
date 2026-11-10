@@ -1,6 +1,6 @@
 """Position and Zone: acha os callouts do desenho, a zona e a quantidade de cada um.
 
-Porte de vba_referencia/poszone (V3.5.1-SEM-PINTURA). A leitura roda dentro do CATIA
+Porte de vba/poszone.txt (V3.5.3-SEM-PINTURA). A leitura roda dentro do CATIA
 (catia_scripts/pos_zone.catvbs); as regras ficam aqui, testaveis sem o CATIA. Nenhum objeto
 do desenho e alterado na leitura. A tabela fica no HUB e pode ir para uma copia da planilha de
 Callouts. So o mover_balao altera o desenho, quando a pessoa pede.
@@ -18,7 +18,7 @@ from typing import Callable, Dict, List, Optional, Tuple
 from engine.catia_bridge import CatiaBridge, CatiaError, parse_number
 
 SCRIPT = "pos_zone.catvbs"
-MACRO_VERSION = "V3.5.1-SEM-PINTURA"
+MACRO_VERSION = "V3.5.3-SEM-PINTURA"
 TEMPLATE_PLANILHA = "\\\\SJKFS17\\Mezcal\\Projects\\OEM\\EMB170-190\\05. Quality\\09. Macros\\_Callouts.xlsm"
 TITULO = "Callout Check"
 
@@ -288,9 +288,17 @@ def _spacing(a: List[tuple], s: int, e: int, erro_medio: float) -> Tuple[bool, f
     return erro_max <= ZONE_SPACING_ERROR_MAX, erro_medio / intervalos
 
 
-def zone_column(coluna: int, numero_folha: int) -> int:
-    """O carimbo repete as colunas 1, 2, 3...; na zona, a folha entra na dezena."""
-    return coluna if numero_folha <= 1 else numero_folha * 10 + coluna
+def zone_column(coluna: int, numero_folha: int, ja_numerada: bool = False) -> int:
+    """Carimbo que repete as colunas 1, 2, 3...: na zona, a folha entra na dezena.
+
+    Carimbo que ja traz a dezena da folha (21 a 29 na folha 2): vale o que esta escrito.
+    """
+    return coluna if numero_folha <= 1 or ja_numerada else numero_folha * 10 + coluna
+
+
+def border_already_numbered(colunas, numero_folha: int) -> bool:
+    """Na folha 2 em diante, a margem ja numerada so tem colunas de 10 para cima."""
+    return numero_folha > 1 and bool(colunas) and min(c[1] for c in colunas) >= 10
 
 
 def zones_from_border(folha: SheetRead, numero_folha: int) -> List[Zone]:
@@ -334,8 +342,9 @@ def zones_from_border(folha: SheetRead, numero_folha: int) -> List[Zone]:
         return []
     if len(linhas) < ZONE_MIN_ROWS or len(colunas) < ZONE_MIN_COLS:
         return []
+    ja_numerada = border_already_numbered(colunas, numero_folha)
     return [
-        Zone(f"{r[0].upper()}{zone_column(c[1], numero_folha):03d}", c[2], r[2])
+        Zone(f"{r[0].upper()}{zone_column(c[1], numero_folha, ja_numerada):03d}", c[2], r[2])
         for r in linhas for c in colunas
     ]
 
