@@ -342,8 +342,8 @@ class FontSizeFixPage(ToolPage):
     TOOL = "fontfix"
     TITULO = "Font Size Fix"
     DESCRICAO = (
-        "Mostra os textos fora do padrão da folha para você corrigir um por um ou todos de uma vez. "
-        "Muda só o tamanho. Background, vistas travadas, vistas ocultas e itens ocultos ficam de fora."
+        "Mostra os textos fora do padrão da folha para você corrigir um por um. Muda só o tamanho. "
+        "Vista travada é destravada só na troca e travada de novo. Main View, Background e ocultos ficam de fora."
     )
     BOTAO = "ANALISAR AS FONTES"
     BOTAO_DE_NOVO = "Analisar de novo"
@@ -361,6 +361,7 @@ class FontSizeFixPage(ToolPage):
         self._situacao: Dict[int, str] = {}
         self._alvo: Dict[int, float] = {}
         self._era: Dict[int, str] = {}
+        self._removidos = 0
         self._sep = "."
         super().__init__()
 
@@ -422,9 +423,10 @@ class FontSizeFixPage(ToolPage):
         col.addStretch(1)
         self.resumo = Resumo(("Corrigidos", "Como estava", "Pendentes"))
         col.addWidget(self.resumo)
-        self.btn_all = botao("CORRIGIR TODOS OS PENDENTES", "secundario")
-        self.btn_all.clicked.connect(self._corrigir_todos)
-        col.addWidget(self.btn_all)
+        self.btn_remove = botao("REMOVER ESTE TEXTO DA LISTA", "secundario")
+        self.btn_remove.setToolTip("Tira da lista um texto que não precisa ser conferido. Não altera o desenho.")
+        self.btn_remove.clicked.connect(self._remover)
+        col.addWidget(self.btn_remove)
         return True
 
     def _show_report(self, report) -> None:
@@ -436,9 +438,8 @@ class FontSizeFixPage(ToolPage):
         for it in self._rows:
             self._situacao[it.order] = SO_NO_CATIA if it.is_dim else PENDENTE
             self._alvo[it.order] = fc.closest_standard(it)
-        parou = "  ·  Parado antes do fim" if report.stopped else ""
-        ocultos = f"  ·  {report.nota_ocultos}" if report.total_hidden else ""
-        self.lbl_sub.setText(f"{report.total_nok} fora do padrão de {report.total_items} itens{ocultos}  ·  Formato {', '.join(report.formats)}{parou}")
+        self._removidos = 0
+        self._legenda()
         self._atual = -1
         self._preencher()
         if self._rows:
@@ -452,6 +453,16 @@ class FontSizeFixPage(ToolPage):
             for b in self.btn_alvo:
                 b.setText("")
         self._atualizar_botoes()
+
+    def _legenda(self) -> None:
+        report = self._report
+        parou = "  ·  Parado antes do fim" if report.stopped else ""
+        ocultos = f"  ·  {report.nota_ocultos}" if report.total_hidden else ""
+        removidos = f"  ·  {self._removidos} removidos da lista" if self._removidos else ""
+        self.lbl_sub.setText(
+            f"{report.total_nok - self._removidos} fora do padrão de {report.total_items} itens{ocultos}{removidos}"
+            f"  ·  Formato {', '.join(report.formats)}{parou}"
+        )
 
     def _preencher(self) -> None:
         self.table.blockSignals(True)
@@ -479,9 +490,8 @@ class FontSizeFixPage(ToolPage):
         self.resumo.definir("Como estava", contagem.count(COMO_ESTAVA))
         pendentes = contagem.count(PENDENTE) + contagem.count(FALHOU)
         self.resumo.definir("Pendentes", pendentes, T.AMBER if pendentes else "")
-        self.btn_all.setText(f"CORRIGIR TODOS OS PENDENTES ({pendentes})")
-        self.btn_all.setEnabled(pendentes > 0)
         tem = 0 <= self._atual < len(self._rows)
+        self.btn_remove.setEnabled(tem)
         pode = tem and self._situacao[self._rows[self._atual].order] in (PENDENTE, COMO_ESTAVA, FALHOU)
         self.btn_fix.setEnabled(pode)
         self.btn_keep.setEnabled(pode)
@@ -540,13 +550,28 @@ class FontSizeFixPage(ToolPage):
             it = self._rows[self._atual]
             self._pedir_correcao([(it, self._alvo[it.order])])
 
-    def _corrigir_todos(self) -> None:
-        lista = [(i, self._alvo[i.order]) for i in self._rows if self._situacao[i.order] in (PENDENTE, FALHOU)]
-        if lista:
-            self._pedir_correcao(lista)
+    def _remover(self) -> None:
+        """Tira da lista um texto que nao precisa ser conferido. O desenho nao muda."""
+        if not 0 <= self._atual < len(self._rows):
+            return
+        linha = self._atual
+        self._rows.pop(linha)
+        self._removidos += 1
+        self._atual = -1
+        self._preencher()
+        self._legenda()
+        if self._rows:
+            self.table.setCurrentCell(min(linha, len(self._rows) - 1), 1)
+        else:
+            self.lbl_item.setText("Nada mais na lista")
+            self.lbl_where.setText("")
+            self.lbl_pos.setText("")
+            self.lbl_atual.setText("")
+            self.lbl_nav_state.setText("")
+        self._atualizar_botoes()
 
     def _pedir_correcao(self, lista) -> None:
-        for b in (self.btn_fix, self.btn_keep, self.btn_all):
+        for b in (self.btn_fix, self.btn_keep, self.btn_remove):
             b.setEnabled(False)
         self.fix_requested.emit(self._report, lista)
 

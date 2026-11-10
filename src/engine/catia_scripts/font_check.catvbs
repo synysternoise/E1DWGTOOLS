@@ -113,7 +113,9 @@ Function LerFolha_(iFolha)
         vis = -1
         sel.VisProperties.GetShow vis
         nomeV = v.Name
-        If v.LockStatus = False And nomeV <> "Background View" And vis = 0 Then
+        ' Vista trancada tambem e lida: ler nao altera nada. A Main View (1) e o Background (2)
+        ' ficam de fora: so as vistas sao conferidas.
+        If i > 2 And nomeV <> "Background View" And vis = 0 Then
             For j = 1 To v.Texts.Count
                 Set t = v.Texts.Item(j)
                 mm = t.GetFontSize(0, 0)
@@ -381,7 +383,7 @@ Function AjustarTamanho(docCheio, nomeFolha, iVista, nomeVista, iItem, nomeItem,
 End Function
 
 Function AjustarTamanho_(docCheio, nomeFolha, iVista, nomeVista, iItem, nomeItem, mm)
-    Dim doc, d, sh, v, item
+    Dim doc, d, sh, v, item, travada, erro
     Set doc = Nothing
     For Each d In CATIA.Documents
         If d.FullName = docCheio Then
@@ -394,9 +396,21 @@ Function AjustarTamanho_(docCheio, nomeFolha, iVista, nomeVista, iItem, nomeItem
     If sh Is Nothing Then Err.Raise 1004, , "Folha nao encontrada."
     Set v = Achar(sh.Views, iVista, nomeVista)
     If v Is Nothing Then Err.Raise 1004, , "Vista nao encontrada."
-    If v.LockStatus Then Err.Raise 1005, , "Vista travada."
     Set item = Achar(v.Texts, iItem, nomeItem)
     If item Is Nothing Then Err.Raise 1004, , "Item nao encontrado."
-    item.SetFontSize 0, 0, CDbl(mm)
+    ' Vista trancada: destranca so para esta troca e tranca de novo, mesmo se a troca falhar.
+    travada = v.LockStatus
+    If travada Then v.LockStatus = False
+    GravarTamanho item, mm, erro
+    If travada Then v.LockStatus = True
+    If erro <> "" Then Err.Raise 1006, , erro
     AjustarTamanho_ = "OK" & Registro(Array(CStr(item.GetFontSize(0, 0))))
 End Function
+
+Sub GravarTamanho(item, mm, erro)
+    On Error Resume Next
+    erro = ""
+    item.SetFontSize 0, 0, CDbl(mm)
+    If Err.Number <> 0 Then erro = "Nao foi possivel mudar o tamanho: " & Err.Description
+    Err.Clear
+End Sub

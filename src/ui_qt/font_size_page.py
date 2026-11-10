@@ -70,6 +70,7 @@ class FontSizePage(QWidget):
         super().__init__()
         self._report: Optional[fc.FontReport] = None
         self._rows: List[fc.FontItem] = []
+        self._removidos = 0
         self._current = -1
         self._nav_request = 0
         self._connected = False
@@ -244,6 +245,10 @@ class FontSizePage(QWidget):
         nav.addWidget(self.lbl_pos, 1)
         nav.addWidget(self.btn_next, 2)
         col.addLayout(nav)
+        self.btn_remove = botao("REMOVER ESTE TEXTO DA LISTA", "secundario")
+        self.btn_remove.setToolTip("Tira da lista um texto que não precisa ser conferido. Não altera o desenho.")
+        self.btn_remove.clicked.connect(self._remover)
+        col.addWidget(self.btn_remove)
         return w
 
     # ------------------------------------------------------------------
@@ -312,17 +317,41 @@ class FontSizePage(QWidget):
             self._stack.setCurrentIndex(2 if self._report else 0)
             return
         self._report = report
+        self._removidos = 0
+        self._contagens()
+        self.btn_nok.setChecked(True)
+        self._stack.setCurrentIndex(2)
+        self._fill_table()
+
+    def _contagens(self) -> None:
+        report = self._report
         parou = "  ·  Parado antes do fim" if report.stopped else ""
+        removidos = f"  ·  {self._removidos} removidos da lista" if self._removidos else ""
         self.lbl_sub.setText(
             f"PN {report.drawing_no}  ·  Formato {', '.join(report.formats)}  ·  "
-            f"{report.total_items} itens analisados{parou}"
+            f"{report.total_items} itens analisados{removidos}{parou}"
         )
         self.btn_nok.setText(f"Fora do padrão ({report.total_nok})")
         self.btn_ok.setText(f"Corretos ({report.total_ok})")
         self.btn_all.setText(f"Todos ({report.total_items})")
-        self.btn_nok.setChecked(True)
-        self._stack.setCurrentIndex(2)
+
+    def _remover(self) -> None:
+        """Tira da lista um texto que nao precisa ser conferido. O desenho nao muda."""
+        if not 0 <= self._current < len(self._rows):
+            return
+        linha, it, r = self._current, self._rows[self._current], self._report
+        if it in r.items:
+            r.items.remove(it)
+            r.total_nok -= 1
+        else:
+            r.ok_items.remove(it)
+            r.total_ok -= 1
+        r.total_items -= 1
+        self._removidos += 1
+        self._contagens()
         self._fill_table()
+        if self._rows:
+            self._select(min(linha, len(self._rows) - 1))
 
     # ------------------------------------------------------------------
     # Lista e navegacao

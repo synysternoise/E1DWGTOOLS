@@ -258,15 +258,27 @@ escolhido = p._alvo[segundo.order]
 clica(p.btn_keep)
 confere("DEIXAR COMO ESTÁ não muda o item", p._situacao[segundo.order] == "Como estava" and segundo.size == p.table.item(1, 3).text())
 espera(lambda: "Selecionado" in p.lbl_nav_state.text(), 20)
-pendentes = sum(1 for v in p._situacao.values() if v == "Pendente")
-confere("o botão mostra os pendentes", p.btn_all.text() == f"CORRIGIR TODOS OS PENDENTES ({pendentes})", p.btn_all.text())
-clica(p.btn_all)
-confere("corrige os pendentes", espera(lambda: "Pendente" not in p._situacao.values(), 60), p.resumo.valores["Corrigidos"].text())
+confere("não há mais botão de corrigir todos", not hasattr(p, "btn_all"))
+# Remover da lista nao altera o desenho: o item volta na proxima analise.
+antes_de_remover, removido = len(p._rows), p._rows[p._atual]
+clica(p.btn_remove)
+confere("REMOVER ESTE TEXTO tira só da lista", len(p._rows) == antes_de_remover - 1 and removido not in p._rows and "1 removidos" in p.lbl_sub.text(), p.lbl_sub.text())
+# Um por um, ate nao sobrar pendente.
+for _ in range(len(p._rows) + 2):
+    pend = [n for n, i in enumerate(p._rows) if p._situacao[i.order] == "Pendente"]
+    if not pend:
+        break
+    p.table.setCurrentCell(pend[0], 1)
+    espera(lambda: p.btn_fix.isEnabled(), 10)
+    alvo = p._rows[pend[0]].order
+    clica(p.btn_fix)
+    espera(lambda: p._situacao[alvo] != "Pendente", 30)
+confere("corrige os pendentes um por um", not [i for i in p._rows if p._situacao[i.order] == "Pendente"], p.resumo.valores["Corrigidos"].text())
 foto_tela(j, "fontfix_corrigido")
 confere("o que ficou como estava continua fora do padrão", p._situacao[segundo.order] == "Como estava")
 clica(p.btn_again)
 espera(lambda: p._stack.currentIndex() == 1, 5)
-confere("nova análise só aponta o que ficou", espera(lambda: p._stack.currentIndex() == 2 and len(p._rows) == 1, 60), len(p._rows))
+confere("nova análise aponta o que ficou e o que foi só removido", espera(lambda: p._stack.currentIndex() == 2 and len(p._rows) == 2, 60), len(p._rows))
 
 # ---------------- Sequencia e Visao geral ----------------
 s = j.seq_page

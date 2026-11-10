@@ -84,8 +84,11 @@ depois = {tuple(l.split(CAMPO)[:3]): l.split(CAMPO) for l in foto()}
 # Foto: 0 folha, 1 vista, 2 nome, 3 texto, 4 frame, 5 frame props, 6 cor, 7 cores, 8 bordas, 9-10 tamanho, 11 x, 12 y, 13..
 so_tamanho = all(antes[k][:9] == depois[k][:9] and antes[k][11:] == depois[k][11:] for k in antes)
 confere("muda só o tamanho: texto, cor, posição e leaders iguais", so_tamanho and antes.keys() == depois.keys())
-travada = [v for k, v in depois.items() if k[1] in ("V travada", "V escondida")]
-confere("vistas travadas e ocultas não mudam", all(depois[k][9] == antes[k][9] for k in depois if k[1] in ("V travada", "V escondida")) and bool(travada))
+da_vista = lambda nome: [k for k in depois if k[1] == nome]  # noqa: E731
+confere("vista oculta não muda", all(depois[k][9] == antes[k][9] for k in da_vista("V escondida")) and bool(da_vista("V escondida")))
+# Vista travada: e destravada so na troca. O campo da trava (o ultimo) ja foi conferido acima, em so_tamanho.
+confere("vista travada é corrigida e continua travada", any(depois[k][9] != antes[k][9] for k in da_vista("V travada"))
+        and all(depois[k][-1] == antes[k][-1] for k in da_vista("V travada")), [(antes[k][9], depois[k][9], depois[k][-1]) for k in da_vista("V travada")][:3])
 
 while app.Documents.Count:
     app.Documents.Item(1).Close()

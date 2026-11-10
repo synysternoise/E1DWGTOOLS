@@ -183,6 +183,12 @@ compara uma foto do desenho antes e depois.
 - **Restaurar cores (`ResetColors`).** Convertido como está, mas nos testes o comando de busca
   falha nos dois lados, com o CATIA sem janela. Nenhum botão do painel chama essa rotina.
 
+- **Pedidos de 09/11/2026.** Vista travada também é lida, no Python e em `vba/sizedetect.txt`: ler não altera
+  nada. No Font Size Fix, a vista travada é destravada só na troca do tamanho e travada de novo, mesmo se a
+  troca falhar. O botão de corrigir todos saiu. REMOVER ESTE TEXTO DA LISTA tira um item da lista, no Check
+  e no Fix, sem alterar o desenho: ele volta na próxima análise. A Main View e o Background ficam fora da
+  leitura, a pedido: só as vistas são conferidas. Notas soltas na Main View não são mais apontadas.
+
 ## Update Template: diferenças conhecidas em relação ao VBA
 
 - **Template já aberto.** Depois de converter, o CATIA mantém o template carregado sem janela, porque

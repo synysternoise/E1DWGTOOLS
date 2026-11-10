@@ -104,7 +104,9 @@ Public Sub RunFontInspection()
             oSel.Add oView
             oSel.VisProperties.GetShow visStatus
 
-            If oView.LockStatus = False _
+            ' Vista trancada também é lida: ler não altera nada. A Main View (1) e o
+            ' Background (2) ficam de fora: só as vistas são conferidas.
+            If i > 2 _
                And oView.name <> "Background View" _
                And visStatus = catVisPropertyShowAttr Then
 
