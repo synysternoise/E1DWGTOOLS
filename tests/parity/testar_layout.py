@@ -3,7 +3,7 @@ import os
 import sys
 import time
 
-R = r"R:\E1DWGTOOLS"
+R = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")
 sys.path.insert(0, os.path.join(R, "src"))
 from PySide6.QtCore import QCoreApplication, QEventLoop  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
