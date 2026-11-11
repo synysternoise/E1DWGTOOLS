@@ -31,7 +31,7 @@ MANIFESTO = {
     "src/engine/catia_bridge.py": (138, 'f6d41732974241a7'),
     "src/engine/font_check.py": (296, '28e59cf5909b78f2'),
     "src/engine/fix_flags.py": (272, 'aab35321882e9640'),
-    "src/engine/atualizar_template.py": (923, '3c872235ffba39c3'),
+    "src/engine/atualizar_template.py": (1201, '420c09712d68011b'),
     "src/engine/pos_zone.py": (1152, '23e278610959b4dd'),
     "src/engine/splits.py": (421, '1355a489c548390e'),
     "src/engine/part_list.py": (329, '0ba1c0b77078656a'),

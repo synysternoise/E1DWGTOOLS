@@ -204,6 +204,26 @@ compara uma foto do desenho antes e depois.
   continua respondendo. Não há botão de parar, porque o desenho ficaria parcialmente convertido.
 - **Pasta dos templates fora do ar.** O Python mostra uma mensagem clara, com a pasta pesquisada.
 
+- **Pedidos de 09/11/2026, no Python e em `vba/update.txt`.**
+  - **Grade antiga.** Só eram apagadas as vistas `ZONE`, `ZONE[n]` e `ZONES_A1_SHT...`. As do desenho real se
+    chamam `ZONE A0`, `ZONE A0[3]`, `ZONES_A0_SHT1`: a antiga ficava e a nova era colada por cima. Agora o
+    nome com qualquer formato é reconhecido. Vista do usuário com ZONE no nome continua intacta.
+  - **Margem.** Nas folhas 2 em diante, os números das colunas ganham a dezena da folha (29, 28, 27 na
+    folha 2). São lidos uma vez no template. Só vale o número que aparece em cima e embaixo na mesma
+    coluna, para um número solto da legenda nunca ser trocado.
+  - **Grade.** Nas folhas 2 em diante, os rótulos das vistas de zona ganham a dezena (F6 vira F26, E005
+    vira E025). A trava da vista é mantida.
+  - **Tempo (10/11/2026, só no Python).** Medido no desenho de teste, 4 folhas e 2 templates: de 15,2 s para
+    13,3 s na primeira conversão e 10,5 s nas seguintes. O resultado continua igual ao da macro.
+    - A leitura dos vínculos e da margem do template fica guardada em
+      `%APPDATA%\E1DWGTools\templates_lidos.json` e vale enquanto o arquivo do template tiver o mesmo
+      tamanho e a mesma data. Sem ela, cada parâmetro do template é alterado e devolvido, um por um.
+    - As vistas de zona do template são copiadas de uma vez, e não uma por uma: cada ida e volta entre
+      as janelas do template e do desenho custa perto de meio segundo.
+    - O que sobra é do CATIA: abrir e fechar o template, colar e atualizar a tela.
+    - `%APPDATA%\E1DWGTools\update_tempos.txt` guarda quanto cada fase levou na última conversão. Não
+      aparece na tela. Serve para achar a fase lenta no PC da empresa, que não foi medido.
+
 ## Position and Zone: diferenças conhecidas em relação ao VBA
 
 - **Ordem.** O Excel só abre depois de ler o desenho, para não ficar aberto vazio se a leitura falhar.

@@ -172,6 +172,10 @@ def main() -> int:
     pasta_vba = sys.argv[1]
     so_vba = "--so-vba" in sys.argv
     trabalho = tempfile.mkdtemp(prefix="paridade_update_")
+    # O teste nao mexe nos arquivos do usuario. A leitura do template fica guardada entre os casos,
+    # entao o caminho com ela guardada e o sem ela sao os dois comparados com a macro.
+    os.environ["E1DWGTOOLS_TEMPLATES"] = os.path.join(trabalho, "templates_lidos.json")
+    os.environ["E1DWGTOOLS_TEMPOS"] = os.path.join(trabalho, "update_tempos.txt")
     modelos = os.path.join(trabalho, "templates")
     pythoncom.CoInitialize()
     bridge = CatiaBridge()

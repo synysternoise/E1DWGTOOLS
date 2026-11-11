@@ -70,9 +70,13 @@ Sub Template(pasta, formato, papel, largura, altura, comPrefixo, comZona)
     Set t = bg.Texts.Add(formato, 780, 40)
     t.Name = "Text.68"
     Legenda doc, bg, comPrefixo
+    ' Margem: o mesmo numero embaixo e em cima, como no template real.
     For i = 1 To 4
         bg.Texts.Add CStr(i), 100 * i, 5
+        bg.Texts.Add CStr(i), 100 * i, sh.GetPaperHeight - 5
     Next
+    ' Numero solto perto da borda de baixo, sem par em cima: nao pode ser trocado.
+    bg.Texts.Add "7", 650, 30
     bg.Texts.Add "A", 5, 100
     bg.Texts.Add "B", 5, 200
     If comZona Then
@@ -81,6 +85,13 @@ Sub Template(pasta, formato, papel, largura, altura, comPrefixo, comZona)
         v.Activate
         v.Texts.Add "A001", 100, 100
         v.Texts.Add "A002", 200, 100
+        v.Texts.Add "NOTA DA GRADE", 300, 100
+        ' Nome real das vistas de zona, com o formato.
+        Set v = sh.Views.Add("ZONES_" & formato & "_SHT1")
+        v.x = 0: v.y = 0
+        v.Activate
+        v.Texts.Add "F6", 100, 200
+        v.LockStatus = True
         sh.Views.Item(1).Activate
     End If
     ' A segunda folha do template nao pode ser usada.
@@ -135,6 +146,16 @@ Sub ZonaAntiga(sh)
     v.Activate
     v.Texts.Add "Z999", 50, 50
     v.LockStatus = True
+    ' Grade antiga com o nome real, que antes nao era apagada.
+    Set v = sh.Views.Add("ZONE A0")
+    v.x = 0: v.y = 0
+    v.Activate
+    v.Texts.Add "GRADE VELHA", 60, 60
+    v.LockStatus = True
+    Set v = sh.Views.Add("ZONES_A0_SHT1")
+    v.x = 0: v.y = 0
+    v.Activate
+    v.Texts.Add "GRADE VELHA 2", 70, 70
 End Sub
 
 Function Montar(pasta)

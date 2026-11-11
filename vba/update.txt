@@ -501,6 +501,8 @@ Private Sub ApplyTemplateToSheets( _
     Dim sheetIndex As Long
     Dim viewIndex As Long
     Dim viewCountBefore As Long
+    Dim marginColumns As Collection
+    Dim hasLaterSheet As Boolean
 
     templateOpenedHere = False
 
@@ -560,6 +562,26 @@ Private Sub ApplyTemplateToSheets( _
                 templateBackground, _
                 textLinks(sheetCountKey))
 
+    End If
+
+    ' ========================================================
+    ' NUMEROS DAS COLUNAS NA MARGEM
+    '
+    ' Lidos uma vez no template e trocados em cada folha 2 em
+    ' diante: 29, 28, 27... na folha 2, 39, 38, 37... na folha 3.
+    ' ========================================================
+    Set marginColumns = New Collection
+    hasLaterSheet = False
+
+    For sheetIndex = 1 To targetSheets.count
+        If SheetPosition(allSheets, targetSheets.item(sheetIndex).name) >= 2 Then
+            hasLaterSheet = True
+        End If
+    Next sheetIndex
+
+    If hasLaterSheet Then
+        Set marginColumns = _
+            ReadMarginColumns(templateSheet, templateBackground, warnings)
     End If
 
     ' ========================================================
@@ -673,6 +695,18 @@ Private Sub ApplyTemplateToSheets( _
 
         End If
 
+        If sheetNumber >= 2 Then
+
+            ApplyMarginNumbers _
+                targetBackground, _
+                positionIndex, _
+                marginColumns, _
+                sheetNumber, _
+                targetSheet.name, _
+                warnings
+
+        End If
+
         DeleteTemplateAuxiliaryViews selTarget, targetSheet
 
     Next sheetIndex
@@ -733,6 +767,14 @@ Private Sub ApplyTemplateToSheets( _
 
             pastedView.x = templateView.x
             pastedView.y = templateView.y
+
+            ' Folhas 2 em diante: a grade de zonas ganha a dezena
+            ' da folha (F6 vira F26 na folha 2).
+            sheetNumber = SheetPosition(allSheets, targetSheet.name)
+
+            If sheetNumber >= 2 And IsTemplateAuxiliaryView(templateView) Then
+                ApplyGridNumbers pastedView, sheetNumber, warnings
+            End If
 
         Next sheetIndex
 
@@ -951,6 +993,363 @@ Private Function IsTemplateAuxiliaryView( _
         viewName = "ZONE" Or _
         Left$(viewName, 5) = "ZONE[" Or _
         Left$(viewName, 12) = "ZONES_A1_SHT"
+
+    If IsTemplateAuxiliaryView Then Exit Function
+
+    ' Vistas de zona com o formato no nome: ZONE A0, ZONE A0[3],
+    ' ZONES_A0_SHT1, ZONES_A0_SHT1[2]. O nome precisa ser exato, para
+    ' nao apagar views do usuario com ZONE no nome. Sem isso, a grade
+    ' antiga do A0 ficava embaixo da nova.
+    Dim bracketPosition As Long
+    Dim restOfName As String
+    Dim sheetMark As Long
+
+    If Right$(viewName, 1) = "]" Then
+        bracketPosition = InStrRev(viewName, "[")
+        If bracketPosition > 1 Then
+            If IsAllDigits(Mid$(viewName, bracketPosition + 1, Len(viewName) - bracketPosition - 1)) Then
+                viewName = Left$(viewName, bracketPosition - 1)
+            End If
+        End If
+    End If
+
+    If Left$(viewName, 5) = "ZONE " Then
+
+        IsTemplateAuxiliaryView = IsZoneFormatName(Trim$(Mid$(viewName, 6)))
+
+    ElseIf Left$(viewName, 6) = "ZONES_" Then
+
+        restOfName = Mid$(viewName, 7)
+        sheetMark = InStr(1, restOfName, "_SHT", vbBinaryCompare)
+
+        If sheetMark > 1 Then
+            If IsZoneFormatName(Left$(restOfName, sheetMark - 1)) Then
+                restOfName = Mid$(restOfName, sheetMark + 4)
+                IsTemplateAuxiliaryView = (Len(restOfName) = 0 Or IsAllDigits(restOfName))
+            End If
+        End If
+
+    End If
+
+End Function
+
+Private Function IsZoneFormatName( _
+    ByVal formatName As String) As Boolean
+
+    Select Case formatName
+        Case "3A0", "A0", "A1", "A2", "A3", "E3"
+            IsZoneFormatName = True
+    End Select
+
+End Function
+
+' ============================================================
+' NUMERO DA COLUNA NA FOLHA
+'
+' A folha entra na dezena, como na zona: coluna 9 e 9 na folha 1,
+' 29 na folha 2 e 39 na folha 3.
+' ============================================================
+Private Function ColumnNumberForSheet( _
+    ByVal columnNumber As Long, _
+    ByVal sheetNumber As Long) As Long
+
+    If sheetNumber <= 1 Then
+        ColumnNumberForSheet = columnNumber
+    Else
+        ColumnNumberForSheet = sheetNumber * 10 + columnNumber
+    End If
+
+End Function
+
+' ============================================================
+' LE OS NUMEROS DAS COLUNAS NA MARGEM DO TEMPLATE
+'
+' So vale o numero que aparece em cima e embaixo na mesma coluna:
+' assim um numero solto da legenda, que tambem fica perto da
+' borda de baixo, nunca e trocado. Cada item: Array(x, y, coluna).
+' ============================================================
+Private Function ReadMarginColumns( _
+    ByVal templateSheet As drawingSheet, _
+    ByVal templateBackground As drawingView, _
+    ByVal warnings As Collection) As Collection
+
+    Const MARGIN_RATIO As Double = 0.12
+    Const MARGIN_MIN As Double = 15#
+    Const MARGIN_MAX As Double = 80#
+    Const MARGIN_MIN_COLUMNS As Long = 3
+    Const MARGIN_PAIR_X As Double = 2#
+
+    Dim found As New Collection
+    Dim topX() As Double, topY() As Double, topValue() As Long, topUsed() As Boolean
+    Dim bottomX() As Double, bottomY() As Double, bottomValue() As Long
+    Dim topCount As Long, bottomCount As Long
+    Dim paperWidth As Double, paperHeight As Double, band As Double
+    Dim objText As Object
+    Dim textValue As String
+    Dim itemIndex As Long, otherIndex As Long
+    Dim x As Double, y As Double
+    Dim distinctValues As Object
+    Dim bottomAdded As Boolean
+
+    Set ReadMarginColumns = found
+
+    On Error GoTo ReadFailed
+
+    paperWidth = templateSheet.GetPaperWidth
+    paperHeight = templateSheet.GetPaperHeight
+
+    If paperWidth > 0 And paperHeight > 0 Then
+
+        band = paperHeight * MARGIN_RATIO
+        If band < MARGIN_MIN Then band = MARGIN_MIN
+        If band > MARGIN_MAX Then band = MARGIN_MAX
+
+        For itemIndex = 1 To templateBackground.Texts.count
+
+            Set objText = templateBackground.Texts.item(itemIndex)
+            textValue = Trim$(CStr(objText.Text))
+
+            ' So os numeros de 1 ou 2 digitos precisam da posicao.
+            If Len(textValue) > 0 And Len(textValue) <= 2 And IsAllDigits(textValue) Then
+                If CLng(textValue) > 0 Then
+
+                    x = objText.x
+                    y = objText.y
+
+                    If y >= paperHeight - band And y <= paperHeight Then
+                        topCount = topCount + 1
+                        ReDim Preserve topX(1 To topCount)
+                        ReDim Preserve topY(1 To topCount)
+                        ReDim Preserve topValue(1 To topCount)
+                        ReDim Preserve topUsed(1 To topCount)
+                        topX(topCount) = x: topY(topCount) = y: topValue(topCount) = CLng(textValue)
+                    ElseIf y >= 0 And y <= band Then
+                        bottomCount = bottomCount + 1
+                        ReDim Preserve bottomX(1 To bottomCount)
+                        ReDim Preserve bottomY(1 To bottomCount)
+                        ReDim Preserve bottomValue(1 To bottomCount)
+                        bottomX(bottomCount) = x: bottomY(bottomCount) = y: bottomValue(bottomCount) = CLng(textValue)
+                    End If
+
+                End If
+            End If
+
+        Next itemIndex
+
+        Set distinctValues = CreateObject("Scripting.Dictionary")
+
+        For itemIndex = 1 To bottomCount
+
+            bottomAdded = False
+
+            For otherIndex = 1 To topCount
+
+                If topValue(otherIndex) = bottomValue(itemIndex) And _
+                   Abs(topX(otherIndex) - bottomX(itemIndex)) <= MARGIN_PAIR_X Then
+
+                    If Not bottomAdded Then
+                        found.Add Array(bottomX(itemIndex), bottomY(itemIndex), bottomValue(itemIndex))
+                        bottomAdded = True
+                    End If
+
+                    If Not topUsed(otherIndex) Then
+                        found.Add Array(topX(otherIndex), topY(otherIndex), topValue(otherIndex))
+                        topUsed(otherIndex) = True
+                    End If
+
+                    If Not distinctValues.Exists(bottomValue(itemIndex)) Then
+                        distinctValues.Add bottomValue(itemIndex), True
+                    End If
+
+                End If
+
+            Next otherIndex
+
+        Next itemIndex
+
+        If distinctValues.count < MARGIN_MIN_COLUMNS Then
+            Set found = New Collection
+        End If
+
+    End If
+
+    GoTo ReadDone
+
+ReadFailed:
+    Err.Clear
+    Set found = New Collection
+
+ReadDone:
+    On Error GoTo 0
+
+    If found.count = 0 Then
+        warnings.Add _
+            "Numeracao da margem nao encontrada no template: as " & _
+            "margens ficaram sem a dezena da folha."
+    End If
+
+    Set ReadMarginColumns = found
+
+End Function
+
+' ============================================================
+' TROCA OS NUMEROS DA MARGEM NAS FOLHAS 2 EM DIANTE
+' ============================================================
+Private Sub ApplyMarginNumbers( _
+    ByVal targetBackground As drawingView, _
+    ByRef positionIndex As Object, _
+    ByVal marginColumns As Collection, _
+    ByVal sheetNumber As Long, _
+    ByVal sheetName As String, _
+    ByVal warnings As Collection)
+
+    Dim marginItem As Variant
+    Dim positionKey As String
+    Dim failedCount As Long
+    Dim written As Boolean
+
+    If marginColumns.count = 0 Then Exit Sub
+
+    If positionIndex Is Nothing Then
+        Set positionIndex = BuildTextIndex(targetBackground, True)
+    End If
+
+    For Each marginItem In marginColumns
+
+        positionKey = TextPositionKey(CDbl(marginItem(0)), CDbl(marginItem(1)))
+        written = False
+
+        If positionIndex.Exists(positionKey) Then
+            written = WriteTextKeepingLine( _
+                positionIndex(positionKey), _
+                CStr(ColumnNumberForSheet(CLng(marginItem(2)), sheetNumber)))
+        End If
+
+        If Not written Then failedCount = failedCount + 1
+
+    Next marginItem
+
+    If failedCount > 0 Then
+        warnings.Add _
+            "Folha " & CStr(sheetNumber) & " (" & sheetName & "): " & _
+            CStr(failedCount) & " numero(s) da margem nao foram atualizados."
+    End If
+
+End Sub
+
+' ============================================================
+' TROCA OS ROTULOS DA GRADE DE ZONAS NAS FOLHAS 2 EM DIANTE
+'
+' F6 vira F26 na folha 2, E005 vira E025.
+' ============================================================
+Private Sub ApplyGridNumbers( _
+    ByVal pastedView As drawingView, _
+    ByVal sheetNumber As Long, _
+    ByVal warnings As Collection)
+
+    Dim wasLocked As Boolean
+    Dim itemIndex As Long
+    Dim objText As Object
+    Dim newLabel As String
+
+    On Error GoTo GridFailed
+
+    wasLocked = CBool(pastedView.LockStatus)
+    If wasLocked Then pastedView.LockStatus = False
+
+    For itemIndex = 1 To pastedView.Texts.count
+
+        Set objText = pastedView.Texts.item(itemIndex)
+        newLabel = ZoneLabelForSheet(CStr(objText.Text), sheetNumber)
+
+        If Len(newLabel) > 0 Then
+            WriteTextKeepingLine objText, newLabel
+        End If
+
+    Next itemIndex
+
+    If wasLocked Then pastedView.LockStatus = True
+
+    On Error GoTo 0
+    Exit Sub
+
+GridFailed:
+    Err.Clear
+    On Error GoTo 0
+
+    warnings.Add _
+        "Folha " & CStr(sheetNumber) & ": nao foi possivel numerar " & _
+        "a grade " & pastedView.name & "."
+
+End Sub
+
+' "" se o texto nao for um rotulo de zona (letra de A a F e ate 3 digitos).
+Private Function ZoneLabelForSheet( _
+    ByVal textValue As String, _
+    ByVal sheetNumber As Long) As String
+
+    Dim label As String
+    Dim digits As String
+    Dim newNumber As String
+
+    label = UCase$(Trim$(textValue))
+
+    If Len(label) < 2 Or Len(label) > 4 Then Exit Function
+    If Left$(label, 1) < "A" Or Left$(label, 1) > "F" Then Exit Function
+
+    digits = Mid$(label, 2)
+
+    If Not IsAllDigits(digits) Then Exit Function
+    If CLng(digits) <= 0 Then Exit Function
+
+    newNumber = CStr(ColumnNumberForSheet(CLng(digits), sheetNumber))
+
+    If Len(newNumber) < Len(digits) Then
+        newNumber = String$(Len(digits) - Len(newNumber), "0") & newNumber
+    End If
+
+    ZoneLabelForSheet = Left$(label, 1) & newNumber
+
+End Function
+
+' Troca o texto. Se ele tem largura fixa, ajusta para o numero
+' maior nao cair para a linha de baixo.
+Private Function WriteTextKeepingLine( _
+    ByVal objText As Object, _
+    ByVal newText As String) As Boolean
+
+    Dim oldWidth As Double
+    Dim naturalWidth As Double
+
+    On Error Resume Next
+
+    oldWidth = -1
+    oldWidth = CDbl(objText.WrappingWidth)
+    If Err.number <> 0 Then oldWidth = -1
+    Err.Clear
+
+    objText.Text = newText
+
+    If Err.number <> 0 Then
+        Err.Clear
+        On Error GoTo 0
+        Exit Function
+    End If
+
+    If oldWidth > 0 Then
+        ' Largura 0 faz o CATIA ajustar a caixa ao texto.
+        objText.WrappingWidth = 0
+        naturalWidth = CDbl(objText.WrappingWidth)
+        If Err.number = 0 Then
+            If oldWidth > naturalWidth Then objText.WrappingWidth = oldWidth
+        End If
+        Err.Clear
+    End If
+
+    WriteTextKeepingLine = (CStr(objText.Text) = newText)
+
+    Err.Clear
+    On Error GoTo 0
 
 End Function
 

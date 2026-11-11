@@ -9,8 +9,12 @@ por isso o custo de COM nela e pequeno.
 """
 from __future__ import annotations
 
+import json
 import os
-from dataclasses import dataclass, field
+import re
+import time
+from contextlib import contextmanager
+from dataclasses import asdict, dataclass, field
 from typing import Callable, Dict, List, Optional, Tuple
 
 import pywintypes
@@ -121,10 +125,87 @@ def find_template(pasta: str, formato: str) -> str:
     return ""
 
 
+# Vistas de zona do template: ZONE, ZONE A0, ZONE A0[3], ZONES_A0_SHT1, ZONES_A0_SHT1[2]...
+RE_VISTA_ZONA = re.compile(r"^(ZONE(\s+(3A0|A0|A1|A2|A3|E3))?|ZONES_(3A0|A0|A1|A2|A3|E3)_SHT\d*)(\[\d+\])?$")
+RE_ROTULO_ZONA = re.compile(r"^([A-F])(\d{1,3})$")
+# Faixa da margem onde ficam os numeros das colunas, como no Position and Zone.
+MARGEM_PROPORCAO = 0.12
+MARGEM_MINIMA = 15.0
+MARGEM_MAXIMA = 80.0
+MARGEM_MIN_COLUNAS = 3
+MARGEM_PAR_X = 2.0  # o mesmo numero aparece em cima e embaixo, na mesma coluna
+
+
 def is_aux_view(nome: str) -> bool:
-    """Mesmo criterio do Position and Zone, para nao apagar views do usuario com ZONE no nome."""
+    """Vista de zona do template. O nome precisa ser exato, para nao apagar views do usuario
+    com ZONE no nome. Sem o formato no criterio, a grade antiga do A0 ficava embaixo da nova."""
     s = nome.strip(" ").upper()
-    return s == "ZONE" or s.startswith("ZONE[") or s.startswith("ZONES_A1_SHT")
+    return s.startswith("ZONES_A1_SHT") or bool(RE_VISTA_ZONA.match(s))
+
+
+def nome_sem_contador(nome: str) -> str:
+    """O CATIA acrescenta [2], [3]... ao nome de uma view colada onde ja existe outra igual."""
+    return re.sub(r"\[\d+\]$", "", nome.strip(" ")).upper()
+
+
+def emparelhar(dados: list, nomes_colados: List[str]) -> list:
+    """Para cada view colada, os dados (nome, x, y) da view do template de onde ela veio.
+
+    Pelo nome; o que nao casar pelo nome segue a ordem em que foi copiado.
+    """
+    livres = list(dados)
+    saida: list = [None] * len(nomes_colados)
+    for i, colado in enumerate(nomes_colados):
+        for d in livres:
+            if nome_sem_contador(d[0]) == nome_sem_contador(colado):
+                saida[i] = d
+                livres.remove(d)
+                break
+    for i in range(len(saida)):
+        if saida[i] is None:
+            saida[i] = livres.pop(0)
+    return saida
+
+
+def numero_na_folha(coluna: int, numero_folha: int) -> int:
+    """A folha entra na dezena, como na zona: coluna 9 e 9 na folha 1, 29 na folha 2, 39 na folha 3."""
+    return coluna if numero_folha <= 1 else numero_folha * 10 + coluna
+
+
+def margin_columns(textos, largura: float, altura: float) -> List[Tuple[float, float, int]]:
+    """Numeros das colunas na margem. textos: (texto, x, y). Devolve (x, y, coluna).
+
+    So vale o numero que aparece em cima e embaixo na mesma coluna: assim um numero solto da
+    legenda, que tambem fica perto da borda de baixo, nunca e trocado.
+    """
+    if largura <= 0 or altura <= 0:
+        return []
+    faixa = min(max(altura * MARGEM_PROPORCAO, MARGEM_MINIMA), MARGEM_MAXIMA)
+    cima, baixo = [], []
+    for texto, x, y in textos:
+        valor = str(texto).strip(" ")
+        if not (0 < len(valor) <= 2 and is_all_digits(valor)) or int(valor) <= 0:
+            continue
+        if altura - faixa <= y <= altura:
+            cima.append((x, y, int(valor)))
+        elif 0 <= y <= faixa:
+            baixo.append((x, y, int(valor)))
+    achados = []
+    for b in baixo:
+        for c in cima:
+            if c[2] == b[2] and abs(c[0] - b[0]) <= MARGEM_PAR_X:
+                achados.extend(m for m in (b, c) if m not in achados)
+    if len({m[2] for m in achados}) < MARGEM_MIN_COLUNAS:
+        return []
+    return achados
+
+
+def zone_label(texto: str, numero_folha: int) -> str:
+    """Rotulo da grade na folha: F6 vira F26 na folha 2, E005 vira E025. "" se nao for rotulo."""
+    m = RE_ROTULO_ZONA.match(str(texto).strip(" ").upper())
+    if not m or int(m.group(2)) <= 0:
+        return ""
+    return m.group(1) + str(numero_na_folha(int(m.group(2)), numero_folha)).zfill(len(m.group(2)))
 
 
 def short_parameter_name(nome: str) -> str:
@@ -434,6 +515,23 @@ def has_working_sheet_number(vista_principal, campo_x: float, campo_y: float) ->
     return False
 
 
+def _gravar_texto(t, novo: str) -> bool:
+    """Troca o texto. Se ele tem largura fixa, ajusta para o numero maior nao cair para a linha de baixo."""
+    try:
+        largura = t.WrappingWidth
+    except COM_ERROR:
+        largura = -1
+    t.Text = novo
+    if largura > 0:
+        try:
+            t.WrappingWidth = 0  # o CATIA ajusta a caixa ao texto
+            if largura > t.WrappingWidth:
+                t.WrappingWidth = largura
+        except COM_ERROR:
+            pass
+    return str(t.Text) == novo
+
+
 def _apagar(sel, objeto) -> None:
     sel.Clear()
     sel.Add(objeto)
@@ -455,6 +553,16 @@ class _Conversao:
         self.modified = False
         self.report: Optional[TemplateReport] = None
         self.feitas = 0
+        self.tempos: Dict[str, float] = {}  # segundos por fase, para o arquivo de diagnostico
+        self.inicio = time.perf_counter()
+
+    @contextmanager
+    def fase(self, nome: str):
+        inicio = time.perf_counter()
+        try:
+            yield
+        finally:
+            self.tempos[nome] = self.tempos.get(nome, 0.0) + time.perf_counter() - inicio
 
     def erro(self, descricao: str, codigo: int, origem: str = "ApplyTemplateToSheets") -> TemplateError:
         return TemplateError(descricao, VB_OBJECT_ERROR + codigo, origem, self.modified)
@@ -522,13 +630,15 @@ class _Conversao:
     def aplicar_template(self, caminho: str, folhas: List[dict], todas: List[dict]) -> None:
         modelo = None
         try:
-            modelo = self.abrir_template(caminho)
+            with self.fase("Abrir o template"):
+                modelo = self.abrir_template(caminho)
             self.modified = True  # daqui em diante o desenho comeca a mudar
             self._aplicar(modelo, caminho, folhas, todas)
         except COM_ERROR as exc:
             raise TemplateError(_descricao_com(exc), exc.hresult, "ApplyTemplateToSheets", self.modified) from exc
         finally:
-            self.fechar_template(modelo)
+            with self.fase("Fechar o template"):
+                self.fechar_template(modelo)
 
     def fechar_template(self, modelo) -> None:
         """Como o On Error Resume Next da macro: um passo que falha nao impede os outros."""
@@ -548,7 +658,16 @@ class _Conversao:
         # A colagem entre documentos perde os Attribute Links: o mapa e lido antes da copia e os
         # vinculos sao refeitos depois da colagem com os parametros do proprio desenho.
         self.avisar_status("Conversão de template: lendo os vínculos da legenda...")
-        links = map_text_links(modelo.Parameters, fundo_modelo)
+        # A leitura depende so do arquivo do template: fica guardada ate ele mudar. Sem ela, cada
+        # parametro do template e alterado e devolvido, um por um.
+        guardado = ler_template_guardado(caminho)
+        with self.fase("Ler os vínculos da legenda"):
+            if guardado is not None:
+                links, margem_lida = guardado
+            else:
+                links = map_text_links(modelo.Parameters, fundo_modelo)
+                margem_lida = self._ler_margem(folha_modelo, fundo_modelo)
+                guardar_template(caminho, links, margem_lida)
         chave_total = link_key_for_parameter(links, SHEET_COUNT_PARAMETER)
         prefixos = []
         if chave_total:
@@ -558,15 +677,22 @@ class _Conversao:
                 f"Nenhum texto do template está ligado a {SHEET_COUNT_PARAMETER}: numeração das folhas não atualizada."
             )
 
+        # Numeros das colunas na margem: lidos uma vez no template e trocados em cada folha 2 em diante.
+        margem = margem_lida if any(f["posicao"] >= 2 for f in folhas) else []
+        if not margem and any(f["posicao"] >= 2 for f in folhas):
+            self.report.warnings.append("Numeração da margem não encontrada no template: as margens ficaram sem a dezena da folha.")
+
         # O template precisa estar ativo: com ele inativo o CATIA recusa selecionar os textos.
-        modelo.Activate()
+        with self.fase("Trocar de janela"):
+            modelo.Activate()
         self.avisar_status("Conversão de template: copiando o formato novo...")
-        if self.selecionar_conteudo(sel_modelo, fundo_modelo) == 0:
-            raise self.erro(f"O Background do template está vazio:\r\n{caminho}", 1200)
-        textos_fundo = fundo_modelo.Texts.Count
-        sel_modelo.Copy()
-        sel_modelo.Clear()
-        self.doc.Activate()
+        with self.fase("Copiar o Background do template"):
+            if self.selecionar_conteudo(sel_modelo, fundo_modelo) == 0:
+                raise self.erro(f"O Background do template está vazio:\r\n{caminho}", 1200)
+            textos_fundo = fundo_modelo.Texts.Count
+            sel_modelo.Copy()
+            sel_modelo.Clear()
+            self.doc.Activate()
 
         papel = folha_modelo.PaperSize
         orientacao = folha_modelo.Orientation
@@ -580,19 +706,22 @@ class _Conversao:
             self.avisar_status(f"Conversão de template: folha {n} de {len(folhas)} ({f['nome']})...")
 
             # Page Setup. 3A0 e E3 chegam como catPaperUser e precisam da largura e da altura.
-            folha.PaperSize = papel
-            folha.Orientation = orientacao
-            if papel == CAT_PAPER_USER:
-                folha.SetPaperWidth(largura)
-                folha.SetPaperHeight(altura)
+            with self.fase("Ajustar o papel da folha"):
+                folha.PaperSize = papel
+                folha.Orientation = orientacao
+                if papel == CAT_PAPER_USER:
+                    folha.SetPaperWidth(largura)
+                    folha.SetPaperHeight(altura)
 
             # Uma busca + um Delete apagam o formato antigo e um Paste cola o novo.
-            if self.selecionar_conteudo(sel, fundo) > 0:
-                sel.Delete()
-            sel.Clear()
-            sel.Add(fundo)
-            sel.Paste()
-            sel.Clear()
+            with self.fase("Apagar o Background antigo"):
+                if self.selecionar_conteudo(sel, fundo) > 0:
+                    sel.Delete()
+                sel.Clear()
+            with self.fase("Colar o Background novo"):
+                sel.Add(fundo)
+                sel.Paste()
+                sel.Clear()
 
             # Os textos da legenda precisam ter chegado.
             if fundo.Texts.Count < textos_fundo:
@@ -602,41 +731,103 @@ class _Conversao:
             posicao = f["posicao"]
             # Folha 1: SHEET/OF fica ligado e mostra 1/<total>, e o numero antigo da Main View sai.
             # Folhas 2 em diante: o campo nao e religado e recebe so o numero da folha.
-            if posicao == 1:
-                self._apagar_numero_antigo(sel, folha.Views.Item(1))
-            self._refazer_vinculos(indice, links, chave_total if posicao >= 2 else "", parametros)
-            if posicao >= 2 and chave_total:
-                self._numerar_folha(sel, indice, folha.Views.Item(1), links[chave_total], prefixos, posicao, f["nome"])
-            self._apagar_views_auxiliares(sel, folha)
+            with self.fase("Refazer os vínculos da legenda"):
+                if posicao == 1:
+                    self._apagar_numero_antigo(sel, folha.Views.Item(1))
+                self._refazer_vinculos(indice, links, chave_total if posicao >= 2 else "", parametros)
+            with self.fase("Numerar a folha e a margem"):
+                if posicao >= 2 and chave_total:
+                    self._numerar_folha(sel, indice, folha.Views.Item(1), links[chave_total], prefixos, posicao, f["nome"])
+                if posicao >= 2:
+                    self._numerar_margem(indice, margem, posicao, f["nome"])
+            with self.fase("Apagar as grades antigas"):
+                self._apagar_views_auxiliares(sel, folha)
 
             self.feitas += 1
             if self.progress:
                 self.progress(self.feitas, len(todas))
 
         # Views auxiliares do template (ex.: zonas). Views 1 e 2 sao Main e Background.
-        for iv in range(3, folha_modelo.Views.Count + 1):
-            vista = folha_modelo.Views.Item(iv)
+        # Todas sao copiadas de uma vez: cada ida e volta entre as janelas do template e do desenho custa caro.
+        vistas = [folha_modelo.Views.Item(iv) for iv in range(3, folha_modelo.Views.Count + 1)]
+        if not vistas:
+            return
+        with self.fase("Trocar de janela"):
             modelo.Activate()
-            sel_modelo.Clear()
+        sel_modelo.Clear()
+        for vista in vistas:
+            antes = sel_modelo.Count
             sel_modelo.Add(vista)
-            if sel_modelo.Count == 0:
+            if sel_modelo.Count <= antes:
                 raise self.erro(f"Não foi possível selecionar a view {vista.Name} do template.", 1203)
+        with self.fase("Copiar as grades do template"):
             sel_modelo.Copy()
             sel_modelo.Clear()
             self.doc.Activate()
-            for f in folhas:
-                folha = f["objeto"]
-                antes = folha.Views.Count
+        dados = [(str(v.Name), v.x, v.y) for v in vistas]
+        for f in folhas:
+            folha = f["objeto"]
+            antes = folha.Views.Count
+            with self.fase("Colar as grades"):
                 sel.Clear()
                 sel.Add(folha)
                 sel.Paste()
                 sel.Clear()
-                # So reposiciona se a view foi colada; senao a ultima view do desenho seria movida.
-                if folha.Views.Count <= antes:
-                    raise self.erro(f"Não foi possível colar a view {vista.Name} na folha {f['nome']}.", 1204)
-                colada = folha.Views.Item(folha.Views.Count)
-                colada.x = vista.x
-                colada.y = vista.y
+            # So reposiciona se todas as views foram coladas; senao uma view do desenho seria movida.
+            if folha.Views.Count != antes + len(vistas):
+                faltou = dados[min(max(folha.Views.Count - antes, 0), len(dados) - 1)][0]
+                raise self.erro(f"Não foi possível colar a view {faltou} na folha {f['nome']}.", 1204)
+            coladas = [folha.Views.Item(i) for i in range(antes + 1, antes + len(vistas) + 1)]
+            for colada, (nome, x, y) in zip(coladas, emparelhar(dados, [str(c.Name) for c in coladas])):
+                colada.x = x
+                colada.y = y
+                if f["posicao"] >= 2 and is_aux_view(nome):
+                    with self.fase("Numerar as grades"):
+                        self._numerar_grade(colada, f["posicao"])
+
+    def _ler_margem(self, folha_modelo, fundo_modelo) -> List[Tuple[float, float, int]]:
+        textos = []
+        try:
+            todos = fundo_modelo.Texts
+            for i in range(1, todos.Count + 1):
+                t = todos.Item(i)
+                valor = str(t.Text).strip(" ")
+                if 0 < len(valor) <= 2 and is_all_digits(valor):  # so esses precisam da posicao
+                    textos.append((valor, t.x, t.y))
+            margem = margin_columns(textos, folha_modelo.GetPaperWidth(), folha_modelo.GetPaperHeight())
+        except COM_ERROR:
+            margem = []
+        return margem
+
+    def _numerar_margem(self, indice: _IndiceTextos, margem, numero: int, nome: str) -> None:
+        """Folhas 2 em diante: a margem mostra a dezena da folha (29, 28, 27... na folha 2)."""
+        falhou = 0
+        for x, y, coluna in margem:
+            t = indice.posicoes().get(position_key(x, y))
+            try:
+                if t is None or not _gravar_texto(t, str(numero_na_folha(coluna, numero))):
+                    falhou += 1
+            except COM_ERROR:
+                falhou += 1
+        if falhou:
+            self.report.warnings.append(f"Folha {numero} ({nome}): {falhou} número(s) da margem não foram atualizados.")
+
+    def _numerar_grade(self, vista, numero: int) -> None:
+        """Folhas 2 em diante: os rotulos da grade de zonas ganham a dezena da folha (F6 vira F26)."""
+        try:
+            travada = bool(vista.LockStatus)
+            if travada:
+                vista.LockStatus = False
+            textos = vista.Texts
+            for i in range(1, textos.Count + 1):
+                t = textos.Item(i)
+                novo = zone_label(str(t.Text), numero)
+                if novo:
+                    _gravar_texto(t, novo)
+            if travada:
+                vista.LockStatus = True
+        except COM_ERROR:
+            self.report.warnings.append(f"Folha {numero}: não foi possível numerar a grade {vista.Name}.")
 
     def _apagar_numero_antigo(self, sel, vista_principal) -> None:
         """So apaga se o Text.1 tiver apenas digitos, para nao apagar uma nota com esse nome."""
@@ -889,7 +1080,8 @@ def run_update_template(
             c.aplicar_template(caminho, grupos[formato], folhas)
         if status:
             status("Atualizando a numeração das folhas")
-        c.finalizar(folhas)
+        with c.fase("Ativar as folhas no fim"):
+            c.finalizar(folhas)
     except TemplateError as exc:
         exc.modified = exc.modified or c.modified
         c.restaurar(False)
@@ -901,8 +1093,94 @@ def run_update_template(
         # Qualquer outro erro tambem nao pode deixar o CATIA sem alertas e sem tela.
         c.restaurar(False)
         raise
-    c.restaurar(True)
+    with c.fase("Atualizar a tela"):
+        c.restaurar(True)
+    gravar_tempos(report, c.tempos, time.perf_counter() - c.inicio)
     return report
+
+
+# ---------------------------------------------------------------------
+# Leitura do template guardada entre uma conversao e outra
+# ---------------------------------------------------------------------
+VERSAO_DO_GUARDADO = 1
+
+
+def caminho_do_guardado() -> str:
+    teste = os.environ.get("E1DWGTOOLS_TEMPLATES")
+    if teste:
+        return teste
+    return os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), "E1DWGTools", "templates_lidos.json")
+
+
+def _assinatura_do_arquivo(caminho: str) -> Optional[list]:
+    try:
+        st = os.stat(caminho)
+    except OSError:
+        return None
+    return [VERSAO_DO_GUARDADO, st.st_size, st.st_mtime_ns]
+
+
+def ler_template_guardado(caminho: str):
+    """(links, margem) se o arquivo do template e o mesmo da ultima leitura. Senao, None."""
+    assinatura = _assinatura_do_arquivo(caminho)
+    if assinatura is None:
+        return None
+    try:
+        with open(caminho_do_guardado(), encoding="utf-8") as f:
+            item = json.load(f).get(caminho.lower())
+        if not item or item["assinatura"] != assinatura:
+            return None
+        links = {chave: TextLink(**valor) for chave, valor in item["links"].items()}
+        margem = [(float(x), float(y), int(c)) for x, y, c in item["margem"]]
+        return links, margem
+    except (OSError, ValueError, KeyError, TypeError):
+        return None  # guardado ilegivel: le o template de novo
+
+
+def guardar_template(caminho: str, links: Dict[str, TextLink], margem) -> None:
+    assinatura = _assinatura_do_arquivo(caminho)
+    if assinatura is None:
+        return
+    destino = caminho_do_guardado()
+    try:
+        try:
+            with open(destino, encoding="utf-8") as f:
+                tudo = json.load(f)
+        except (OSError, ValueError):
+            tudo = {}
+        tudo[caminho.lower()] = {
+            "assinatura": assinatura,
+            "links": {chave: asdict(link) for chave, link in links.items()},
+            "margem": [list(m) for m in margem],
+        }
+        os.makedirs(os.path.dirname(destino), exist_ok=True)
+        with open(destino, "w", encoding="utf-8") as f:
+            json.dump(tudo, f)
+    except OSError:
+        pass  # sem guardar, a proxima conversao so le o template de novo
+
+
+def caminho_dos_tempos() -> str:
+    teste = os.environ.get("E1DWGTOOLS_TEMPOS")
+    if teste:
+        return teste
+    return os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), "E1DWGTools", "update_tempos.txt")
+
+
+def gravar_tempos(report, tempos: Dict[str, float], total: float) -> None:
+    """Diagnostico da lentidao: quanto cada fase levou na ultima conversao. Nao aparece na tela."""
+    linhas = [f"Update Template: {len(report.sheets)} folha(s), formatos {', '.join(sorted({f for _, f in report.sheets}))}"]
+    for nome, segundos in sorted(tempos.items(), key=lambda par: -par[1]):
+        linhas.append(f"{segundos:8.1f} s  {nome}")
+    linhas.append(f"{max(total - sum(tempos.values()), 0.0):8.1f} s  Resto (ler o desenho e achar os templates)")
+    linhas.append(f"{total:8.1f} s  TOTAL")
+    try:
+        caminho = caminho_dos_tempos()
+        os.makedirs(os.path.dirname(caminho), exist_ok=True)
+        with open(caminho, "w", encoding="utf-8") as f:
+            f.write("\n".join(linhas) + "\n")
+    except OSError:
+        pass  # o diagnostico nunca pode atrapalhar a conversao
 
 
 def _localizar(pasta: str, formato: str) -> str:
