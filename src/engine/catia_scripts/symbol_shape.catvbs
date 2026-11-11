@@ -1,0 +1,72 @@
+' Symbol Shape Converter: parte que roda dentro do CATIA (porte de vba/symbolconvert.txt, CATMain11).
+' Protocolo da resposta: ver src/engine/catia_bridge.py.
+
+Function Campo(s)
+    Campo = Replace(Replace(CStr(s), Chr(30), " "), Chr(31), " ")
+End Function
+
+Function Registro(a)
+    Registro = Chr(30) & Join(a, Chr(31))
+End Function
+
+Function Falha()
+    Falha = "ERR" & Chr(31) & Err.Number & Chr(31) & Campo(Err.Description)
+    Err.Clear
+End Function
+
+' ---------------------------------------------------------------------
+' Converte os simbolos do desenho ativo inteiro, numa chamada so. Mesma regra da macro:
+'   18 Transparent Circle, 19 Outlined Circle, 31 Wave -> 20 Filled Circle
+'   16 Outlined Arrow                                  -> 17 Filled Arrow
+' Devolve o nome completo do desenho e, para cada folha:
+' nome, circulos convertidos, setas convertidas, leaders lidos.
+' ---------------------------------------------------------------------
+Function Converter()
+    On Error Resume Next
+    Dim r
+    r = Converter_()
+    If Err.Number <> 0 Then Converter = Falha() Else Converter = r
+End Function
+
+Function Converter_()
+    Dim doc, f, saida
+    If CATIA.Documents.Count = 0 Then Err.Raise 1001, , "Nenhum documento aberto no CATIA."
+    Set doc = CATIA.ActiveDocument
+    If TypeName(doc) <> "DrawingDocument" Then Err.Raise 1002, , "O documento ativo nao e um Drawing."
+    saida = "OK" & Registro(Array(Campo(doc.FullName)))
+    For f = 1 To doc.Sheets.Count
+        saida = saida & ConverterFolha(doc.Sheets.Item(f))
+    Next
+    Converter_ = saida
+End Function
+
+Function ConverterFolha(sh)
+    Dim vistas, textos, leaders, ld
+    Dim v, t, l, circulos, setas, lidos
+
+    Set vistas = sh.Views
+    circulos = 0
+    setas = 0
+    lidos = 0
+
+    For v = 1 To vistas.Count
+        Set textos = vistas.Item(v).Texts
+        For t = 1 To textos.Count
+            Set leaders = textos.Item(t).Leaders
+            For l = 1 To leaders.Count
+                Set ld = leaders.Item(l)
+                lidos = lidos + 1
+                Select Case ld.HeadSymbol
+                    Case 18, 19, 31
+                        ld.HeadSymbol = 20
+                        circulos = circulos + 1
+                    Case 16
+                        ld.HeadSymbol = 17
+                        setas = setas + 1
+                End Select
+            Next
+        Next
+    Next
+
+    ConverterFolha = Registro(Array(Campo(sh.Name), circulos, setas, lidos))
+End Function

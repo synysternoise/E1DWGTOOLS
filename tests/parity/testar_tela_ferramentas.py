@@ -28,6 +28,7 @@ from ui_qt.hub_window import (  # noqa: E402
 P_UPDATE, P_POS, P_SPLIT = sys.argv[1:4]
 IMAGENS = sys.argv[4] if len(sys.argv) > 4 else None
 P_FLAGS, P_FONT = sys.argv[5], sys.argv[6]
+P_SYMBOL = sys.argv[7] if len(sys.argv) > 7 else None
 falhas = []
 
 
@@ -280,6 +281,29 @@ clica(p.btn_again)
 espera(lambda: p._stack.currentIndex() == 1, 5)
 confere("nova análise aponta o que ficou e o que foi só removido", espera(lambda: p._stack.currentIndex() == 2 and len(p._rows) == 2, 60), len(p._rows))
 
+# ---------------- Symbol Shape Converter ----------------
+if P_SYMBOL:
+    p = j.symbol_page
+    clica(j.pills["Design"])
+    clica(j.rail_buttons["Symbol Shape Converter"])
+    confere("trilho leva ao Symbol Shape", j._pages.currentWidget() is p)
+    fechar_tudo()
+    confere("sem desenho não libera", espera(lambda: p.btn_run.text() == "PROCURAR DE NOVO", 6), p.btn_run.text())
+    abre(os.path.join(P_SYMBOL, "SYM_CHEIO.CATDrawing"))
+    confere("percebe o desenho", espera(lambda: p.btn_run.text() == "CONVERTER OS SÍMBOLOS", 6), p.btn_run.text())
+    clica(p.btn_run)
+    confere("termina", espera(lambda: p._stack.currentIndex() == tool_page.PAGINA_RESULTADO, 60), p.lbl_sub.text())
+    confere("conta os 24 convertidos", p._report.convertidos == 24 and p.resumo.valores["Convertidos"].text() == "24", p.resumo.valores["Convertidos"].text())
+    confere("uma linha por folha", p.table.rowCount() == 2, p.table.rowCount())
+    confere("mostra o texto da macro", "24 símbolo(s) convertido(s) com sucesso." in p.lbl_note.text(), p.lbl_note.text())
+    foto_tela(j, "symbol_resultado")
+    clica(p.btn_again)
+    confere("de novo não acha nada", espera(lambda: p._report.convertidos == 0, 60) and "Nenhum símbolo" in p.lbl_note.text(), p.lbl_note.text())
+    clica(j.btn_compact)
+    confere("cabe na janela compacta", espera(lambda: j.width() <= 470, 5), j.width())
+    foto_tela(j, "symbol_compacto")
+    clica(j.btn_compact)
+
 # ---------------- Sequencia e Visao geral ----------------
 s = j.seq_page
 clica(j.pills["Design"])
@@ -291,9 +315,9 @@ confere("a sequência libera com o desenho", espera(lambda: s.btn_executar.isEna
 foto_tela(j, "seq_1_escolha")
 confere("não tem aba Sem Update Template", [b.text() for b in s.presets.botoes] == ["Completa", "Minha seleção"], [b.text() for b in s.presets.botoes])
 clica(s.linhas["update"].caixa)
-confere("desmarcar o Update vai para Minha seleção", s._marcadas() == ["flags", "fontfix"] and s.presets.botoes[1].isChecked() and s.btn_executar.text() == "EXECUTAR 2 ETAPAS")
+confere("desmarcar o Update vai para Minha seleção", s._marcadas() == ["symbol", "flags", "fontfix"] and s.presets.botoes[1].isChecked() and s.btn_executar.text() == "EXECUTAR 3 ETAPAS")
 clica(s.presets.botoes[0])
-confere("Completa marca as três", s._marcadas() == ["update", "flags", "fontfix"])
+confere("Completa marca as quatro", s._marcadas() == ["update", "symbol", "flags", "fontfix"])
 from ui_qt import fix_flags_page as ffp  # noqa: E402
 
 ffp.FixFlagsPage._perguntar = lambda self, m, t: True
@@ -302,7 +326,7 @@ confere("mostra a execução", espera(lambda: s._stack.currentIndex() == 1, 10))
 foto_tela(j, "seq_2_rodando")
 confere("a sequência termina", espera(lambda: s.lbl_run_titulo.text() == "Sequência concluída", 120), s.lbl_log.text()[-90:])
 foto_tela(j, "seq_3_fim")
-confere("as etapas guardam o resultado", j.update_page._report is not None and j.flags_page._report is not None and j.fontfix_page._report is not None)
+confere("as etapas guardam o resultado", j.update_page._report is not None and j.symbol_page._report is not None and j.flags_page._report is not None and j.fontfix_page._report is not None)
 clica(s.btn_fontes)
 confere("Revisar leva ao Font Size Fix", j._pages.currentIndex() == PAGINA_FONTFIX)
 foto_tela(j, "fontfix_da_sequencia")

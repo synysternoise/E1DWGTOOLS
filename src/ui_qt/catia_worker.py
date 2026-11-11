@@ -17,6 +17,7 @@ from engine import font_check as fc
 from engine import part_list as pl
 from engine import pos_zone as pz
 from engine import splits as sp
+from engine import symbol_shape as ss
 from engine import template_check as tc
 from engine.catia_bridge import CatiaBridge, CatiaError, titulo_janela_catia
 
@@ -303,6 +304,11 @@ class CatiaWorker(QObject):
                 return None
             self.tool_ready.emit("fontfix", rep)
             return f"{rep.total_nok} fora do padrão: você revisa"
+        if etapa == "symbol":
+            rep = ss.run_symbol_shape(ponte)
+            progresso(1, 1)
+            self.tool_ready.emit("symbol", rep)
+            return f"{rep.convertidos} símbolos convertidos" if rep.convertidos else "Nenhum símbolo para converter"
         if etapa == "update":
             rep = at.run_update_template(ponte, perguntar, status=situacao, progress=progresso, formatos=self._formatos)
             if rep is None:
@@ -349,6 +355,8 @@ class CatiaWorker(QObject):
                     ponte, perguntar, lambda m, t: self.tool_warn.emit(tool, m, t),
                     progress=progresso, should_stop=self._stop.is_set,
                 )
+            elif tool == "symbol":
+                report = ss.run_symbol_shape(ponte)
             elif tool == "split2d":
                 report = sp.run_split_2d(
                     ponte,

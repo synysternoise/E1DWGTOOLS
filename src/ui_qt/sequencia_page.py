@@ -1,7 +1,6 @@
 """Sequencia de aplicacao: roda as ferramentas do Design em ordem, e a Visao geral do Check.
 
-So entram as ferramentas que ja rodam em Python. O Symbol Shape aparece, mas desligado, porque o
-codigo dele nao esta disponivel. Sem cronometro nem estimativa de tempo: so o que de fato aconteceu.
+Sem cronometro nem estimativa de tempo: so o que de fato aconteceu.
 """
 from __future__ import annotations
 
@@ -23,6 +22,7 @@ from ui_qt.tool_page import LARGURA_LATERAL
 
 ETAPAS = (
     ("update", "Update Template", "Troca a etiqueta no próprio desenho", "refresh"),
+    ("symbol", "Symbol Shape Converter", "Converte a forma dos símbolos", "arrow"),
     ("flags", "Fix Flags", "Corrige as flag notes", "flag"),
     ("fontfix", "Font Size Fix", "Mostra o que está errado para você corrigir", "sheet"),
 )
@@ -155,12 +155,7 @@ class SequenciaPage(QWidget):
         col.addWidget(self.presets)
         self.linhas = {}
         ordem = 0
-        for chave, nome, descricao, ic in ETAPAS[:1]:
-            ordem += 1
-            self.linhas[chave] = _LinhaEtapa(ordem, nome, descricao, ic)
-            col.addWidget(self.linhas[chave])
-        col.addWidget(_LinhaEtapa(0, "Symbol Shape Converter", "Converte a forma dos símbolos", "arrow", ligada=False))
-        for chave, nome, descricao, ic in ETAPAS[1:]:
+        for chave, nome, descricao, ic in ETAPAS:
             ordem += 1
             self.linhas[chave] = _LinhaEtapa(ordem, nome, descricao, ic)
             col.addWidget(self.linhas[chave])

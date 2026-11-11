@@ -1,4 +1,4 @@
-"""Telas do Update Template e dos dois Splits."""
+"""Telas do Update Template, do Symbol Shape e dos dois Splits."""
 from __future__ import annotations
 
 import os
@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
 
 from engine import atualizar_template as at
 from engine import splits as sp
+from engine import symbol_shape as ss
 from ui_qt import theme as T
 from ui_qt.font_size_page import button, label
 from ui_qt.pecas import (
@@ -178,6 +179,46 @@ class UpdateTemplatePage(ToolPage):
         preencher(self.table, report.sheets)
         self.lbl_warnings.setText("\n".join(f"• {a}" for a in report.warnings))
         self._warnings_box.setVisible(bool(report.warnings))
+
+
+# ---------------------------------------------------------------------
+# Symbol Shape Converter
+# ---------------------------------------------------------------------
+class SymbolShapePage(ToolPage):
+    TOOL = "symbol"
+    TITULO = "Symbol Shape Converter"
+    DESCRICAO = (
+        "Troca a ponta dos leaders dos textos pelo símbolo cheio: círculo transparente, círculo vazado e onda "
+        "viram círculo cheio, e seta vazada vira seta cheia."
+    )
+    BOTAO = "CONVERTER OS SÍMBOLOS"
+    BOTAO_DE_NOVO = "Converter de novo"
+    ANDAMENTO = "Convertendo os símbolos"
+    ICONE = "arrow"
+    PODE_PARAR = False
+
+    def _build_results(self, col: QVBoxLayout) -> None:
+        self.lbl_note = largura_livre(label("", "detalheForte"))
+        col.addWidget(self.lbl_note)
+        self.table = tabela(("FOLHA", "CÍRCULOS", "SETAS"), {1: 110, 2: 110}, 0)
+        col.addWidget(self.table, 1)
+
+    def _build_side(self, col: QVBoxLayout) -> bool:
+        col.addWidget(label("Resumo", "titulo"))
+        self.resumo = Resumo(("Convertidos", "Círculos", "Setas", "Leaders lidos"))
+        col.addWidget(self.resumo)
+        col.addStretch(1)
+        return True
+
+    def _show_report(self, report) -> None:
+        self.lbl_sub.setText(f"{report.doc_name}  ·  {len(report.sheets)} folhas")
+        nota = "Confira o desenho e salve para confirmar." if report.convertidos else "O desenho não foi alterado."
+        self.lbl_note.setText(f"{report.mensagem} {nota}")
+        preencher(self.table, [(nome, c, s) for nome, c, s, _lidos in report.sheets])
+        self.resumo.definir("Convertidos", report.convertidos, T.GREEN if report.convertidos else "")
+        self.resumo.definir("Círculos", report.circulos)
+        self.resumo.definir("Setas", report.setas)
+        self.resumo.definir("Leaders lidos", report.leaders)
 
 
 # ---------------------------------------------------------------------

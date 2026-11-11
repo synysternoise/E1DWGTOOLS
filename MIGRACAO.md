@@ -22,8 +22,8 @@ usuário em 04/11/2026. A pasta `legacy_vba/` está **desatualizada** e não ser
 | Check de Template | Legenda real das fotos do desenho 171-54397-801 | Novo, na aba Check |
 | Font Size Fix | Mesmas regras do Font Size Check, mudando o tamanho | Novo, na aba Design |
 | Comparação no Excel | `vba_referencia/excel` | Continua no Excel |
-| Painel | `vba_referencia/symbol shape` | Substituído pelo HUB, menos o Symbol Shape |
-| Symbol Shape | `CATMain11` não está em nenhum arquivo | Bloqueado, segue no painel VBA |
+| Painel | `vba_referencia/symbol shape` | Substituído pelo HUB |
+| Symbol Shape | `vba/symbolconvert.txt` (`CATMain11`, colado pelo usuário em 11/11/2026) | Convertido, igual à macro em `rodar_paridade_symbol.py` |
 
 Tudo abre por `main_qt.py`. `main.py` e `src/engine/update_template.py` são da interface antiga, com
 a versão de 14/10 do Update Template, e não fazem parte da migração.
@@ -58,7 +58,7 @@ O visual segue o protótipo em `design/hub_prototipo.html`. Só aparece o que fu
 - **Font Size Fix não corrige cotas.** O V5R20 não lê o tamanho de cota, então não há como testar aqui.
 - **Fora, por pedido do usuário.** Cronômetro e tempo estimado.
 - **Trocado.** No Fix Flags, a tabela por folha do protótipo virou a lista de cada flag, com
-  navegação, que mostra mais. O Symbol Shape aparece desligado na sequência, sem o código de `CATMain11`.
+  navegação, que mostra mais. O Symbol Shape roda na sequência depois do Update Template.
 
 ## Como cada ferramenta é convertida
 

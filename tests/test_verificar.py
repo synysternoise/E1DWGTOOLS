@@ -11,7 +11,7 @@ import verificar  # noqa: E402
 
 class TestManifesto(unittest.TestCase):
     def test_lista_igual_aos_arquivos(self):
-        self.assertEqual(len(verificar.MANIFESTO), 25)
+        self.assertEqual(len(verificar.MANIFESTO), 27)
         for relativo, esperado in verificar.MANIFESTO.items():
             with open(os.path.join(RAIZ, *relativo.split("/")), "rb") as f:
                 self.assertEqual(verificar.assinatura(f.read()), esperado, relativo)

@@ -69,9 +69,9 @@
     },
     "Symbol Shape": {
       "origem": "repositorio",
-      "situacao": "bloqueada",
+      "situacao": "pendente",
       "arquivos": {},
-      "nota": "O codigo de CATMain11 nao esta em nenhum arquivo. Continua no painel VBA."
+      "nota": "CATMain11 colado pelo usuario em 2026-11-11 e guardado em vba/symbolconvert.txt. Convertido em src/engine/symbol_shape.py."
     }
   }
 }

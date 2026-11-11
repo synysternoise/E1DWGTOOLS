@@ -1,7 +1,6 @@
 """Janela do HUB em PySide6, seguindo o prototipo em design/hub_prototipo.html.
 
 Cada ferramenta so entra aqui depois de passar pela comparacao com a macro (ver MIGRACAO.md).
-O Symbol Shape continua no painel VBA, porque o codigo dele (CATMain11) nao esta disponivel.
 """
 from __future__ import annotations
 
@@ -22,17 +21,16 @@ from ui_qt.icones import icone
 from ui_qt.pecas import largura_livre
 from ui_qt.poszone_page import PosZoneFixPage, PosZonePage
 from ui_qt.sequencia_page import CheckGeralPage, SequenciaPage
-from ui_qt.tool_pages import Split2DPage, Split3DPage, UpdateTemplatePage
+from ui_qt.tool_pages import Split2DPage, Split3DPage, SymbolShapePage, UpdateTemplatePage
 
 LARGURA, ALTURA = 1180, 720
 LARGURA_COMPACTA = 460
 INTERVALO_STATUS_MS = 2000
-AINDA_NO_VBA = "Esta ferramenta ainda roda no painel VBA."
 ABA_DESIGN, ABA_CHECK, ABA_ENVIO = range(3)
 (
     PAGINA_SEQUENCIA, PAGINA_UPDATE, PAGINA_FLAGS, PAGINA_GERAL, PAGINA_FONT, PAGINA_POSZONE, PAGINA_SPLIT3D, PAGINA_SPLIT2D,
-    PAGINA_FONTFIX, PAGINA_CHECKFLAGS, PAGINA_COMPARE, PAGINA_POSZONEFIX, PAGINA_CHECKTEMPLATE,
-) = range(13)
+    PAGINA_FONTFIX, PAGINA_CHECKFLAGS, PAGINA_COMPARE, PAGINA_POSZONEFIX, PAGINA_CHECKTEMPLATE, PAGINA_SYMBOL,
+) = range(14)
 
 
 def _so_a_atual_conta(pilha: QStackedWidget) -> None:
@@ -94,10 +92,11 @@ class HubWindow(QWidget):
         self.flagcheck_page = FlagCheckPage()
         self.templatecheck_page = TemplateCheckPage()
         self.compare_page = CompareDwgPage()
+        self.symbol_page = SymbolShapePage()
         self.tool_pages = {
             p.TOOL: p for p in (
                 self.update_page, self.poszone_page, self.poszonefix_page, self.split3d_page, self.split2d_page, self.fontfix_page,
-                self.flagcheck_page, self.templatecheck_page,
+                self.flagcheck_page, self.templatecheck_page, self.symbol_page,
             )
         }
 
@@ -125,7 +124,7 @@ class HubWindow(QWidget):
             ABA_DESIGN,
             (("APLICAR EM SEQUÊNCIA", (("Sequência de aplicação", "flow", PAGINA_SEQUENCIA, ""),)),
              ("FERRAMENTAS", (("Update Template", "refresh", PAGINA_UPDATE, ""),
-                              ("Symbol Shape Converter", "arrow", None, AINDA_NO_VBA),
+                              ("Symbol Shape Converter", "arrow", PAGINA_SYMBOL, ""),
                               ("Fix Flags", "flag", PAGINA_FLAGS, ""),
                               ("Font Size Fix", "sheet", PAGINA_FONTFIX, ""),
                               ("Pos and Zone Fix", "box", PAGINA_POSZONEFIX, "")))),
@@ -152,7 +151,7 @@ class HubWindow(QWidget):
         for pagina in (
             self.seq_page, self.update_page, self.flags_page, self.geral_page, self.font_page,
             self.poszone_page, self.split3d_page, self.split2d_page, self.fontfix_page, self.flagcheck_page, self.compare_page,
-            self.poszonefix_page, self.templatecheck_page,
+            self.poszonefix_page, self.templatecheck_page, self.symbol_page,
         ):
             self._pages.addWidget(pagina)
             _so_a_atual_conta(pagina._stack) if hasattr(pagina, "_stack") else None
