@@ -106,8 +106,10 @@ Public Sub RunFontInspection()
 
             ' Vista trancada também é lida: ler não altera nada. A Main View (1) e o
             ' Background (2) ficam de fora: só as vistas são conferidas.
+            ' A grade de zonas do template (ZONE A0, ZONES_A0_SHT1) também fica de fora.
             If i > 2 _
                And oView.name <> "Background View" _
+               And Not EhVistaDeZona(oView.name) _
                And visStatus = catVisPropertyShowAttr Then
 
                 ' =====================================
@@ -297,6 +299,72 @@ Private Function GetFormatFromBackground(ByVal oSheet As drawingSheet) As String
             Exit Function
         End If
     Next oText
+
+End Function
+
+' Vista de zona do template: ZONE, ZONE[2], ZONE A0, ZONE A0[3], ZONES_A0_SHT1, ZONES_A0_SHT1[2].
+' Mesmo critério do conversor de template. O nome precisa ser exato.
+Private Function EhVistaDeZona(ByVal nomeVista As String) As Boolean
+
+    Dim nome As String, resto As String
+    Dim colchete As Long, marca As Long
+
+    nome = UCase$(Trim$(nomeVista))
+
+    If nome = "ZONE" Or Left$(nome, 5) = "ZONE[" Or Left$(nome, 12) = "ZONES_A1_SHT" Then
+        EhVistaDeZona = True
+        Exit Function
+    End If
+
+    If Right$(nome, 1) = "]" Then
+        colchete = InStrRev(nome, "[")
+        If colchete > 1 Then
+            If SoDigitos(Mid$(nome, colchete + 1, Len(nome) - colchete - 1)) Then
+                nome = Left$(nome, colchete - 1)
+            End If
+        End If
+    End If
+
+    If Left$(nome, 5) = "ZONE " Then
+
+        EhVistaDeZona = EhFormatoDeZona(Trim$(Mid$(nome, 6)))
+
+    ElseIf Left$(nome, 6) = "ZONES_" Then
+
+        resto = Mid$(nome, 7)
+        marca = InStr(1, resto, "_SHT", vbBinaryCompare)
+
+        If marca > 1 Then
+            If EhFormatoDeZona(Left$(resto, marca - 1)) Then
+                resto = Mid$(resto, marca + 4)
+                EhVistaDeZona = (Len(resto) = 0 Or SoDigitos(resto))
+            End If
+        End If
+
+    End If
+
+End Function
+
+Private Function EhFormatoDeZona(ByVal formato As String) As Boolean
+
+    Select Case formato
+        Case "3A0", "A0", "A1", "A2", "A3", "E3"
+            EhFormatoDeZona = True
+    End Select
+
+End Function
+
+Private Function SoDigitos(ByVal valor As String) As Boolean
+
+    Dim i As Long
+
+    If Len(valor) = 0 Then Exit Function
+
+    For i = 1 To Len(valor)
+        If Mid$(valor, i, 1) < "0" Or Mid$(valor, i, 1) > "9" Then Exit Function
+    Next i
+
+    SoDigitos = True
 
 End Function
 

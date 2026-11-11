@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Callable, List, Optional, Tuple
 
+from engine.atualizar_template import is_aux_view
 from engine.catia_bridge import CatiaBridge, CatiaError, parse_number
 
 SCRIPT = "font_check.catvbs"
@@ -223,6 +224,8 @@ def run_font_inspection(
             if len(registro) < 7:  # folha sem itens: o script manda um registro vazio
                 continue
             tipo, i_vista, i_item, mm, nome_item, nome_vista, conteudo = registro
+            if is_aux_view(nome_vista):
+                continue  # grade de zonas do template (ZONE A0, ZONES_A0_SHT1): nao e texto do desenho
             eh_cota = tipo == "C"
             valor = round_vba(parse_number(mm) / MM_POR_POLEGADA)
             report.total_items += 1

@@ -29,7 +29,7 @@ PASTAS_IGNORADAS = {".venv", "venv", ".idea", ".git", "__pycache__", "E1tools"}
 MANIFESTO = {
     "main_qt.py": (18, 'e0f9ec4ebdcefb2e'),
     "src/engine/catia_bridge.py": (138, 'f6d41732974241a7'),
-    "src/engine/font_check.py": (296, '28e59cf5909b78f2'),
+    "src/engine/font_check.py": (299, '067b23b7a20d700b'),
     "src/engine/fix_flags.py": (272, 'aab35321882e9640'),
     "src/engine/atualizar_template.py": (1201, '420c09712d68011b'),
     "src/engine/pos_zone.py": (1152, '23e278610959b4dd'),
