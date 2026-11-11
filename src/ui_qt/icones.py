@@ -31,6 +31,17 @@ _FORMAS = {
     "saw": '<path d="M2 8h13v5l-2 3-1.5-3-2 3L8 13l-2 3-1.5-3-2 3zM15 6h5a2 2 0 012 2v4a2 2 0 01-2 2h-5zM18.5 9v2"/>',
     "scissors": '<circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4L8.2 15.8M14.5 14.5L20 20M8.2 8.2L12 12"/>',
     "send": '<path d="M12 16V4M7 9l5-5 5 5M4 20h16"/>',
+    "expand": '<rect x="3" y="4" width="18" height="16" rx="2"/>',
+    "rail": '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M18 4v16"/>',
+    # Aviao visto de cima, apontando para o canto: asa enflechada e dois motores sob as asas.
+    "plane": '<g transform="rotate(45 12 12)" stroke="none" fill="currentColor">'
+             '<path d="M12 1.5c.9 0 1.3 1.6 1.3 3.2V9l9 5.2v1.6l-9-2.3v5l3 2.2v1.3L12 21l-4.3 1v-1.3l3-2.2v-5l-9 2.3v-1.6l9-5.2V4.7'
+             'c0-1.6.4-3.2 1.3-3.2z"/><rect x="6.5" y="9.3" width="1.6" height="2.7" rx=".7"/>'
+             '<rect x="15.9" y="9.3" width="1.6" height="2.7" rx=".7"/></g>',
+    # Aviao de lado, voando para a direita: e o que percorre a barra de progresso.
+    "jet": '<g transform="translate(0 6.7) scale(0.706)" stroke="none" fill="currentColor">'
+           '<path d="M3 7L1 1h3.2L9 7z"/><path d="M2 9q0-2.2 3-2.2h19q5.5 0 8 2.7-2.5 1.7-8 1.7H5Q2 11.2 2 9z"/>'
+           '<path d="M14 10L9.5 14.5h3.3L20 10z"/><rect x="15" y="11" width="5" height="2.4" rx="1.2"/></g>',
 }
 
 

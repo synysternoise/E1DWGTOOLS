@@ -17,16 +17,20 @@ from ui_qt.catia_worker import CatiaWorker
 from ui_qt.check_fix_pages import CompareDwgPage, FlagCheckPage, FontSizeFixPage, TemplateCheckPage
 from ui_qt.fix_flags_page import FixFlagsPage
 from ui_qt.font_size_page import FontSizePage, button, label
-from ui_qt.icones import icone
-from ui_qt.pecas import largura_livre
+from ui_qt.icones import icone, pixmap
+from ui_qt.pecas import Cartao, Resumo, largura_livre
 from ui_qt.poszone_page import PosZoneFixPage, PosZonePage
 from ui_qt.sequencia_page import CheckGeralPage, SequenciaPage
 from ui_qt.tool_pages import Split2DPage, Split3DPage, SymbolShapePage, UpdateTemplatePage
+from ui_qt.voo import Barra, CartaoResumo, Voo
 
 LARGURA, ALTURA = 1180, 720
 LARGURA_COMPACTA = 460
 INTERVALO_STATUS_MS = 2000
 ABA_DESIGN, ABA_CHECK, ABA_ENVIO = range(3)
+NOMES_ABA = ("Design", "Check", "Envio")
+# Ampliado, no canto da tela, ou so a barra de icones.
+MODO_CHEIO, MODO_CANTO, MODO_MINI = range(3)
 (
     PAGINA_SEQUENCIA, PAGINA_UPDATE, PAGINA_FLAGS, PAGINA_GERAL, PAGINA_FONT, PAGINA_POSZONE, PAGINA_SPLIT3D, PAGINA_SPLIT2D,
     PAGINA_FONTFIX, PAGINA_CHECKFLAGS, PAGINA_COMPARE, PAGINA_POSZONEFIX, PAGINA_CHECKTEMPLATE, PAGINA_SYMBOL,
@@ -74,6 +78,8 @@ class HubWindow(QWidget):
         self.setWindowTitle("E1 Tools")
         self.setStyleSheet(T.QSS)
         self._compact = False
+        self._modo = MODO_CHEIO
+        self._seq_etapas = 1
         self._normal_geometry = None
         self._busy = False
         self._conectado = False
@@ -103,7 +109,8 @@ class HubWindow(QWidget):
         col = QVBoxLayout(self)
         col.setContentsMargins(0, 0, 0, 0)
         col.setSpacing(0)
-        col.addWidget(self._build_header())
+        self._cabecalho = self._build_header()
+        col.addWidget(self._cabecalho)
         self.barra_acento = QProgressBar()
         self.barra_acento.setObjectName("acento")
         self.barra_acento.setTextVisible(False)
@@ -112,8 +119,10 @@ class HubWindow(QWidget):
         self.barra_acento.setValue(100)
         col.addWidget(self.barra_acento)
 
-        corpo = QHBoxLayout()
+        self._corpo = QWidget()
+        corpo = QHBoxLayout(self._corpo)
         corpo.setContentsMargins(12, 12, 12, 12)
+        self._itens_aba = {ABA_DESIGN: [], ABA_CHECK: [], ABA_ENVIO: []}
         corpo.setSpacing(12)
         self.rail_buttons = {}
         self.rail_badges = {}
@@ -157,7 +166,26 @@ class HubWindow(QWidget):
             _so_a_atual_conta(pagina._stack) if hasattr(pagina, "_stack") else None
         _so_a_atual_conta(self._pages)
         corpo.addWidget(self._pages, 1)
-        col.addLayout(corpo, 1)
+        abas = [(NOMES_ABA[a], self._itens_aba[a]) for a in (ABA_DESIGN, ABA_CHECK, ABA_ENVIO)]
+        # No canto, o trilho some: esta faixa de icones troca de aba e de ferramenta.
+        self._faixa = Barra(abas, em_pe=False)
+        self._faixa.hide()
+        col.addWidget(self._faixa)
+        col.addWidget(self._corpo, 1)
+        self.voo = Voo()
+        col.addWidget(self.voo)
+        self._mini = Barra(abas, em_pe=True, modo_canto=MODO_CANTO, modo_cheio=MODO_CHEIO)
+        self._mini.hide()
+        col.addWidget(self._mini, 1)
+        self.cartao = CartaoResumo(self)
+        self._voos = (self.voo, self.cartao.voo)
+        self._faixa.aba.connect(self._barra_aba)
+        self._faixa.ferramenta.connect(self._faixa_ferramenta)
+        self._mini.aba.connect(self._barra_aba)
+        self._mini.ferramenta.connect(self._mini_ferramenta)
+        self._mini.modo.connect(self.set_modo)
+        self.cartao.executar.connect(self._executar_do_cartao)
+        self.cartao.abrir.connect(lambda: self.set_modo(MODO_CANTO))
         self.resize(LARGURA, ALTURA)
 
         self._on_tab(ABA_DESIGN)
@@ -174,9 +202,10 @@ class HubWindow(QWidget):
         h.setContentsMargins(18, 0, 0, 0)
         h.setSpacing(8)
 
-        selo = label("E1", "selo")
+        selo = label("", "selo")
         selo.setFixedSize(42, 42)
         selo.setAlignment(Qt.AlignCenter)
+        selo.setPixmap(pixmap("plane", "#FFFFFF", 28))
         h.addWidget(selo)
         nomes = QVBoxLayout()
         nomes.setSpacing(0)
@@ -223,19 +252,25 @@ class HubWindow(QWidget):
 
         self.btn_min = button("", "janelaBtn")
         self.btn_min.setIcon(icone("minus", T.MUTED, 16))
-        self.btn_min.setFixedSize(40, 66)
+        self.btn_min.setFixedSize(36, 66)
         self.btn_min.setToolTip("Minimizar")
         self.btn_min.clicked.connect(self.showMinimized)
         h.addWidget(self.btn_min)
         self.btn_compact = button("", "janelaBtn")
         self.btn_compact.setIcon(icone("dock", T.MUTED, 16))
-        self.btn_compact.setFixedSize(40, 66)
+        self.btn_compact.setFixedSize(36, 66)
         self.btn_compact.setToolTip("Modo compacto: fica ao lado do CATIA, sempre visível")
         self.btn_compact.clicked.connect(self.toggle_compact)
         h.addWidget(self.btn_compact)
+        self.btn_mini = button("", "janelaBtn")
+        self.btn_mini.setIcon(icone("rail", T.MUTED, 16))
+        self.btn_mini.setFixedSize(36, 66)
+        self.btn_mini.setToolTip("Só ícones: uma barra fina no canto da tela")
+        self.btn_mini.clicked.connect(lambda: self.set_modo(MODO_MINI))
+        h.addWidget(self.btn_mini)
         fechar = button("", "fecharBtn")
         fechar.setIcon(icone("x", T.MUTED, 16))
-        fechar.setFixedSize(44, 66)
+        fechar.setFixedSize(40, 66)
         fechar.clicked.connect(self.close)
         h.addWidget(fechar)
         return bar
@@ -266,6 +301,7 @@ class HubWindow(QWidget):
                     primeiro = False
                     grupo.addButton(b)
                     b.clicked.connect(lambda _=False, a=aba, p=pagina: self._on_tool(a, p))
+                    self._itens_aba[aba].append((nome, ic, pagina))
                 # Contador dentro do botao, encostado na direita.
                 dentro = QHBoxLayout(b)
                 dentro.setContentsMargins(0, 0, 10, 0)
@@ -290,10 +326,76 @@ class HubWindow(QWidget):
     def _on_tab(self, aba: int) -> None:
         self._rail.setCurrentIndex(aba)
         self._pages.setCurrentIndex(self._aba_pagina[aba])
+        self._sincronizar()
 
     def _on_tool(self, aba: int, pagina: int) -> None:
         self._aba_pagina[aba] = pagina
         self._pages.setCurrentIndex(pagina)
+        self._sincronizar()
+
+    def _sincronizar(self) -> None:
+        """As barras de icones mostram a mesma aba e a mesma ferramenta do trilho."""
+        if not hasattr(self, "_mini"):
+            return
+        for barra in (self._faixa, self._mini):
+            barra.selecionar(self._rail.currentIndex(), self._pages.currentIndex())
+
+    def _nome_da_pagina(self) -> str:
+        aba, pagina = self._rail.currentIndex(), self._pages.currentIndex()
+        return next((nome for nome, _ic, p in self._itens_aba[aba] if p == pagina), "")
+
+    @Slot(int)
+    def _barra_aba(self, aba: int) -> None:
+        self.pills[NOMES_ABA[aba]].setChecked(True)
+        self._on_tab(aba)
+        if self.cartao.isVisible():
+            self._mostrar_cartao()
+
+    @Slot(int, str, int)
+    def _faixa_ferramenta(self, aba: int, nome: str, pagina: int) -> None:
+        self.ir_para(aba, NOMES_ABA[aba], nome, pagina)
+
+    @Slot(int, str, int)
+    def _mini_ferramenta(self, aba: int, nome: str, pagina: int) -> None:
+        """Clicar no icone abre o cartao; clicar de novo no mesmo fecha."""
+        mesma = self.cartao.isVisible() and self._pages.currentIndex() == pagina
+        self.ir_para(aba, NOMES_ABA[aba], nome, pagina)
+        if mesma:
+            self.cartao.hide()
+        else:
+            self._mostrar_cartao()
+
+    def _resumo_da_pagina(self) -> list:
+        """Os numeros que a propria tela da ferramenta ja mostra."""
+        pagina = self._pages.currentWidget()
+        linhas = [(c.legenda.text(), c.numero.text()) for c in pagina.findChildren(Cartao)]
+        if not linhas:
+            resumos = pagina.findChildren(Resumo)
+            if resumos:
+                linhas = [(nome, valor.text()) for nome, valor in resumos[0].valores.items()]
+        return linhas[:5]
+
+    def _mostrar_cartao(self) -> None:
+        if self._modo != MODO_MINI:
+            return
+        self.cartao.preencher(NOMES_ABA[self._rail.currentIndex()], self._nome_da_pagina(), self._resumo_da_pagina())
+        self.cartao.encostar(self.frameGeometry())
+        self.cartao.show()
+
+    @Slot()
+    def _executar_do_cartao(self) -> None:
+        """O mesmo que o botao principal da tela da ferramenta faria."""
+        if self._busy:
+            return
+        pagina = self._pages.currentWidget()
+        if pagina is self.seq_page:
+            self.seq_page.btn_executar.click()
+        elif pagina is self.geral_page:
+            self.geral_page._rodar()
+        elif pagina is self.compare_page:
+            self.compare_page.abrir()
+        elif hasattr(pagina, "_on_intro_button"):
+            pagina._on_intro_button()
 
     def ir_para(self, aba: int, nome_aba: str, nome_item: str, pagina: int) -> None:
         self.pills[nome_aba].setChecked(True)
@@ -324,6 +426,10 @@ class HubWindow(QWidget):
 
         wk.status.connect(self._on_status)
         wk.busy.connect(self._on_busy)
+        wk.started_analysis.connect(self._voo_font)
+        wk.flags_started.connect(self._voo_flags)
+        wk.seq_started.connect(self._voo_seq)
+        wk.seq_progress.connect(self._voo_seq_progresso)
         wk.started_analysis.connect(pg.on_analysis_started)
         wk.progress.connect(pg.on_progress)
         wk.progress.connect(self._on_any_progress)
@@ -425,6 +531,33 @@ class HubWindow(QWidget):
     @Slot(str)
     def _on_tool_started(self, tool: str) -> None:
         self.tool_pages[tool].on_started()
+        self._titulo_voo(self.tool_pages[tool].TITULO)
+
+    def _titulo_voo(self, texto: str) -> None:
+        for v in self._voos:
+            v.titulo(texto)
+
+    @Slot()
+    def _voo_font(self) -> None:
+        self._titulo_voo("Font Size Check")
+
+    @Slot()
+    def _voo_flags(self) -> None:
+        self._titulo_voo("Fix Flags")
+
+    @Slot(list)
+    def _voo_seq(self, etapas: list) -> None:
+        self._seq_etapas = max(1, len(etapas))
+        self._titulo_voo("Sequência de aplicação")
+
+    @Slot(int, int, int)
+    def _voo_seq_progresso(self, etapa: int, atual: int, total: int) -> None:
+        """Na sequencia o voo e um so: cada etapa vale uma parte do arco."""
+        if not self._busy or total <= 0:
+            return
+        for v in self._voos:
+            v.definir((etapa + atual / total) / self._seq_etapas, f"Etapa {etapa + 1} de {self._seq_etapas}")
+        self.cartao.lbl_estado.setText(self.cartao.voo.estado())
 
     @Slot(str, int, int)
     def _on_tool_progress(self, tool: str, atual: int, total: int) -> None:
@@ -577,6 +710,8 @@ class HubWindow(QWidget):
             selo.setText(str(n))
             selo.setStyleSheet(f"color: {cor}; background: {fundo};")
             selo.setVisible(n > 0)
+            for barra in (self._faixa, self._mini):
+                barra.selo(nome, n, cor, fundo)
         self.contagem_check.setText(str(font + pos + flags + template))
         self.contagem_check.setVisible(font + pos + flags + template > 0)
 
@@ -620,6 +755,12 @@ class HubWindow(QWidget):
         self.barra_acento.setRange(0, 0 if ocupado else 100)
         if not ocupado:
             self.barra_acento.setValue(100)
+        for v in self._voos:
+            v.ocupado(ocupado)
+        self.cartao.lbl_estado.setText(self.cartao.voo.estado())
+        self.cartao.btn_executar.setEnabled(not ocupado)
+        if not ocupado and self.cartao.isVisible():
+            QTimer.singleShot(0, self._mostrar_cartao)  # a tela da ferramenta atualiza os numeros primeiro
         self._mostrar_catia()
 
     @Slot(int, int)
@@ -627,14 +768,19 @@ class HubWindow(QWidget):
         if self._busy and total > 0:
             self.barra_acento.setRange(0, total)
             self.barra_acento.setValue(atual)
+            for v in self._voos:
+                v.progresso(atual, total)
+            self.cartao.lbl_estado.setText(self.cartao.voo.estado())
 
     def _mostrar_catia(self) -> None:
         if self._busy:
             self.chip_catia.setText("●  CATIA ocupado")
             self.chip_catia.setStyleSheet(f"color: {T.AMBER};")
+            self._mini.catia(T.AMBER, "CATIA ocupado")
         else:
             self.chip_catia.setText("●  CATIA ativo" if self._conectado else "●  CATIA fechado")
             self.chip_catia.setStyleSheet(f"color: {T.GREEN if self._conectado else T.RED};")
+            self._mini.catia(T.GREEN if self._conectado else T.RED, "CATIA ativo" if self._conectado else "CATIA fechado")
 
     def _on_status(self, connected: bool, document: str) -> None:
         self._conectado = connected
@@ -645,34 +791,63 @@ class HubWindow(QWidget):
             pagina.set_catia_state(connected, document)
 
     # ------------------------------------------------------------------
-    # Modo compacto
+    # Os tres modos: ampliado, canto e so icones
     # ------------------------------------------------------------------
     def toggle_compact(self) -> None:
-        self._compact = not self._compact
-        if self._compact:
+        self.set_modo(MODO_CHEIO if self._modo == MODO_CANTO else MODO_CANTO)
+
+    @Slot(int)
+    def set_modo(self, modo: int) -> None:
+        if modo == self._modo:
+            return
+        if self._modo == MODO_CHEIO:
             self._normal_geometry = self.geometry()
+        self._modo = modo
+        self._compact = modo == MODO_CANTO
+        mini = modo == MODO_MINI
+        self.cartao.hide()
+        for w in (self._cabecalho, self.barra_acento, self._corpo, self.voo):
+            w.setVisible(not mini)
+        self._mini.setVisible(mini)
+        self._faixa.setVisible(modo == MODO_CANTO)
         for w in (self._rail, self._pills, self._brand_sub, self.chip_doc):
-            w.setVisible(not self._compact)
+            w.setVisible(modo == MODO_CHEIO)
         for pagina in (self.font_page, self.flags_page, self.seq_page, self.geral_page, *self.tool_pages.values()):
-            pagina.set_compact(self._compact)
+            pagina.set_compact(modo != MODO_CHEIO)
+        self._sincronizar()
         self.layout().activate()
-        self.setWindowFlag(Qt.WindowStaysOnTopHint, self._compact)
+        self.setWindowFlag(Qt.WindowStaysOnTopHint, modo != MODO_CHEIO)
         self.btn_compact.setToolTip("Voltar ao tamanho normal" if self._compact else "Modo compacto: fica ao lado do CATIA, sempre visível")
         # Mudar a opcao recria a janela do Windows: o tamanho so vale depois de ela se reorganizar.
         self.show()
         QTimer.singleShot(0, self._apply_mode_geometry)
 
-    def _apply_mode_geometry(self) -> None:
+    def _apply_mode_geometry(self, tentativa: int = 0) -> None:
+        if tentativa and self._modo != MODO_CHEIO:
+            return
         # Os layouts internos ainda nao recalcularam o minimo depois de esconder os widgets.
         # O pedido sobe um nivel de cada vez, da pagina ate a janela.
         for _ in range(4):
             QCoreApplication.sendPostedEvents(None, QEvent.LayoutRequest)
         self.layout().activate()
-        if self._compact:
-            area = (self.screen() or QGuiApplication.primaryScreen()).availableGeometry()
+        area = (self.screen() or QGuiApplication.primaryScreen()).availableGeometry()
+        if self._modo == MODO_CANTO:
             self.setGeometry(area.right() - LARGURA_COMPACTA + 1, area.top(), LARGURA_COMPACTA, area.height())
+        elif self._modo == MODO_MINI:
+            altura = min(area.height(), self._mini.sizeHint().height())
+            largura = self._mini.width()
+            self.setGeometry(area.right() - largura - 7, area.top() + (area.height() - altura) // 3, largura, altura)
         else:
             self.setGeometry(self._normal_geometry)
+            if self.geometry() != self._normal_geometry and tentativa < 5:
+                # Vindo da barra de icones, as telas estavam escondidas e ainda guardam o minimo antigo.
+                QTimer.singleShot(60, lambda: self._apply_mode_geometry(tentativa + 1))
+
+    def moveEvent(self, event) -> None:
+        super().moveEvent(event)
+        cartao = getattr(self, "cartao", None)
+        if cartao is not None and cartao.isVisible():
+            cartao.encostar(self.frameGeometry())
 
     def changeEvent(self, event) -> None:
         super().changeEvent(event)
@@ -683,6 +858,7 @@ class HubWindow(QWidget):
                 self.request_poll.emit()
 
     def closeEvent(self, event) -> None:
+        self.cartao.hide()
         self._timer.stop()
         self.worker.request_stop()
         self.worker.request_stop_sequence()

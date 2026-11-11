@@ -42,8 +42,9 @@ MANIFESTO = {
     "src/engine/catia_scripts/fix_flags.catvbs": (806, '71db4441b9277b8e'),
     "src/engine/catia_scripts/symbol_shape.catvbs": (72, 'ab983ca8d9661894'),
     "src/engine/catia_scripts/pos_zone.catvbs": (366, 'cf49bbddb7037871'),
-    "src/ui_qt/theme.py": (156, '58a8c2c027accc7a'),
-    "src/ui_qt/icones.py": (74, '2093440dd1ac76e8'),
+    "src/ui_qt/theme.py": (173, 'dc78f0ebe5b5e9bc'),
+    "src/ui_qt/voo.py": (332, 'e3de1e15e3f5252f'),
+    "src/ui_qt/icones.py": (85, '89eab1825e9374f3'),
     "src/ui_qt/catia_worker.py": (522, '892fd55d4ac42e0d'),
     "src/ui_qt/font_size_page.py": (464, '9e339e7165417d03'),
     "src/ui_qt/pecas.py": (226, '75ca9e75bdb7d59b'),
@@ -53,7 +54,7 @@ MANIFESTO = {
     "src/ui_qt/sequencia_page.py": (585, '2fafd3e8ea6f04f6'),
     "src/ui_qt/check_fix_pages.py": (706, '9917aa1c26307fab'),
     "src/ui_qt/poszone_page.py": (767, '7f8a54339c35b5c1'),
-    "src/ui_qt/hub_window.py": (696, '04758972e0825d85'),
+    "src/ui_qt/hub_window.py": (872, '42c8a1a4467d8942'),
 }
 
 REDE = re.compile(

@@ -1,18 +1,20 @@
 """Cores e estilos do HUB, iguais aos do prototipo em design/hub_prototipo.html."""
 
-APP = "#081321"
-HEADER = "#0A1828"
-PANEL = "#0E1E32"
-CARD = "#12263D"
-CARD_2 = "#172E49"
-LINE = "#24405C"
-LINE_SOFT = "#1A3049"
-TEXT = "#E8EEF5"
-MUTED = "#93A7BE"
-DIM = "#6A809A"
-CYAN = "#19C6E6"
-CYAN_HI = "#3AD4F0"
-CYAN_INK = "#04222C"
+APP = "#060D1C"
+HEADER = "#0A1530"
+PANEL = "#0F1E3D"
+CARD = "#15284F"
+CARD_2 = "#1B3261"
+LINE = "#22396B"
+LINE_SOFT = "#18294F"
+TEXT = "#E9EFFB"
+MUTED = "#93A6C9"
+DIM = "#5F7299"
+# O destaque continua com o nome antigo (CYAN) para nao mexer nas telas: agora e azul.
+CYAN = "#3B82FF"
+CYAN_HI = "#5A97FF"
+CYAN_INK = "#FFFFFF"
+SKY = "#6FD0FF"
 BRAND = "#005BAF"
 BRAND_HI = "#0A6FCC"
 GREEN = "#2ECC71"
@@ -31,7 +33,15 @@ QSS = f"""
 * {{ font-family: "Segoe UI"; font-size: 13px; color: {TEXT}; }}
 QWidget#janela {{ background: {APP}; }}
 QFrame#cabecalho {{ background: {HEADER}; }}
-QFrame#painel {{ background: {PANEL}; border: 1px solid {LINE_SOFT}; border-radius: 10px; }}
+QFrame#painel {{ background: {PANEL}; border: 1px solid {LINE_SOFT}; border-radius: 12px; }}
+QFrame#voo {{ background: {HEADER}; border-top: 1px solid {LINE_SOFT}; }}
+QFrame#mini {{ background: {HEADER}; border: 1px solid {LINE}; }}
+QFrame#faixa {{ background: {APP}; }}
+QFrame#flutuante {{ background: {PANEL}; border: 1px solid {LINE}; }}
+QFrame#flutuante QFrame#voo {{ background: {APP}; border: 1px solid {LINE_SOFT}; border-radius: 8px; }}
+QFrame#risco {{ background: {LINE}; }}
+QFrame#linhaCartao {{ border-bottom: 1px solid {LINE_SOFT}; }}
+QLabel#pontoCatia {{ font-size: 11px; color: {RED}; }}
 QFrame#kv {{ background: {CARD}; border: 1px solid {LINE}; border-radius: 8px; }}
 QFrame#linhaLista {{ background: {CARD}; border: 1px solid {LINE}; border-radius: 8px; }}
 QFrame#linhaListaOff {{ background: {PANEL}; border: 1px solid {LINE_SOFT}; border-radius: 8px; }}
@@ -54,7 +64,8 @@ QFrame#nota {{ background: {CARD}; border-radius: 8px; }}
 QFrame#detalhe {{ background: {CARD}; border: 1px solid {LINE}; border-radius: 8px; }}
 QFrame#pilulas {{ background: {PANEL}; border: 1px solid {LINE}; border-radius: 23px; }}
 QLabel {{ background: transparent; }}
-QLabel#selo {{ background: {CYAN}; color: {CYAN_INK}; border-radius: 12px; font-size: 16px; font-weight: 700; }}
+QLabel#selo {{ background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 {CYAN}, stop:1 #1746B8); color: #FFFFFF;
+    border-radius: 11px; font-size: 16px; font-weight: 700; }}
 QLabel#marca {{ font-size: 18px; font-weight: 700; }}
 QLabel#marcaSub {{ font-size: 9px; font-weight: 700; color: {MUTED}; }}
 QLabel#titulo {{ font-size: 19px; font-weight: 700; }}
@@ -93,6 +104,12 @@ QPushButton#pilula {{ height: 34px; padding: 0 16px; border-radius: 17px; color:
     border: 1px solid transparent; }}
 QPushButton#pilula:hover {{ background: {CARD}; color: {TEXT}; }}
 QPushButton#pilula:checked {{ background: {BRAND}; color: #FFFFFF; border-color: {CYAN}; }}
+QPushButton#miniBtn {{ border-radius: 10px; border: 1px solid transparent; }}
+QPushButton#miniBtn:hover {{ background: {CARD}; }}
+QPushButton#miniBtn:checked {{ background: {CARD_2}; border-color: {CYAN}; }}
+QPushButton#miniAba {{ border-radius: 8px; color: {MUTED}; font-weight: 700; font-size: 12px; border: 1px solid transparent; }}
+QPushButton#miniAba:hover {{ background: {CARD}; color: {TEXT}; }}
+QPushButton#miniAba:checked {{ background: {BRAND}; color: #FFFFFF; border-color: {CYAN}; }}
 QPushButton#janelaBtn {{ color: {MUTED}; font-size: 15px; }}
 QPushButton#janelaBtn:hover {{ background: {CARD}; color: {TEXT}; }}
 QPushButton#fecharBtn {{ color: {MUTED}; font-size: 15px; }}
