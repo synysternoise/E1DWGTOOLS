@@ -659,11 +659,16 @@ class CompareDwgPage(QWidget):
         col.addLayout(centro)
         col.addStretch(2)
         fora.addWidget(caixa)
+        # O caminho da rede so e conferido quando a tela aparece: abrir o HUB nao espera pela rede.
+        self._atualizar(conferir=bool(cd.salvo()))
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
         self._atualizar()
 
-    def _atualizar(self) -> None:
+    def _atualizar(self, conferir: bool = True) -> None:
         caminho = cd.get_path()
-        erro = cd.problema(caminho)
+        erro = cd.problema(caminho) if conferir else None
         self.lbl_caminho.setText(caminho)
         self.lbl_caminho.setToolTip(caminho)
         if not caminho:

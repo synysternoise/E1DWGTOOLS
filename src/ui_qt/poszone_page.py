@@ -8,7 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import List, Optional
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QEvent, Qt, Signal
 from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (
     QBoxLayout, QButtonGroup, QComboBox, QFileDialog, QHBoxLayout, QHeaderView, QMessageBox, QScrollArea, QTableWidgetItem, QVBoxLayout, QWidget,
@@ -223,6 +223,10 @@ class PosZonePage(ToolPage):
         self.table.setTextElideMode(Qt.ElideRight)
         self.table.setItemDelegateForColumn(COL_MARCA, MarkDelegate(self.table))
         self.table.selectionModel().currentRowChanged.connect(self._on_linha)
+        # Duplo clique na linha que ja estava escolhida: passa para o proximo balao da mesma posicao.
+        self._linha_no_clique = -1
+        self.table.viewport().installEventFilter(self)
+        self.table.doubleClicked.connect(self._on_duplo_clique)
         col.addWidget(self.table, 1)
 
         detalhe = moldura("detalhe")
@@ -472,6 +476,20 @@ class PosZonePage(ToolPage):
         if atual.isValid():
             self._ir(atual.row(), self._occ_pedida)
             self._occ_pedida = 0
+
+    def eventFilter(self, objeto, evento) -> bool:
+        if evento.type() == QEvent.MouseButtonPress and objeto is self.table.viewport():
+            self._linha_no_clique = self._atual  # antes de a tabela trocar de linha
+        return super().eventFilter(objeto, evento)
+
+    def _on_duplo_clique(self, indice) -> None:
+        """Alterna entre os baloes da posicao. Com um so, ou numa linha recem-escolhida, fica onde esta."""
+        linha = indice.row()
+        if linha != self._atual or linha != self._linha_no_clique or not 0 <= linha < len(self._rows):
+            return
+        total = len(self._rows[linha].occs)
+        if total > 1:
+            self._ir(linha, (self._occ + 1) % total)
 
     def _ir(self, linha: int, occ: int = 0) -> None:
         self._atual = linha

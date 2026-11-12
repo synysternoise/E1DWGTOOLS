@@ -13,6 +13,7 @@ sys.path.insert(0, os.path.join(AQUI, "..", "..", "src"))
 
 trabalho = tempfile.mkdtemp(prefix="compare dwg com espaco ")
 os.environ["E1DWGTOOLS_CONFIG"] = os.path.join(trabalho, "cfg", "config.json")
+os.environ["E1DWGTOOLS_COMPARE_PADRAO"] = ""  # sem o caminho da rede, como antes
 
 from PySide6.QtCore import QCoreApplication, QEventLoop, Qt  # noqa: E402
 from PySide6.QtTest import QTest  # noqa: E402

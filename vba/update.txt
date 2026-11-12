@@ -548,6 +548,18 @@ Private Sub ApplyTemplateToSheets( _
 
     Set sheetPrefixes = New Collection
 
+    ' Template novo (R00): o campo SHEET/OF e um "XX" sem vinculo.
+    ' Folha 1 vira 1/<total>, as outras so o numero da folha.
+    If Len(sheetCountKey) = 0 Then
+
+        sheetCountKey = _
+            FindSheetFieldWithoutLink( _
+                templateSheet, _
+                templateBackground, _
+                textLinks)
+
+    End If
+
     If Len(sheetCountKey) = 0 Then
 
         warnings.Add _
@@ -2071,6 +2083,289 @@ Private Function FindSheetFieldPrefixes( _
     Next itemIndex
 
     On Error GoTo 0
+
+End Function
+
+' ============================================================
+' CAMPO SHEET/OF DE UM TEMPLATE QUE NAO O LIGA A No_of_Sheets
+'
+' O campo e um texto so com X (XX, X/XX, 1/XX). Vale o que esta
+' embaixo do rotulo SHEET/OF, o mais perto. Sem rotulo no
+' Background, vale o XX mais a direita no canto da legenda.
+' O texto entra em links como se fosse ligado a No_of_Sheets e
+' a funcao devolve a chave dele ("" se nao achar).
+' ============================================================
+Private Function FindSheetFieldWithoutLink( _
+    ByVal templateSheet As drawingSheet, _
+    ByVal templateBackground As drawingView, _
+    ByVal links As Object) As String
+
+    Dim objText As Object
+    Dim itemIndex As Long
+    Dim otherIndex As Long
+    Dim textCount As Long
+    Dim rawValue As String
+    Dim cleanValue As String
+
+    Dim values() As String
+    Dim names() As String
+    Dim xs() As Double
+    Dim ys() As Double
+    Dim isLabel() As Boolean
+    Dim isCandidate() As Boolean
+    Dim readCount As Long
+    Dim hasLabel As Boolean
+
+    Dim bestIndex As Long
+    Dim bestDistance As Double
+    Dim distance As Double
+    Dim paperWidth As Double
+
+    Dim textKey As Variant
+    Dim removeKeys As Collection
+    Dim fieldPositionKey As String
+    Dim countNames(0 To 0) As String
+    Dim fieldSpec As Variant
+    Dim fieldText As String
+    Dim linkKey As String
+    Dim keySuffix As Long
+
+    FindSheetFieldWithoutLink = ""
+
+    On Error Resume Next
+
+    textCount = templateBackground.Texts.count
+    paperWidth = templateSheet.GetPaperWidth
+
+    If Err.number <> 0 Or textCount = 0 Then
+        Err.Clear
+        On Error GoTo 0
+        Exit Function
+    End If
+
+    ReDim values(1 To textCount)
+    ReDim names(1 To textCount)
+    ReDim xs(1 To textCount)
+    ReDim ys(1 To textCount)
+    ReDim isLabel(1 To textCount)
+    ReDim isCandidate(1 To textCount)
+
+    readCount = 0
+    hasLabel = False
+
+    For itemIndex = 1 To textCount
+
+        Set objText = templateBackground.Texts.item(itemIndex)
+        rawValue = CStr(objText.Text)
+
+        ' Rotulo e reserva sao curtos: so esses precisam da posicao.
+        If Err.number = 0 And Len(Trim$(rawValue)) > 0 And Len(Trim$(rawValue)) <= 12 Then
+
+            cleanValue = LettersDigitsAndSlash(rawValue)
+
+            readCount = readCount + 1
+            values(readCount) = rawValue
+            names(readCount) = Trim$(CStr(objText.name))
+            xs(readCount) = objText.x
+            ys(readCount) = objText.y
+
+            isLabel(readCount) = _
+                (cleanValue = "SHEET/OF" Or cleanValue = "SHEETOF" Or _
+                 cleanValue = "SHT/OF" Or cleanValue = "SHTOF")
+
+            isCandidate(readCount) = IsSheetPlaceholder(cleanValue)
+
+            If isLabel(readCount) Then hasLabel = True
+
+            If Err.number <> 0 Then readCount = readCount - 1
+
+        End If
+
+        Err.Clear
+
+    Next itemIndex
+
+    On Error GoTo 0
+
+    bestIndex = 0
+    bestDistance = 0
+
+    If hasLabel Then
+
+        For itemIndex = 1 To readCount
+
+            If isLabel(itemIndex) Then
+
+                For otherIndex = 1 To readCount
+
+                    If isCandidate(otherIndex) Then
+
+                        If Abs(xs(otherIndex) - xs(itemIndex)) <= 30# And _
+                           ys(itemIndex) - ys(otherIndex) > 0 And _
+                           ys(itemIndex) - ys(otherIndex) <= 25# Then
+
+                            distance = _
+                                Abs(xs(otherIndex) - xs(itemIndex)) + _
+                                (ys(itemIndex) - ys(otherIndex))
+
+                            If bestIndex = 0 Or distance < bestDistance Then
+                                bestIndex = otherIndex
+                                bestDistance = distance
+                            End If
+
+                        End If
+
+                    End If
+
+                Next otherIndex
+
+            End If
+
+        Next itemIndex
+
+    Else
+
+        For itemIndex = 1 To readCount
+
+            If isCandidate(itemIndex) Then
+
+                If xs(itemIndex) >= paperWidth - 260# And ys(itemIndex) <= 90# Then
+
+                    If bestIndex = 0 Then
+                        bestIndex = itemIndex
+                    ElseIf xs(itemIndex) > xs(bestIndex) Then
+                        bestIndex = itemIndex
+                    End If
+
+                End If
+
+            End If
+
+        Next itemIndex
+
+    End If
+
+    If bestIndex = 0 Then Exit Function
+
+    ' Se o XX estava ligado a um parametro de outro nome, esse
+    ' vinculo sai: o campo passa a ser o da folha.
+    fieldPositionKey = TextPositionKey(xs(bestIndex), ys(bestIndex))
+    Set removeKeys = New Collection
+
+    For Each textKey In links.Keys
+
+        If TextPositionKey( _
+            CDbl(links(textKey)(3)), _
+            CDbl(links(textKey)(4))) = fieldPositionKey Then
+
+            removeKeys.Add CStr(textKey)
+
+        End If
+
+    Next textKey
+
+    For itemIndex = 1 To removeKeys.count
+        links.Remove removeKeys(itemIndex)
+    Next itemIndex
+
+    countNames(0) = SHEET_COUNT_PARAMETER
+
+    ' Array(texto com reserva, reserva, parametros, x, y, nome)
+    fieldSpec = Array( _
+        "|", _
+        "|", _
+        countNames, _
+        xs(bestIndex), _
+        ys(bestIndex), _
+        names(bestIndex))
+
+    ' Sem um "1 /" separado ao lado, o proprio campo mostra 1/<total>.
+    If FindSheetFieldPrefixes(templateBackground, fieldSpec).count = 0 Then
+        fieldText = "1/|"
+    Else
+        fieldText = "|"
+    End If
+
+    linkKey = names(bestIndex)
+    keySuffix = 1
+
+    Do While links.Exists(linkKey)
+        keySuffix = keySuffix + 1
+        linkKey = names(bestIndex) & "#" & CStr(keySuffix)
+    Loop
+
+    links.Add linkKey, Array( _
+        fieldText, _
+        "|", _
+        countNames, _
+        xs(bestIndex), _
+        ys(bestIndex), _
+        names(bestIndex))
+
+    FindSheetFieldWithoutLink = linkKey
+
+End Function
+
+' So letras maiusculas, digitos e a barra: "SHEET / OF" vira "SHEET/OF".
+Private Function LettersDigitsAndSlash( _
+    ByVal value As String) As String
+
+    Dim charIndex As Long
+    Dim ch As String
+    Dim result As String
+
+    result = ""
+    value = UCase$(value)
+
+    For charIndex = 1 To Len(value)
+
+        ch = Mid$(value, charIndex, 1)
+
+        If (ch >= "A" And ch <= "Z") Or (ch >= "0" And ch <= "9") Or ch = "/" Then
+            result = result & ch
+        End If
+
+    Next charIndex
+
+    LettersDigitsAndSlash = result
+
+End Function
+
+' Reserva do numero da folha: XX, X/XX ou 1/XX (ate 3 X no total).
+Private Function IsSheetPlaceholder( _
+    ByVal cleanValue As String) As Boolean
+
+    Dim slashPosition As Long
+    Dim leftPart As String
+    Dim rightPart As String
+    Dim charIndex As Long
+    Dim ch As String
+
+    IsSheetPlaceholder = False
+
+    slashPosition = InStr(1, cleanValue, "/", vbBinaryCompare)
+
+    If slashPosition > 0 Then
+        leftPart = Left$(cleanValue, slashPosition - 1)
+        rightPart = Mid$(cleanValue, slashPosition + 1)
+        If Len(leftPart) < 1 Or Len(leftPart) > 2 Then Exit Function
+    Else
+        leftPart = ""
+        rightPart = cleanValue
+    End If
+
+    If Len(rightPart) < 1 Or Len(rightPart) > 3 Then Exit Function
+
+    For charIndex = 1 To Len(leftPart)
+        ch = Mid$(leftPart, charIndex, 1)
+        If ch <> "1" And ch <> "X" Then Exit Function
+    Next charIndex
+
+    For charIndex = 1 To Len(rightPart)
+        If Mid$(rightPart, charIndex, 1) <> "X" Then Exit Function
+    Next charIndex
+
+    IsSheetPlaceholder = True
 
 End Function
 

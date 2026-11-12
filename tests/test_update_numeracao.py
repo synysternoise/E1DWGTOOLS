@@ -34,6 +34,34 @@ class Numeracao(unittest.TestCase):
             self.assertEqual(at.zone_label(texto, 2), "", texto)
 
 
+class ReservaDaFolha(unittest.TestCase):
+    LEGENDA = [("SCALE", 975.0, 55.0, "Text.1"), ("XX", 975.0, 45.0, "Text.2"), ("DRAWING NUMBER", 1040.0, 55.0, "Text.3"),
+               ("XXX", 1040.0, 45.0, "Text.4"), ("SHEET / OF", 1112.0, 55.0, "Text.5"), ("XX", 1114.0, 45.0, "Text.6"),
+               ("A0", 1175.0, 8.0, "Text.68")]
+
+    def test_vale_o_xx_embaixo_do_rotulo(self):
+        self.assertEqual(at.escolher_reserva_folha(self.LEGENDA, 1189.0)[3], "Text.6")
+
+    def test_outras_formas_da_reserva(self):
+        for valor in ("XX", "X", "XXX", "X / XX", "1/XX", "1 / XXX", "xx"):
+            textos = [("SHEET: OF", 100.0, 30.0, "a"), (valor, 100.0, 20.0, "b")]
+            self.assertEqual(at.escolher_reserva_folha(textos, 1189.0)[3], "b", valor)
+
+    def test_o_que_nao_e_reserva(self):
+        for valor in ("3", "1/3", "XXXX", "XX-01", "A0", "REV", ""):
+            textos = [("SHEET/OF", 100.0, 30.0, "a"), (valor, 100.0, 20.0, "b")]
+            self.assertIsNone(at.escolher_reserva_folha(textos, 1189.0), valor)
+
+    def test_com_rotulo_o_xx_de_outra_celula_nao_vale(self):
+        textos = [("SHEET/OF", 1112.0, 55.0, "a"), ("XX", 975.0, 45.0, "b"), ("XX", 1112.0, 20.0, "c")]
+        self.assertIsNone(at.escolher_reserva_folha(textos, 1189.0))
+
+    def test_sem_rotulo_vale_o_mais_a_direita_no_canto(self):
+        textos = [("XX", 975.0, 45.0, "a"), ("XX", 1114.0, 45.0, "b"), ("XX", 1150.0, 400.0, "c"), ("XX", 300.0, 45.0, "d")]
+        self.assertEqual(at.escolher_reserva_folha(textos, 1189.0)[3], "b")
+        self.assertIsNone(at.escolher_reserva_folha([("XX", 300.0, 45.0, "d")], 1189.0))
+
+
 class Margem(unittest.TestCase):
     def textos(self, colunas=4, altura=594.0):
         t = []

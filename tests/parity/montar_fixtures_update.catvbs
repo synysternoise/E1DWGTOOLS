@@ -36,7 +36,15 @@ Sub Legenda(doc, bg, comPrefixo)
     t.Name = "Text.42"
     t.InsertVariable 7, 1, pRev
     t.InsertVariable 1, 1, pNo
-    If comPrefixo Then
+    If comPrefixo = 2 Then
+        ' Template novo (R00): o campo e um XX sem vinculo, embaixo do rotulo. Ha outro XX na legenda.
+        Set t = bg.Texts.Add("SHEET / OF", 778, 28)
+        t.Name = "Text.74"
+        Set t = bg.Texts.Add("XX", 780, 20)
+        t.Name = "Text.76"
+        Set t = bg.Texts.Add("XX", 720, 20)
+        t.Name = "Text.77"
+    ElseIf comPrefixo Then
         Set t = bg.Texts.Add("1 /", 760, 20)
         t.Name = "Text.75"
         Set t = bg.Texts.Add("|", 780, 20)
@@ -182,7 +190,7 @@ Sub Montar_(pasta)
 
     Template modelos, "A1", 3, 0, 0, False, True
     Template modelos, "A0", 2, 0, 0, True, False
-    Template modelos, "A2", 4, 0, 0, False, False
+    Template modelos, "A2", 4, 0, 0, 2, False
     Template modelos, "E3", 13, 1500, 900, False, True
     Template modelos, "3A0", 13, 2523, 1189, True, False
 
@@ -214,6 +222,23 @@ Sub Montar_(pasta)
     Set sh = Folha(doc, 4, "Folha D", "", 5)
     Conteudo sh, "V4"
     Salvar doc, pasta & "\UPD_RICO.CATDrawing"
+
+    ' Template com o campo da folha sem vinculo (XX). Folha 2 com o numero na Main View, folha 3 sem.
+    Set doc = CATIA.Documents.Add("Drawing")
+    Parametros doc, True, True
+    Set sh = Folha(doc, 1, "Sheet.1", "A2", 5)
+    sh.Views.Item(1).Activate
+    Set t = sh.Views.Item(1).Texts.Add("1", 780, 20)
+    t.Name = "Text.1"
+    Conteudo sh, "V1"
+    Set sh = Folha(doc, 2, "Sheet.2", "A2", 5)
+    sh.Views.Item(1).Activate
+    Set t = sh.Views.Item(1).Texts.Add("2", 785, 22)
+    t.Name = "Text.1"
+    Conteudo sh, "V2"
+    Set sh = Folha(doc, 3, "Sheet.3", "A2", 5)
+    Conteudo sh, "V3"
+    Salvar doc, pasta & "\UPD_RESERVA.CATDrawing"
 
     ' Sem formato em nenhuma folha: pede ao usuario. Faltam parametros no desenho.
     Set doc = CATIA.Documents.Add("Drawing")

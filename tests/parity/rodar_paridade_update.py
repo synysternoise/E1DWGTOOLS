@@ -205,6 +205,7 @@ def main() -> int:
         ("sem formato, responde a1, faltam parametros", [arq("UPD_SEM_FORMATO.CATDrawing")], " a1 "),
         ("varios formatos, ZONE travada e numero na Main View", [arq("UPD_RICO.CATDrawing")], ""),
         ("papel do usuario E3 e 3A0", [arq("UPD_PAPEL_USUARIO.CATDrawing")], ""),
+        ("campo da folha sem vinculo (XX)", [arq("UPD_RESERVA.CATDrawing")], ""),
         ("template vazio", [arq("UPD_TEMPLATE_VAZIO.CATDrawing")], ""),
         ("template ja aberto, sem alteracao", [modelo("A1"), modelo("A0"), arq("UPD_RICO.CATDrawing")], ""),
     ]

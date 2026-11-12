@@ -448,6 +448,73 @@ def sheet_field_prefixes(fundo, link: TextLink) -> List[Tuple[float, float]]:
     return saida
 
 
+# Template sem texto ligado a No_of_Sheets: o campo SHEET/OF e um texto so com X (XX, X/XX, 1/XX).
+RE_RESERVA_FOLHA = re.compile(r"^(?:[1X]{1,2}/)?X{1,3}$")
+ROTULOS_FOLHA = ("SHEET/OF", "SHEETOF", "SHT/OF", "SHTOF")
+CELULA_FOLHA_X = 30.0  # o valor fica embaixo do rotulo, na mesma celula
+CELULA_FOLHA_Y = 25.0
+LEGENDA_LARGURA = 260.0  # sem rotulo: canto de baixo, a direita
+LEGENDA_ALTURA = 90.0
+
+
+def _so_letras(valor: str) -> str:
+    return re.sub(r"[^A-Z0-9/]", "", valor.upper())
+
+
+def escolher_reserva_folha(textos, largura: float):
+    """Qual texto (valor, x, y, nome) e o XX do campo SHEET/OF. Embaixo do rotulo SHEET/OF, o mais perto.
+    Sem rotulo no Background, o XX mais a direita no canto da legenda. None se nao houver."""
+    candidatos = [t for t in textos if RE_RESERVA_FOLHA.match(_so_letras(t[0]))]
+    rotulos = [t for t in textos if _so_letras(t[0]) in ROTULOS_FOLHA]
+    melhor, distancia = None, 0.0
+    for r in rotulos:
+        for c in candidatos:
+            if abs(c[1] - r[1]) <= CELULA_FOLHA_X and 0 < r[2] - c[2] <= CELULA_FOLHA_Y:
+                d = abs(c[1] - r[1]) + (r[2] - c[2])
+                if melhor is None or d < distancia:
+                    melhor, distancia = c, d
+    if rotulos:
+        return melhor
+    for c in candidatos:
+        if c[1] >= largura - LEGENDA_LARGURA and c[2] <= LEGENDA_ALTURA and (melhor is None or c[1] > melhor[1]):
+            melhor = c
+    return melhor
+
+
+def sheet_field_without_link(fundo, largura: float, links: Dict[str, TextLink]) -> str:
+    """Poe em links o campo SHEET/OF de um template que nao o liga a No_of_Sheets. Devolve a chave, ou ""."""
+    lidos = []
+    try:
+        textos = fundo.Texts
+        total = textos.Count
+    except COM_ERROR:
+        return ""
+    for i in range(1, total + 1):
+        try:
+            t = textos.Item(i)
+            valor = str(t.Text)
+            if 0 < len(valor.strip(" ")) <= 12:  # rotulo e reserva sao curtos: so esses precisam da posicao
+                lidos.append((valor, t.x, t.y, str(t.Name).strip(" ")))
+        except COM_ERROR:
+            continue
+    achado = escolher_reserva_folha(lidos, largura)
+    if achado is None:
+        return ""
+    _valor_lido, x, y, nome = achado
+    # Se o XX estava ligado a um parametro de outro nome, esse vinculo sai: o campo passa a ser o da folha.
+    for chave in [c for c, l in links.items() if position_key(l.x, l.y) == position_key(x, y)]:
+        del links[chave]
+    link = TextLink(RESERVAS[0], RESERVAS[0], [SHEET_COUNT_PARAMETER], x, y, nome)
+    if not sheet_field_prefixes(fundo, link):
+        link.template_text = "1/" + RESERVAS[0]
+    chave, sufixo = nome, 1
+    while chave.lower() in (c.lower() for c in links):
+        sufixo += 1
+        chave = f"{nome}#{sufixo}"
+    links[chave] = link
+    return chave
+
+
 class _IndiceTextos:
     """Textos colados de uma vista: pelo nome, se a posicao conferir; senao, pela posicao."""
 
@@ -677,6 +744,13 @@ class _Conversao:
                 margem_lida = self._ler_margem(folha_modelo, fundo_modelo)
                 guardar_template(caminho, links, margem_lida)
         chave_total = link_key_for_parameter(links, SHEET_COUNT_PARAMETER)
+        if not chave_total:
+            # Template novo (R00): o campo e um "XX" sem vinculo. Folha 1 vira 1/<total>, as outras so o numero.
+            try:
+                largura_modelo = folha_modelo.GetPaperWidth()
+            except COM_ERROR:
+                largura_modelo = 0.0
+            chave_total = sheet_field_without_link(fundo_modelo, largura_modelo, links)
         prefixos = []
         if chave_total:
             prefixos = sheet_field_prefixes(fundo_modelo, links[chave_total])

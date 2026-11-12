@@ -135,6 +135,29 @@ clica(p.btn_prev)
 confere("voltar cai no último balão da anterior", espera(lambda: p.lbl_pos.text().startswith("1 de") and f"{total} de {total}" in p.lbl_where.text(), 20), p.lbl_where.text())
 espera(lambda: "Selecionado" in p.lbl_nav_state.text(), 20)
 
+# ---------------- Duplo clique alterna os baloes da mesma posicao ----------------
+def duplo(linha):
+    ponto = p.table.visualItemRect(p.table.item(linha, pp.COL_POS)).center()
+    QTest.mouseClick(p.table.viewport(), Qt.LeftButton, Qt.NoModifier, ponto)
+    QTest.mouseDClick(p.table.viewport(), Qt.LeftButton, Qt.NoModifier, ponto)
+
+
+def no_balao(n, de):
+    return espera(lambda: f"{n} de {de}" in p.lbl_where.text() and "Selecionado" in p.lbl_nav_state.text(), 20)
+
+
+so_um = next(i for i, x in enumerate(p._rows) if len(x.occs) == 1)
+duplo(so_um)
+confere("duplo clique em outra linha só escolhe a linha", no_balao(1, 1), p.lbl_where.text())
+duplo(so_um)
+confere("com um balão só, o duplo clique não sai do lugar", no_balao(1, 1) and p._atual == so_um, p.lbl_where.text())
+duplo(0)
+confere("duplo clique numa linha nova começa no primeiro balão", no_balao(1, total), p.lbl_where.text())
+for n in list(range(2, total + 1)) + [1]:
+    duplo(0)
+    ok = no_balao(n, total)
+    confere(f"duplo clique vai para o balão {n} de {total}", ok and script("Selecionado", cheio).split("|")[-1] == li.occs[n - 1].item_name, p.lbl_where.text())
+
 # ---------------- Part List ----------------
 callouts = {x.number: x for x in r.callouts}
 leitor = com.DispatchEx("Excel.Application")

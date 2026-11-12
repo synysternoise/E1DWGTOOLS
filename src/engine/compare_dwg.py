@@ -6,6 +6,18 @@ import os
 from typing import Optional
 
 CHAVE = "compare_dwg"
+# Onde o Compare DWG fica na rede. Vale enquanto a pessoa nao escolher outro caminho.
+PADRAO = "\\\\Sjkfs17\\mezcal\\Shared\\MACRO\\DWGCOMPARE\\DWGCompare\\DWGCompare.exe"
+
+
+def padrao() -> str:
+    teste = os.environ.get("E1DWGTOOLS_COMPARE_PADRAO")
+    return PADRAO if teste is None else teste
+
+
+def salvo() -> str:
+    """O caminho que a pessoa escolheu neste computador, ou ""."""
+    return str(_ler().get(CHAVE, ""))
 
 
 def arquivo_config() -> str:
@@ -26,7 +38,8 @@ def _ler() -> dict:
 
 
 def get_path() -> str:
-    return str(_ler().get(CHAVE, ""))
+    """O caminho escolhido neste computador. Sem escolha, o da rede."""
+    return salvo() or padrao()
 
 
 def set_path(caminho: str) -> None:
