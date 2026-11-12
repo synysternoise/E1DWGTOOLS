@@ -189,6 +189,14 @@ def main() -> int:
     relogio = apoio.vigia(xl, 900)
     arq = lambda n: os.path.join(trabalho, n)  # noqa: E731
     modelo = lambda f, s="REV01": os.path.join(modelos, f"E1_DRAWING TEMPLATE_SHEET {f}_CATIAV5R32_{s}.CATDrawing")  # noqa: E731
+    if "--nome-novo" in sys.argv:
+        # Os mesmos templates com o nome que a pasta da rede passou a ter: E1_DRW_TEMPLATE_A0_R00.
+        for nome in os.listdir(modelos):
+            achado = re.match(r"E1_DRAWING TEMPLATE_SHEET (\w+)_CATIAV5R32_(\w+)\.CATDrawing$", nome)
+            if achado:
+                os.rename(os.path.join(modelos, nome), os.path.join(modelos, "E1_DRW_TEMPLATE_{}_{}.CATDrawing".format(*achado.groups())))
+        modelo = lambda f, s="REV01": os.path.join(modelos, f"E1_DRW_TEMPLATE_{f}_{s}.CATDrawing")  # noqa: E731
+        print("Templates com o nome novo:", sorted(os.listdir(modelos)), flush=True)
     casos = [
         ("sem documento", [], ""),
         ("documento nao e desenho", [arq("NAO_E_DESENHO.CATPart")], ""),

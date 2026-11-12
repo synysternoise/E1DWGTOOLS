@@ -112,16 +112,24 @@ def is_valid_format(formato: str) -> bool:
     return normalize_format(formato) in FORMATOS
 
 
+# Nome do arquivo do template, do mais novo para o mais antigo. O "_" depois do formato impede que o A0
+# case com o 3A0. Em 11/11/2026 a pasta da rede passou a ter E1_DRW_TEMPLATE_A0_R00.CATDrawing.
+PREFIXOS_TEMPLATE = ("E1_DRW_TEMPLATE_{formato}_", "E1_DRAWING TEMPLATE_SHEET {formato}_CATIAV5R32")
+
+
 def find_template(pasta: str, formato: str) -> str:
-    """Primeiro arquivo .CATDrawing da pasta que comeca com o nome do template do formato."""
+    """Primeiro arquivo .CATDrawing da pasta que comeca com o nome do template do formato.
+    O nome novo vale antes do antigo, quando os dois estao na pasta."""
     if not pasta.endswith("\\"):
         pasta += "\\"
-    prefixo = f"E1_DRAWING TEMPLATE_SHEET {normalize_format(formato)}_CATIAV5R32".lower()
     # Sem ordenar: os.listdir devolve na mesma ordem que o Dir$ do VBA.
-    for nome in os.listdir(pasta):
-        minusculo = nome.lower()
-        if minusculo.endswith(".catdrawing") and minusculo.startswith(prefixo):
-            return pasta + nome
+    nomes = os.listdir(pasta)
+    for modelo in PREFIXOS_TEMPLATE:
+        prefixo = modelo.format(formato=normalize_format(formato)).lower()
+        for nome in nomes:
+            minusculo = nome.lower()
+            if minusculo.endswith(".catdrawing") and minusculo.startswith(prefixo):
+                return pasta + nome
     return ""
 
 

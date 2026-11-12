@@ -207,6 +207,21 @@ class Template(unittest.TestCase):
             self.assertEqual(at.find_template(d, "A3"), "")
             self.assertEqual(at.find_template(d, "A0"), "")
 
+    def test_acha_o_template_pelo_nome_novo(self):
+        with tempfile.TemporaryDirectory() as d:
+            for nome in ("2E.CATDrawing", "E1_DRW_TEMPLATE_3A0_R00.CATDrawing", "E1_DRW_TEMPLATE_A0_R00.CATDrawing",
+                         "E1_DRW_TEMPLATE_A1_R00.CATDrawing", "E1_DRW_TEMPLATE_E3_R00.CATDrawing", "ECN.CATDrawing",
+                         "E1_DRAWING TEMPLATE_SHEET A1_CATIAV5R32_REV01.CATDrawing",
+                         "E1_DRAWING TEMPLATE_SHEET A2_CATIAV5R32_REV01.CATDrawing"):
+                open(os.path.join(d, nome), "w").close()
+            self.assertTrue(at.find_template(d, "A0").endswith("E1_DRW_TEMPLATE_A0_R00.CATDrawing"))
+            self.assertTrue(at.find_template(d, "3A0").endswith("E1_DRW_TEMPLATE_3A0_R00.CATDrawing"))
+            self.assertTrue(at.find_template(d, "e3").endswith("E1_DRW_TEMPLATE_E3_R00.CATDrawing"))
+            # Com os dois nomes na pasta, vale o novo. So com o antigo, vale o antigo.
+            self.assertTrue(at.find_template(d, "A1").endswith("E1_DRW_TEMPLATE_A1_R00.CATDrawing"))
+            self.assertTrue(at.find_template(d, "A2").endswith("A2_CATIAV5R32_REV01.CATDrawing"))
+            self.assertEqual(at.find_template(d, "A3"), "")
+
     def test_vinculos_da_direita_para_a_esquerda(self):
         marcas = {"#E1P1#": "Drawing_No", "#E1P2#": "Revision"}
         v = at.build_link("#E1P1# REV #E1P2#", marcas, 1.0, 2.0, "T")

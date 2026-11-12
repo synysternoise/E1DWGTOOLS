@@ -2824,6 +2824,7 @@ Private Function FindTemplateByFormat( _
 
     Dim sFile As String
     Dim sPattern As String
+    Dim nameIndex As Long
 
     FindTemplateByFormat = ""
 
@@ -2833,30 +2834,41 @@ Private Function FindTemplateByFormat( _
 
     sFormat = NormalizeTemplateFormat(sFormat)
 
-    sPattern = _
-        "E1_DRAWING TEMPLATE_SHEET " & _
-        sFormat & _
-        "_CATIAV5R32"
+    ' Nome do arquivo, do mais novo para o mais antigo. O "_" depois do
+    ' formato impede que o A0 case com o 3A0. Em 11/11/2026 a pasta da rede
+    ' passou a ter E1_DRW_TEMPLATE_A0_R00.CATDrawing.
+    For nameIndex = 1 To 2
 
-    sFile = Dir$(sFolder & "*.CATDrawing")
-
-    Do While Len(sFile) > 0
-
-        If StrComp( _
-            Left$(sFile, Len(sPattern)), _
-            sPattern, _
-            vbTextCompare) = 0 Then
-
-            FindTemplateByFormat = _
-                sFolder & sFile
-
-            Exit Function
-
+        If nameIndex = 1 Then
+            sPattern = "E1_DRW_TEMPLATE_" & sFormat & "_"
+        Else
+            sPattern = _
+                "E1_DRAWING TEMPLATE_SHEET " & _
+                sFormat & _
+                "_CATIAV5R32"
         End If
 
-        sFile = Dir$()
+        sFile = Dir$(sFolder & "*.CATDrawing")
 
-    Loop
+        Do While Len(sFile) > 0
+
+            If StrComp( _
+                Left$(sFile, Len(sPattern)), _
+                sPattern, _
+                vbTextCompare) = 0 Then
+
+                FindTemplateByFormat = _
+                    sFolder & sFile
+
+                Exit Function
+
+            End If
+
+            sFile = Dir$()
+
+        Loop
+
+    Next nameIndex
 
 End Function
 
