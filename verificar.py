@@ -43,7 +43,7 @@ MANIFESTO = {
     "src/engine/catia_scripts/symbol_shape.catvbs": (72, 'ab983ca8d9661894'),
     "src/engine/catia_scripts/pos_zone.catvbs": (366, 'cf49bbddb7037871'),
     "src/ui_qt/theme.py": (173, 'dc78f0ebe5b5e9bc'),
-    "src/ui_qt/voo.py": (332, 'e3de1e15e3f5252f'),
+    "src/ui_qt/voo.py": (339, 'de6d17cfa8f8b742'),
     "src/ui_qt/icones.py": (85, '89eab1825e9374f3'),
     "src/ui_qt/catia_worker.py": (522, '892fd55d4ac42e0d'),
     "src/ui_qt/font_size_page.py": (464, '9e339e7165417d03'),

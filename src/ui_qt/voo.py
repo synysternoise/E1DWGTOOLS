@@ -19,7 +19,8 @@ ALTURA_VOO = 52
 ALTURA_VOO_COMPACTO = 46
 LARGURA_MINI = 60
 LARGURA_CARTAO = 250
-INCLINACAO = 20.0  # graus do nariz na decolagem e no pouso
+INCLINACAO = 20.0  # graus do nariz na decolagem e na descida
+NARIZ_NO_POUSO = 5.0  # graus para cima logo antes de tocar a pista
 
 
 def altura_no_arco(p: float, altura: float) -> float:
@@ -29,9 +30,15 @@ def altura_no_arco(p: float, altura: float) -> float:
 
 
 def inclinacao(p: float) -> float:
-    """Graus do nariz: sobe na decolagem, desce na aproximacao e fica reto no chao, nas duas pontas."""
+    """Graus do nariz. Sobe na decolagem e desce na aproximacao; no fim arredonda o pouso:
+    levanta um pouco o nariz antes de tocar a pista e fica reto no chao."""
     p = min(1.0, max(0.0, p))
-    return INCLINACAO * (1.0 - 2.0 * p) * min(1.0, p / 0.04, (1.0 - p) / 0.12)
+    if p <= 0.8:
+        return INCLINACAO * (1.0 - 2.0 * p) * min(1.0, p / 0.04)
+    descida = INCLINACAO * (1.0 - 2.0 * 0.8)
+    if p <= 0.95:
+        return descida + (p - 0.8) / 0.15 * (NARIZ_NO_POUSO - descida)
+    return NARIZ_NO_POUSO * (1.0 - p) / 0.05
 
 
 def fracao(atual: int, total: int) -> float:
