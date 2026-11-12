@@ -6,11 +6,16 @@ map_text_links do Update Template, que escreve marcadores nos parametros.
 Os campos sao achados pelo rotulo, como na legenda real: SCALE e SHEET/OF em cima, o valor embaixo,
 na mesma celula. O nome dos textos nao serve: muda de um template para outro.
 
+O rotulo pode estar num componente 2D (ditto) do Background, como a moldura da legenda dos templates
+antigos: os textos de dentro dele tambem sao lidos. Sem rotulo nenhum, o campo e procurado pela posicao
+na legenda, e o resultado avisa que foi achado assim.
+
 Tres resultados: Certo, Errado e Conferir. Conferir e o que o programa nao tem como afirmar, como um
 campo que nao achou. Nao e dado como certo nem como errado.
 """
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass, field
 from typing import Callable, List, Optional, Sequence, Tuple
@@ -23,12 +28,17 @@ from engine.catia_bridge import CatiaBridge, CatiaError
 CERTO, ERRADO, CONFERIR = "Certo", "Errado", "Conferir"
 NUMERACAO, FORMATO, ESCALA, TOTAL = "Numeração", "Formato", "Escala", "Total de folhas"
 
-ROTULOS_FOLHA = ("SHEET/OF", "SHEETOF", "SHT/OF", "SHEET", "SHT")
+ROTULOS_FOLHA = ("SHEET/OF", "SHEETOF", "SHT/OF", "SHTOF", "SHEET", "SHT")
 ROTULOS_ESCALA = ("SCALE",)
 # Celula da legenda, em mm na folha: o valor fica embaixo do rotulo. A linha REV e o numero da zona
 # ficam mais abaixo que isto, e a celula vizinha fica mais longe na horizontal.
 JANELA_X = 15.0
 JANELA_Y = 18.0
+# Sem rotulo: a legenda fica no canto de baixo, a direita, e os valores da mesma linha ficam alinhados.
+LEGENDA_LARGURA = 260.0
+LEGENDA_ALTURA = 90.0
+MESMA_LINHA = 4.0
+PELA_POSICAO = "Campo achado pela posição na legenda, sem o rótulo."
 
 PAPEIS = {2: "A0", 3: "A1", 4: "A2", 5: "A3"}  # CatPaperSize
 MEDIDAS = {"A0": (841.0, 1189.0), "A1": (594.0, 841.0), "A2": (420.0, 594.0), "A3": (297.0, 420.0)}
@@ -44,8 +54,8 @@ RE_ISO = re.compile(r"\bISO\b")
 # Nao contam para a escala: podem ter outra escala, a pedido de quem usa a ferramenta.
 # A isometrica nunca conta. PLAN VIEW tambem fica fora: ninguem garante a escala dela.
 NOMES_FORA_DA_ESCALA = ("ISOMETRIC", "SECTION", "VIEW")
-# Excecao: VIEW LOOKING FWD, AFT etc. costuma ter a escala da folha e conta.
-RE_VIEW_LOOKING = re.compile(r"\bVIEW\s+LOOKING\b")
+# Excecao: VIEW LOOKING FWD, AFT etc. e as vistas de projecao (Front view, Top view...) tem a escala da folha.
+RE_VIEW_LOOKING = re.compile(r"\bVIEW\s+LOOKING\b|\b(?:FRONT|TOP|BOTTOM|LEFT|RIGHT|REAR|BACK)\s+VIEW\b")
 
 
 # ---------------------------------------------------------------------
@@ -103,7 +113,7 @@ def mesma_escala(a: float, b: float) -> bool:
 
 
 def conta_para_escala(nome: str) -> bool:
-    """Isometrica, section e view podem ter outra escala, menos VIEW LOOKING. As zonas sao do template."""
+    """Isometrica, section e view podem ter outra escala, menos VIEW LOOKING e as de projecao. As zonas sao do template."""
     n = nome.upper()
     if RE_ZONA.match(n) or RE_ISO.search(n):
         return False
@@ -172,7 +182,8 @@ def _formato_pela_medida(largura: float, altura: float) -> str:
 
 
 def _sem_espacos(texto: str) -> str:
-    return re.sub(r"\s+", "", texto).upper().rstrip(":")
+    """So letras, numeros e a barra: SHEET: OF, SHEET  OF e SHEET/OF. viram o mesmo rotulo."""
+    return re.sub(r"[^A-Z0-9/]", "", texto.upper())
 
 
 def _rotulos_na_folha(textos: Sequence[TextoLido], rotulos: Sequence[str]) -> List[TextoLido]:
@@ -217,6 +228,27 @@ def campo_escala(textos: Sequence[TextoLido]) -> Optional[str]:
             mais_perto = min(escalas or na_celula, key=lambda t: rotulo.y - t.y)
             return mais_perto.texto.strip()
     return ""
+
+
+def escala_pela_posicao(textos: Sequence[TextoLido], largura: float) -> Optional[TextoLido]:
+    """Sem o rotulo SCALE: o unico texto com cara de escala no canto da legenda. Dois valores diferentes
+    nao deixam escolher, e ai nao devolve nada."""
+    candidatos = [t for t in textos if RE_ESCALA.match(t.texto) and t.y <= LEGENDA_ALTURA
+                  and (largura <= 0 or t.x >= largura - LEGENDA_LARGURA)]
+    valores = {parse_escala(t.texto) for t in candidatos}
+    if len(valores) != 1 or None in valores:
+        return None
+    return max(candidatos, key=lambda t: t.x)
+
+
+def folha_pela_linha(textos: Sequence[TextoLido], escala: TextoLido) -> Optional[str]:
+    """Sem o rotulo SHEET/OF: os numeros na mesma linha da escala, a direita dela."""
+    pedacos = [t for t in textos if t is not escala and RE_NUMERO_FOLHA.match(t.texto)
+               and abs(t.y - escala.y) <= MESMA_LINHA and t.x > escala.x]
+    if not pedacos:
+        return None
+    pedacos.sort(key=lambda t: t.x)
+    return " ".join(t.texto.strip() for t in pedacos)
 
 
 # ---------------------------------------------------------------------
@@ -292,6 +324,41 @@ def _textos_da_vista(vista, so_numero_de_folha: bool = False) -> List[TextoLido]
     return saida
 
 
+def _textos_dos_componentes(vista) -> List[TextoLido]:
+    """Textos de dentro dos componentes 2D (dittos) da vista, ja na posicao em que aparecem na folha."""
+    saida: List[TextoLido] = []
+    try:
+        componentes = vista.Components
+        total = componentes.Count
+        vx, vy = vista.x, vista.y
+    except (COM_ERROR, AttributeError, TypeError, ValueError):
+        return saida
+    escala_vista = _escala_da_vista(vista) or 1.0
+    for i in range(1, total + 1):
+        try:
+            comp = componentes.Item(i)
+            textos = comp.CompRef.Texts
+            n = textos.Count
+            cx, cy = float(comp.x), float(comp.y)
+        except (COM_ERROR, AttributeError, TypeError, ValueError):
+            continue
+        escala = _escala_da_vista(comp) or 1.0
+        try:
+            angulo = float(comp.Angle)
+        except (COM_ERROR, AttributeError, TypeError, ValueError):
+            angulo = 0.0
+        cos, sen = math.cos(angulo), math.sin(angulo)
+        for k in range(1, n + 1):
+            try:
+                t = textos.Item(k)
+                lx, ly = float(t.x) * escala, float(t.y) * escala
+                x, y = cx + lx * cos - ly * sen, cy + lx * sen + ly * cos
+                saida.append(TextoLido(str(t.Text), vx + x * escala_vista, vy + y * escala_vista))
+            except (COM_ERROR, AttributeError, TypeError, ValueError):
+                continue
+    return saida
+
+
 def _vistas_da_folha(folha) -> List[VistaLida]:
     """Da terceira em diante: 1 e a Main View e 2 e o Background."""
     saida: List[VistaLida] = []
@@ -322,22 +389,34 @@ def _conferir_folha(folha, nome: str, posicao: int, total: int) -> List[ItemTemp
         principal = folha.Views.Item(1)
     except COM_ERROR:
         return [ItemTemplate(nome, posicao, r, "", "", CONFERIR, "Não consegui ler esta folha.") for r in (NUMERACAO, FORMATO, ESCALA)]
-    textos_fundo = _textos_da_vista(fundo)
+    # A moldura da legenda pode ser um componente 2D: os rotulos ficam dentro dele.
+    textos_fundo = _textos_da_vista(fundo) + _textos_dos_componentes(fundo)
     # O numero da folha pode estar na Main View, em cima do campo do Background.
     com_principal = textos_fundo + _textos_da_vista(principal, so_numero_de_folha=True)
+    papel, largura, altura = _papel(folha)
 
+    escala = campo_escala(textos_fundo)
     numero = campo_folha(com_principal)
+    nota_escala = nota_numero = ""
+    if escala is None or numero is None:
+        achada = escala_pela_posicao(textos_fundo, largura)
+        if achada is not None:
+            if escala is None:
+                escala, nota_escala = achada.texto.strip(), " " + PELA_POSICAO
+            if numero is None:
+                numero = folha_pela_linha(com_principal, achada)
+                nota_numero = " " + PELA_POSICAO if numero is not None else ""
+
     situacao, detalhe = conferir_numeracao(numero, posicao, total)
-    itens = [ItemTemplate(nome, posicao, NUMERACAO, numero or "", numeracao_esperada(posicao, total), situacao, detalhe)]
+    itens = [ItemTemplate(nome, posicao, NUMERACAO, numero or "", numeracao_esperada(posicao, total), situacao,
+                          (detalhe + nota_numero).strip())]
 
     formato = format_from_background(folha)
-    papel, largura, altura = _papel(folha)
     situacao, esperado, detalhe = conferir_formato(formato, papel, largura, altura)
     itens.append(ItemTemplate(nome, posicao, FORMATO, formato, esperado, situacao, detalhe))
 
-    escala = campo_escala(textos_fundo)
     situacao, esperado, detalhe = conferir_escala(escala, _vistas_da_folha(folha))
-    itens.append(ItemTemplate(nome, posicao, ESCALA, escala or "", esperado, situacao, detalhe))
+    itens.append(ItemTemplate(nome, posicao, ESCALA, escala or "", esperado, situacao, (detalhe + nota_escala).strip()))
     return itens
 
 

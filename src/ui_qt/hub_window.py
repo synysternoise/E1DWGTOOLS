@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import os
 
-from PySide6.QtCore import QCoreApplication, QEvent, QSize, Qt, QThread, QTimer, Signal, Slot
+from PySide6.QtCore import QCoreApplication, QEvent, QRect, QSize, Qt, QThread, QTimer, Signal, Slot
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (
     QButtonGroup, QFrame, QHBoxLayout, QLabel, QProgressBar, QSizePolicy, QStackedWidget, QVBoxLayout, QWidget,
@@ -629,6 +629,7 @@ class HubWindow(QWidget):
     def _on_part_list(self, parte) -> None:
         for pos in (self.poszone_page, self.poszonefix_page):
             pos.definir_part_list(parte)
+        self.geral_page.definir_part_list(parte is not None)
         self._atualizar_visao_pos()
 
     @Slot(str)
@@ -832,7 +833,12 @@ class HubWindow(QWidget):
         self.layout().activate()
         area = (self.screen() or QGuiApplication.primaryScreen()).availableGeometry()
         if self._modo == MODO_CANTO:
-            self.setGeometry(area.right() - LARGURA_COMPACTA + 1, area.top(), LARGURA_COMPACTA, area.height())
+            alvo = QRect(area.right() - LARGURA_COMPACTA + 1, area.top(), LARGURA_COMPACTA, area.height())
+            self.setGeometry(alvo)
+            # Os textos com quebra de linha recalculam a altura depois, e a janela crescia sozinha para
+            # baixo da tela, escondendo o botao. Confere de novo e devolve a janela ao tamanho da tela.
+            for espera_ms in (120, 400, 900):
+                QTimer.singleShot(espera_ms, lambda a=alvo: self._segurar_no_canto(a))
         elif self._modo == MODO_MINI:
             altura = min(area.height(), self._mini.sizeHint().height())
             largura = self._mini.width()
@@ -842,6 +848,19 @@ class HubWindow(QWidget):
             if self.geometry() != self._normal_geometry and tentativa < 5:
                 # Vindo da barra de icones, as telas estavam escondidas e ainda guardam o minimo antigo.
                 QTimer.singleShot(60, lambda: self._apply_mode_geometry(tentativa + 1))
+
+    def _segurar_no_canto(self, alvo: QRect) -> None:
+        if self._modo == MODO_CANTO and self.geometry().height() > alvo.height():
+            self.setGeometry(alvo)
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        # No canto a janela nunca pode passar da altura da tela: o botao fica embaixo.
+        if getattr(self, "_modo", MODO_CHEIO) == MODO_CANTO:
+            area = (self.screen() or QGuiApplication.primaryScreen()).availableGeometry()
+            if self.height() > area.height():
+                QTimer.singleShot(0, lambda: self._segurar_no_canto(
+                    QRect(self.x(), area.top(), self.width(), area.height())))
 
     def moveEvent(self, event) -> None:
         super().moveEvent(event)

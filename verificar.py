@@ -37,7 +37,7 @@ MANIFESTO = {
     "src/engine/splits.py": (421, '1355a489c548390e'),
     "src/engine/part_list.py": (329, '0ba1c0b77078656a'),
     "src/engine/compare_dwg.py": (55, '88a0ef05fa82038f'),
-    "src/engine/template_check.py": (406, 'b2a324cbcdb828fb'),
+    "src/engine/template_check.py": (485, '1df75022e737f7db'),
     "src/engine/catia_scripts/font_check.catvbs": (416, 'd63899c71076bbed'),
     "src/engine/catia_scripts/fix_flags.catvbs": (806, '71db4441b9277b8e'),
     "src/engine/catia_scripts/symbol_shape.catvbs": (72, 'ab983ca8d9661894'),
@@ -51,10 +51,10 @@ MANIFESTO = {
     "src/ui_qt/tool_page.py": (360, '8ccf6e2250356af3'),
     "src/ui_qt/fix_flags_page.py": (501, 'ba375a377209a63a'),
     "src/ui_qt/tool_pages.py": (372, 'a5cc1446f4be080f'),
-    "src/ui_qt/sequencia_page.py": (585, '2fafd3e8ea6f04f6'),
+    "src/ui_qt/sequencia_page.py": (595, '3a229102ed4eae85'),
     "src/ui_qt/check_fix_pages.py": (706, '9917aa1c26307fab'),
     "src/ui_qt/poszone_page.py": (767, '7f8a54339c35b5c1'),
-    "src/ui_qt/hub_window.py": (872, '42c8a1a4467d8942'),
+    "src/ui_qt/hub_window.py": (891, 'd8042cb0e71d9c0f'),
 }
 
 REDE = re.compile(

@@ -271,3 +271,42 @@ class TestConferirTemplate(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestLegendaAntiga(unittest.TestCase):
+    """Template antigo: rotulo com dois-pontos, ou sem rotulo nenhum (a moldura e so desenho)."""
+
+    LEGENDA = [
+        TextoLido("GALLEY INSTL, G1", 1040, 75), TextoLido("171-43473-801", 1040, 45), TextoLido("1/4", 975, 45),
+        TextoLido("A0", 1175, 8), TextoLido("21", 1100, 6), TextoLido("22", 960, 6), TextoLido("A", 1182, 60),
+    ]
+
+    def test_rotulo_com_dois_pontos_e_espacos(self):
+        textos = self.LEGENDA + [TextoLido("SHEET: OF", 1112, 55), TextoLido("2", 1112, 45), TextoLido("SCALE:", 975, 55)]
+        self.assertEqual(tc.campo_folha(textos), "2")
+        self.assertEqual(tc.campo_escala(textos), "1/4")
+
+    def test_sem_rotulo_acha_a_escala_no_canto_da_legenda(self):
+        achada = tc.escala_pela_posicao(self.LEGENDA + [TextoLido("2", 1112, 45)], 1189.0)
+        self.assertEqual(achada.texto, "1/4")
+
+    def test_sem_rotulo_o_numero_e_o_da_mesma_linha_a_direita(self):
+        textos = self.LEGENDA + [TextoLido("1 /", 1106, 45), TextoLido("3", 1116, 45)]
+        achada = tc.escala_pela_posicao(textos, 1189.0)
+        self.assertEqual(tc.folha_pela_linha(textos, achada), "1 / 3")
+
+    def test_numero_da_margem_nao_e_o_da_folha(self):
+        achada = tc.escala_pela_posicao(self.LEGENDA, 1189.0)
+        self.assertIsNone(tc.folha_pela_linha(self.LEGENDA, achada))
+
+    def test_duas_escalas_diferentes_na_legenda_nao_escolhe(self):
+        self.assertIsNone(tc.escala_pela_posicao(self.LEGENDA + [TextoLido("1:2", 1000, 30)], 1189.0))
+
+    def test_escala_longe_da_legenda_nao_conta(self):
+        self.assertIsNone(tc.escala_pela_posicao([TextoLido("1:4", 300, 500), TextoLido("1:4", 100, 40)], 1189.0))
+
+    def test_vistas_de_projecao_contam_para_a_escala(self):
+        for nome in ("Front view", "Top view", "LEFT VIEW", "Rear view"):
+            self.assertTrue(tc.conta_para_escala(nome), nome)
+        for nome in ("PLAN VIEW", "Isometric view", "Section view A-A", "Detail view B", "VIEW B"):
+            self.assertFalse(tc.conta_para_escala(nome), nome)

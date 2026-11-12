@@ -474,6 +474,10 @@ class CheckGeralPage(QWidget):
             self._font = report
             self._atualizar()
 
+    def definir_part_list(self, tem: bool) -> None:
+        self._tem_part_list = tem
+        self._atualizar()
+
     def on_poszone(self, report) -> None:
         if report is not None:
             self._pos = report
@@ -545,6 +549,12 @@ class CheckGeralPage(QWidget):
             if self.pendencias_pos():
                 revisar += 1
                 self.linha_pos.marcar("aviso")
+            elif not getattr(self, "_tem_part_list", False):
+                # Sem o Part List so da para dizer que os baloes foram lidos: nada foi comparado.
+                revisar += 1
+                self.linha_pos.marcar("aviso")
+                self.linha_pos.sub.setText(f"{len(r.callouts)} callouts lidos · falta anexar o Part List")
+                self.linha_pos.lbl_resultado.setText("Sem Part List: zona e quantidade não foram comparadas")
             else:
                 ok += 1
                 self.linha_pos.marcar("ok")
