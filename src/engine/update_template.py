@@ -202,7 +202,7 @@ def update_template(
         if app_com.Documents.Count == 0:
             raise UpdateTemplateError(1001, "Nenhum documento aberto.")
         active = app_com.ActiveDocument
-        if not eh_desenho(active.Name):
+        if not eh_desenho(active):
             raise UpdateTemplateError(1002, "O documento ativo nao e um CATDrawing.")
 
         source_doc = active

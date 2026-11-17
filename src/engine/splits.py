@@ -168,7 +168,7 @@ def run_split_2d(
             return None
         doc = app.ActiveDocument
         nome = str(doc.Name)
-        if not eh_desenho(nome):
+        if not eh_desenho(doc):
             warn("Abra um CATDrawing antes de executar.")
             return None
         if not doc.Path:
@@ -249,7 +249,7 @@ def preview_2d(bridge: CatiaBridge) -> Optional[SplitPreview]:
             return None
         doc = app.ActiveDocument
         nome = str(doc.Name)
-        if not eh_desenho(nome) or not doc.Path:
+        if not eh_desenho(doc) or not doc.Path:
             return None
         cheio = str(doc.FullName)
         folhas = [str(doc.Sheets.Item(i).Name) for i in range(1, doc.Sheets.Count + 1)]

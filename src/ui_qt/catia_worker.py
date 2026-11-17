@@ -20,10 +20,11 @@ from engine import splits as sp
 from engine import symbol_shape as ss
 from engine import template_check as tc
 from engine.catia_bridge import CatiaBridge, CatiaError, titulo_janela_catia
+from engine.documento import eh_desenho
 
 
 class CatiaWorker(QObject):
-    status = Signal(bool, str)  # conectado, nome do documento ativo ("" se nenhum)
+    status = Signal(bool, str, bool)  # conectado, nome do documento ativo ("" se nenhum), e desenho
     started_analysis = Signal()
     progress = Signal(int, int)
     report_ready = Signal(object)  # FontReport, ou None se o pedido de formato foi cancelado
@@ -120,14 +121,17 @@ class CatiaWorker(QObject):
         """Pergunta ao CATIA qual e o documento ativo."""
         try:
             app = self._get_bridge().app
-            name = app.ActiveDocument.Name if app.Documents.Count else ""
+            doc = app.ActiveDocument if app.Documents.Count else None
+            name = str(doc.Name) if doc is not None else ""
+            # Pelo tipo do documento, e nao pelo nome: o nome muda conforme venha do PC ou do VPM.
+            desenho = doc is not None and eh_desenho(doc)
         except (CatiaError, pywintypes.com_error):
             self._bridge = None
             self._ultimo_titulo = None
-            self.status.emit(False, "")
+            self.status.emit(False, "", False)
             return
         self._ultimo_titulo = titulo_janela_catia()
-        self.status.emit(True, name)
+        self.status.emit(True, name, desenho)
 
     @Slot()
     def poll_leve(self) -> None:
@@ -137,7 +141,7 @@ class CatiaWorker(QObject):
         if titulo is None:
             self._bridge = None
             self._ultimo_titulo = None
-            self.status.emit(False, "")
+            self.status.emit(False, "", False)
             return
         # Sem o nome do documento no titulo (janela interna nao maximizada), so a pergunta ao CATIA
         # diz qual e. Nesse caso, pergunta apenas enquanto a pessoa esta usando o HUB.

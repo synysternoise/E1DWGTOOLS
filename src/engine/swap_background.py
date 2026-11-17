@@ -79,7 +79,7 @@ def swap_template_background(
         if app_com.Documents.Count == 0:
             raise UpdateTemplateError(1001, "Nenhum documento aberto.")
         source_doc = app_com.ActiveDocument
-        if not eh_desenho(source_doc.Name):
+        if not eh_desenho(source_doc):
             raise UpdateTemplateError(1002, "O documento ativo nao e um CATDrawing.")
         source_sheets = source_doc.Sheets
         if source_sheets.Count == 0:

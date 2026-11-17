@@ -28,7 +28,7 @@ def get_active_sheet_name() -> Optional[str]:
         if app.Documents.Count == 0:
             return None
         doc = app.ActiveDocument
-        if not eh_desenho(doc.Name):
+        if not eh_desenho(doc):
             return None
         return str(doc.Sheets.ActiveSheet.Name)
     except Exception:
@@ -46,7 +46,7 @@ def capture_active_sheet(sheet_name: Optional[str] = None) -> Optional[str]:
         if app.Documents.Count == 0:
             return None
         doc = app.ActiveDocument
-        if not eh_desenho(doc.Name):
+        if not eh_desenho(doc):
             return None
 
         # Ativa a folha selecionada no HUB (reflete a folha escolhida).

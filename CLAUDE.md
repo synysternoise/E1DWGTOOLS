@@ -103,8 +103,10 @@ Três problemas relatados pelo usuário, com fotos da tela. Tudo está no branch
 em três commits sobre `migracao-dwgtools`.
 
 1. **Desenho aberto pelo VPM não era reconhecido.** O HUB decidia pelo final `.catdrawing` do nome, e
-   pelo VPM o nome vem como `171-60466-803      1       1  --- CATDRAWING     1 ---`. Agora todas as
-   ferramentas usam `eh_desenho` e `pn_do_documento` de `engine/documento.py`. O Split 2D continua
+   pelo VPM o nome vem como `171-60466-803      1       1  --- CATDRAWING     1 ---`. Agora o desenho é
+   reconhecido pelo tipo do documento no CATIA (`DrawingDocument`), como os scripts já faziam, e o nome
+   só decide se o tipo não puder ser lido (`eh_desenho` em `engine/documento.py`). O PN é o nome sem a
+   extensão ou o primeiro bloco do nome (`pn_do_documento`). O Split 2D continua
    pedindo o arquivo salvo, e o Split 3D não mudou.
 2. **`The method x failed` num desenho 3A0 (171-60895-401).** A posição de cada vista era lida sem
    proteção em `LerFolha_`, e uma vista recusada pelo CATIA derrubava o mapeamento. Agora `LerPosicao`

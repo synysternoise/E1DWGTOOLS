@@ -783,13 +783,13 @@ class HubWindow(QWidget):
             self.chip_catia.setStyleSheet(f"color: {T.GREEN if self._conectado else T.RED};")
             self._mini.catia(T.GREEN if self._conectado else T.RED, "CATIA ativo" if self._conectado else "CATIA fechado")
 
-    def _on_status(self, connected: bool, document: str) -> None:
+    def _on_status(self, connected: bool, document: str, desenho: bool = False) -> None:
         self._conectado = connected
         self._documento = document
         self._mostrar_catia()
         self.chip_doc.setText(document or "Nenhum desenho")
         for pagina in (self.font_page, self.flags_page, self.seq_page, self.geral_page, *self.tool_pages.values()):
-            pagina.set_catia_state(connected, document)
+            pagina.set_catia_state(connected, document, desenho)
 
     # ------------------------------------------------------------------
     # Os tres modos: ampliado, canto e so icones

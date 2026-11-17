@@ -1066,7 +1066,7 @@ def preview_update(bridge: CatiaBridge, pasta: str = PASTA_TEMPLATES) -> Optiona
         if app.Documents.Count == 0:
             return None
         doc = app.ActiveDocument
-        if not eh_desenho(doc.Name):
+        if not eh_desenho(doc):
             return None
         folhas = [(str(f.Name), format_from_background(f)) for f in drawing_sheets(doc)]
         nome = str(doc.Name)
@@ -1100,7 +1100,7 @@ def run_update_template(
         if app.Documents.Count == 0:
             raise TemplateError("Nenhum documento aberto.", VB_OBJECT_ERROR + 1001)
         doc = app.ActiveDocument
-        if not eh_desenho(doc.Name):
+        if not eh_desenho(doc):
             raise TemplateError("O documento ativo não é um CATDrawing.", VB_OBJECT_ERROR + 1002)
         c.doc = doc
         folhas_doc = drawing_sheets(doc)

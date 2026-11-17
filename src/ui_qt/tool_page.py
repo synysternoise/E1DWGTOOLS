@@ -237,11 +237,11 @@ class ToolPage(QWidget):
     # ------------------------------------------------------------------
     # Estado do CATIA
     # ------------------------------------------------------------------
-    def set_catia_state(self, connected: bool, document: str) -> None:
+    def set_catia_state(self, connected: bool, document: str, desenho: bool = False) -> None:
         mudou = document != self._documento or connected != self._connected
         self._connected = connected
         self._documento = document
-        self._has_document = eh_desenho(document) if self.EXTENSAO == ".catdrawing" else document.lower().endswith(self.EXTENSAO)
+        self._has_document = (desenho or eh_desenho(document)) if self.EXTENSAO == ".catdrawing" else document.lower().endswith(self.EXTENSAO)
         self._update_intro()
         if mudou and self.TEM_PREVIA and self._connected and self._has_document:
             self.pedir_previa()

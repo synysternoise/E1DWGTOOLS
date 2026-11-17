@@ -188,10 +188,10 @@ class SequenciaPage(QWidget):
         fora.addWidget(lado)
         return w
 
-    def set_catia_state(self, connected: bool, document: str) -> None:
+    def set_catia_state(self, connected: bool, document: str, desenho: bool = False) -> None:
         self._connected = connected
         self._documento = document
-        self._has_drawing = eh_desenho(document)
+        self._has_drawing = desenho or eh_desenho(document)
         self._atualizar()
 
     def _marcadas(self) -> List[str]:
@@ -465,9 +465,9 @@ class CheckGeralPage(QWidget):
         h.addWidget(caixa)
         self._atualizar()
 
-    def set_catia_state(self, connected: bool, document: str) -> None:
+    def set_catia_state(self, connected: bool, document: str, desenho: bool = False) -> None:
         self._connected = connected
-        self._has_drawing = eh_desenho(document)
+        self._has_drawing = desenho or eh_desenho(document)
         self._atualizar()
 
     def on_font(self, report) -> None:

@@ -443,7 +443,7 @@ def conferir_template(
         if app.Documents.Count == 0:
             raise CatiaError("Nenhum documento aberto.")
         doc = app.ActiveDocument
-        if not eh_desenho(doc.Name):
+        if not eh_desenho(doc):
             raise CatiaError("O documento ativo não é um CATDrawing.")
         folhas = drawing_sheets(doc)
         if not folhas:

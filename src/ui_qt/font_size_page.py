@@ -255,9 +255,9 @@ class FontSizePage(QWidget):
     # ------------------------------------------------------------------
     # Estado do CATIA e tela inicial
     # ------------------------------------------------------------------
-    def set_catia_state(self, connected: bool, document: str) -> None:
+    def set_catia_state(self, connected: bool, document: str, desenho: bool = False) -> None:
         self._connected = connected
-        self._has_drawing = eh_desenho(document)
+        self._has_drawing = desenho or eh_desenho(document)
         self._update_intro()
 
     def _update_intro(self) -> None:
