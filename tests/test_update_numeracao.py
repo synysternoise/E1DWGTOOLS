@@ -11,11 +11,11 @@ from engine import atualizar_template as at  # noqa: E402
 class VistasDeZona(unittest.TestCase):
     def test_nomes_reais_do_template(self):
         for nome in ("ZONE", "zone", "ZONE[1]", "ZONE A0", "ZONE A0[3]", "ZONES_A0_SHT1", "ZONES_A0_SHT1[2]",
-                     "ZONES_A0_SHT2", "ZONES_A1_SHT2", "ZONE 3A0", "ZONES_E3_SHT"):
+                     "ZONES_A0_SHT2", "ZONES_A1_SHT2", "ZONE 3A0", "ZONES_E3_SHT", "ZONE_E3_SHT1", "ZONE_E3_SHT1[2]"):
             self.assertTrue(at.is_aux_view(nome), nome)
 
     def test_vista_do_usuario_nao_e_apagada(self):
-        for nome in ("MY ZONE VIEW", "ZONE DETAIL", "ZONEX", "ZONE A9", "ZONES_A0", "ZONES_A0_SHTX", "PLAN VIEW", "1F7"):
+        for nome in ("MY ZONE VIEW", "ZONE DETAIL", "ZONEX", "ZONE A9", "ZONES_A0", "ZONES_A0_SHTX", "ZONE_E3", "ZONE_SHT1", "PLAN VIEW", "1F7"):
             self.assertFalse(at.is_aux_view(nome), nome)
 
 

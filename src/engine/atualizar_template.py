@@ -135,7 +135,8 @@ def find_template(pasta: str, formato: str) -> str:
 
 
 # Vistas de zona do template: ZONE, ZONE A0, ZONE A0[3], ZONES_A0_SHT1, ZONES_A0_SHT1[2]...
-RE_VISTA_ZONA = re.compile(r"^(ZONE(\s+(3A0|A0|A1|A2|A3|E3))?|ZONES_(3A0|A0|A1|A2|A3|E3)_SHT\d*)(\[\d+\])?$")
+# No template do E3 o nome vem sem o S: ZONE_E3_SHT1.
+RE_VISTA_ZONA = re.compile(r"^(ZONE(\s+(3A0|A0|A1|A2|A3|E3))?|ZONES?_(3A0|A0|A1|A2|A3|E3)_SHT\d*)(\[\d+\])?$")
 RE_ROTULO_ZONA = re.compile(r"^([A-F])(\d{1,3})$")
 # Faixa da margem onde ficam os numeros das colunas, como no Position and Zone.
 MARGEM_PROPORCAO = 0.12
