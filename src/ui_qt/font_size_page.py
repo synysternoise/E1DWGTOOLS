@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
 )
 
 from engine import font_check as fc
+from engine.documento import eh_desenho
 from ui_qt import theme as T
 
 NAO_ENCONTRADO = "Item não encontrado: foi apagado ou o desenho foi fechado."
@@ -256,7 +257,7 @@ class FontSizePage(QWidget):
     # ------------------------------------------------------------------
     def set_catia_state(self, connected: bool, document: str) -> None:
         self._connected = connected
-        self._has_drawing = document.lower().endswith(".catdrawing")
+        self._has_drawing = eh_desenho(document)
         self._update_intro()
 
     def _update_intro(self) -> None:

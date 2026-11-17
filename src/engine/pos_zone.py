@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Optional, Tuple
 
 from engine.catia_bridge import CatiaBridge, CatiaError, parse_number
+from engine.documento import pn_do_documento
 
 SCRIPT = "pos_zone.catvbs"
 MACRO_VERSION = "V3.5.3-SEM-PINTURA"
@@ -938,7 +939,7 @@ def _situacao(bridge: CatiaBridge, warn) -> Optional[Tuple[str, str, int]]:
         warn("Nenhum Drawing ativo foi encontrado.", TITULO)
         return None
     _, cheio, nome, total = situacao
-    return cheio, (nome[: nome.rfind(".")] if nome.rfind(".") > 0 else nome), int(total)
+    return cheio, pn_do_documento(nome), int(total)
 
 
 def analisar_desenho(

@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QFrame, QHBoxLayout, QLabel, QProgressBar, QScrollArea, QStackedWidget, QVBoxLayout, QWidget,
 )
 
+from engine.documento import eh_desenho
 from ui_qt import theme as T
 from ui_qt.font_size_page import button, label
 from ui_qt.icones import pixmap
@@ -190,7 +191,7 @@ class SequenciaPage(QWidget):
     def set_catia_state(self, connected: bool, document: str) -> None:
         self._connected = connected
         self._documento = document
-        self._has_drawing = document.lower().endswith(".catdrawing")
+        self._has_drawing = eh_desenho(document)
         self._atualizar()
 
     def _marcadas(self) -> List[str]:
@@ -466,7 +467,7 @@ class CheckGeralPage(QWidget):
 
     def set_catia_state(self, connected: bool, document: str) -> None:
         self._connected = connected
-        self._has_drawing = document.lower().endswith(".catdrawing")
+        self._has_drawing = eh_desenho(document)
         self._atualizar()
 
     def on_font(self, report) -> None:

@@ -14,6 +14,7 @@ from typing import Callable, List, Optional
 import pywintypes
 
 from engine.catia_bridge import CatiaBridge, CatiaError
+from engine.documento import eh_desenho, pn_do_documento
 
 COM_ERROR = pywintypes.com_error
 TITULO_SPLIT_3D = "Split CATPart"
@@ -167,7 +168,7 @@ def run_split_2d(
             return None
         doc = app.ActiveDocument
         nome = str(doc.Name)
-        if not nome.lower().endswith(".catdrawing"):
+        if not eh_desenho(nome):
             warn("Abra um CATDrawing antes de executar.")
             return None
         if not doc.Path:
@@ -180,7 +181,7 @@ def run_split_2d(
 
         original = doc.FullName
         base = downloads or os.path.join(os.environ.get("USERPROFILE", ""), "Downloads")
-        pasta = os.path.join(base, nome[: nome.rfind(".")]) + "\\"
+        pasta = os.path.join(base, pn_do_documento(nome)) + "\\"
         if not os.path.isdir(pasta):
             os.mkdir(pasta)
 
@@ -248,7 +249,7 @@ def preview_2d(bridge: CatiaBridge) -> Optional[SplitPreview]:
             return None
         doc = app.ActiveDocument
         nome = str(doc.Name)
-        if not nome.lower().endswith(".catdrawing") or not doc.Path:
+        if not eh_desenho(nome) or not doc.Path:
             return None
         cheio = str(doc.FullName)
         folhas = [str(doc.Sheets.Item(i).Name) for i in range(1, doc.Sheets.Count + 1)]

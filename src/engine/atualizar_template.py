@@ -20,6 +20,7 @@ from typing import Callable, Dict, List, Optional, Tuple
 import pywintypes
 
 from engine.catia_bridge import CatiaBridge, CatiaError
+from engine.documento import eh_desenho
 
 PASTA_TEMPLATES = "\\\\nfscad05.sjk.emb\\dmuv5\\smarteam\\b01\\v5\\DLNames\\START_UP\\"
 FORMATOS = ("3A0", "A0", "A1", "A2", "A3", "E3")
@@ -1064,7 +1065,7 @@ def preview_update(bridge: CatiaBridge, pasta: str = PASTA_TEMPLATES) -> Optiona
         if app.Documents.Count == 0:
             return None
         doc = app.ActiveDocument
-        if not str(doc.Name).lower().endswith(".catdrawing"):
+        if not eh_desenho(doc.Name):
             return None
         folhas = [(str(f.Name), format_from_background(f)) for f in drawing_sheets(doc)]
         nome = str(doc.Name)
@@ -1098,7 +1099,7 @@ def run_update_template(
         if app.Documents.Count == 0:
             raise TemplateError("Nenhum documento aberto.", VB_OBJECT_ERROR + 1001)
         doc = app.ActiveDocument
-        if not str(doc.Name).lower().endswith(".catdrawing"):
+        if not eh_desenho(doc.Name):
             raise TemplateError("O documento ativo não é um CATDrawing.", VB_OBJECT_ERROR + 1002)
         c.doc = doc
         folhas_doc = drawing_sheets(doc)

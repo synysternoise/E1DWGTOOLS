@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
+from engine.documento import eh_desenho
 from ui_qt import theme as T
 from ui_qt.font_size_page import label
 from ui_qt.icones import icone
@@ -240,7 +241,7 @@ class ToolPage(QWidget):
         mudou = document != self._documento or connected != self._connected
         self._connected = connected
         self._documento = document
-        self._has_document = document.lower().endswith(self.EXTENSAO)
+        self._has_document = eh_desenho(document) if self.EXTENSAO == ".catdrawing" else document.lower().endswith(self.EXTENSAO)
         self._update_intro()
         if mudou and self.TEM_PREVIA and self._connected and self._has_document:
             self.pedir_previa()

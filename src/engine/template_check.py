@@ -24,6 +24,7 @@ from engine.atualizar_template import (
     CAT_PAPER_USER, COM_ERROR, SHEET_COUNT_PARAMETER, drawing_sheets, format_from_background,
 )
 from engine.catia_bridge import CatiaBridge, CatiaError
+from engine.documento import eh_desenho
 
 CERTO, ERRADO, CONFERIR = "Certo", "Errado", "Conferir"
 NUMERACAO, FORMATO, ESCALA, TOTAL = "Numeração", "Formato", "Escala", "Total de folhas"
@@ -442,7 +443,7 @@ def conferir_template(
         if app.Documents.Count == 0:
             raise CatiaError("Nenhum documento aberto.")
         doc = app.ActiveDocument
-        if not str(doc.Name).lower().endswith(".catdrawing"):
+        if not eh_desenho(doc.Name):
             raise CatiaError("O documento ativo não é um CATDrawing.")
         folhas = drawing_sheets(doc)
         if not folhas:
