@@ -545,6 +545,9 @@ class _IndiceTextos:
                     pass
         return self._por_posicao
 
+    def todos(self):
+        return self._todos()
+
     def _todos(self):
         try:
             textos = self.vista.Texts
@@ -909,6 +912,8 @@ class _Conversao:
                     self._numerar_folha(sel, indice, folha.Views.Item(1), links[chave_total], prefixos, posicao, f["nome"])
                 if posicao >= 2:
                     self._numerar_margem(indice, margem, posicao, f["nome"])
+            with self.fase("Tirar o que sobrou ligado ao template"):
+                self._isolar_restantes(sel, indice, links, f["nome"])
             with self.fase("Apagar as grades antigas"):
                 self._apagar_views_auxiliares(sel, folha)
 
@@ -1054,6 +1059,36 @@ class _Conversao:
             except COM_ERROR:
                 continue
         indice.esquecer()
+
+    def _isolar_restantes(self, sel, indice: _IndiceTextos, links: Dict[str, TextLink], folha: str) -> None:
+        """Rede de seguranca: texto colado com vinculo que a leitura do template nao reconheceu.
+
+        O Background acabou de vir do template: um texto com vinculo que nao e um dos refeitos aqui so
+        pode estar ligado ao arquivo do template. Fica o valor que ele mostra, sem vinculo, e o aviso.
+        """
+        refeitos = {position_key(l.x, l.y) for l in links.values()}
+        sobras = []
+        for t in list(indice.todos()):
+            n = _ler(t, "NbLink")
+            if not n:
+                continue  # sem vinculo, ou a versao do CATIA nao informa: fica como esta
+            try:
+                if position_key(t.x, t.y) not in refeitos:
+                    sobras.append(t)
+            except COM_ERROR:
+                continue
+        for t in sobras:
+            nome = _ler(t, "Name") or "?"
+            try:
+                recriar_texto(sel, indice.vista, t, str(t.Text))
+                self.report.warnings.append(
+                    f"Folha {folha}: o texto {nome} estava ligado ao template e ficou sem vínculo. Confira se ele "
+                    "deveria mostrar um parâmetro do desenho."
+                )
+            except COM_ERROR:
+                self.report.warnings.append(f"Folha {folha}: o texto {nome} continua ligado ao template (Edit > Links > Isolate).")
+        if sobras:
+            indice.esquecer()
 
     def _numerar_folha(self, sel, indice, vista_principal, link, prefixos, numero, nome) -> None:
         """Folhas 2 em diante: o numero fica sem vinculo, para nenhum Update voltar a mostrar o total."""

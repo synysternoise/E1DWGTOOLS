@@ -164,6 +164,7 @@ class _Texto:
         self.TextProperties = _Props(**formato.get("props", {}))
         self.vinculo_template = formato.get("vinculo_template", False)
         self.variaveis = []
+        self.NbLink = 1 if self.vinculo_template else 0
 
     def GetFontName(self, *_):  # noqa: N802
         return self.fonte
@@ -256,4 +257,22 @@ class TextoSemVinculoDoTemplate(unittest.TestCase):
         [novo] = v.Texts.itens
         self.assertIsNot(novo, velho)
         self.assertEqual(novo.variaveis, [(1, 1, parametro)])
+        self.assertEqual(conv.report.warnings, [])
+
+    def test_texto_ligado_que_a_leitura_nao_reconheceu_tambem_sai(self):
+        v, velho = self.colado("1:4", "Text.162")
+        conv = at._Conversao.__new__(at._Conversao)
+        conv.report = SimpleNamespace(warnings=[])
+        conv._isolar_restantes(_Sel(), at._IndiceTextos(v), {}, "Sheet.1")
+        [novo] = v.Texts.itens
+        self.assertEqual((novo.Text, novo.Name, novo.NbLink), ("1:4", "Text.162", 0))
+        self.assertIn("Text.162 estava ligado ao template", conv.report.warnings[0])
+
+    def test_texto_refeito_com_o_parametro_do_desenho_fica(self):
+        v, velho = self.colado("XXX", "Text.159")
+        link = at.TextLink("XXX", "XXX", ["Drawing_No"], 1114.0, 45.0, "Text.159")
+        conv = at._Conversao.__new__(at._Conversao)
+        conv.report = SimpleNamespace(warnings=[])
+        conv._isolar_restantes(_Sel(), at._IndiceTextos(v), {"Text.159": link}, "Sheet.1")
+        self.assertEqual(v.Texts.itens, [velho])
         self.assertEqual(conv.report.warnings, [])
