@@ -32,7 +32,7 @@ MANIFESTO = {
     "src/engine/font_check.py": (299, '067b23b7a20d700b'),
     "src/engine/fix_flags.py": (272, 'aab35321882e9640'),
     "src/engine/atualizar_template.py": (1285, '849e5a85d0d02105'),
-    "src/engine/pos_zone.py": (1465, '8bc62aa0c126cb71'),
+    "src/engine/pos_zone.py": (1474, 'd65b983731e0bdc7'),
     "src/engine/documento.py": (25, '3b219584475d1b93'),
     "src/engine/symbol_shape.py": (65, 'b3789405193e3595'),
     "src/engine/splits.py": (422, '4dd3ab5f3ff71435'),
@@ -54,7 +54,7 @@ MANIFESTO = {
     "src/ui_qt/tool_pages.py": (372, 'a5cc1446f4be080f'),
     "src/ui_qt/sequencia_page.py": (596, 'a4ca7be002c82620'),
     "src/ui_qt/check_fix_pages.py": (711, '3875eb8c5ac2e4a9'),
-    "src/ui_qt/poszone_page.py": (785, '7ae7c3b8d68b8611'),
+    "src/ui_qt/poszone_page.py": (788, '7ed7718835f59a81'),
     "src/ui_qt/hub_window.py": (891, 'd8042cb0e71d9c0f'),
 }
 

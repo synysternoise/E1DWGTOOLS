@@ -447,7 +447,16 @@ def _complete(achado: list, lados: Tuple[list, list], alpha: bool) -> list:
             any(q[1] == p[1] and abs(q[2] - p[2]) <= MARGEM_PAR_TOL for q in seq) for p in achado
         ):
             melhor = seq
-    return melhor
+    if melhor is achado:
+        return achado
+    # O rotulo que so aparece de um lado confirma que a linha ou coluna existe, mas pode ser um
+    # numero da legenda no lugar dele: a posicao sai do espacamento regular dos pares.
+    n = len(achado)
+    mv = sum(p[1] for p in achado) / n
+    mp = sum(p[2] for p in achado) / n
+    inclinacao = sum((p[1] - mv) * (p[2] - mp) for p in achado) / sum((p[1] - mv) ** 2 for p in achado)
+    pares = {p[1]: p for p in achado}
+    return [pares.get(q[1], (q[0], q[1], mp + inclinacao * (q[1] - mv))) for q in melhor]
 
 
 def _covers_paper(pontos: list, largura: float, altura: float) -> bool:

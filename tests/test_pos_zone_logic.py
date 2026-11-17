@@ -153,6 +153,15 @@ class Zonas(unittest.TestCase):
         self.assertEqual((len(zonas), fonte), (24, pz.FONTE_MARGEM))
         self.assertEqual(pz.nearest_zone(771, 74, zonas), "A001")
 
+    def test_numero_da_legenda_nao_toma_o_lugar_da_coluna_coberta(self):
+        # O "1" de baixo esta coberto e a legenda tem outro "1" fora do lugar da coluna.
+        folha = self.a1(extras=[("1", 740, 40)])
+        fundo = folha.views[0]
+        fundo.texts = [t for t in fundo.texts if not (t.text == "1" and t.y < 30)]
+        zonas = pz.border_zones(folha, 1)[0]
+        self.assertEqual(pz.nearest_zone(705, 150, zonas), "B001")
+        self.assertEqual(pz.nearest_zone(695, 150, zonas), "B002")
+
     def test_tamanho_do_papel_errado_nao_muda_a_grade(self):
         # Papel lido com a orientacao trocada, ou sem o tamanho: a margem acha a grade do mesmo jeito.
         for largura, altura in ((594.0, 841.0), (0.0, 0.0)):

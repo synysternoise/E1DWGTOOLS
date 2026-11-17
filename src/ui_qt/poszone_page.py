@@ -617,7 +617,10 @@ class PosZonePage(ToolPage):
                     alvo = o.zone
             if alvo in zonas:
                 self.combo_zona.setCurrentText(alvo)
-            colados = pz.colados_do_balao(self._report, o)
+            try:
+                colados = pz.colados_do_balao(self._report, o)
+            except pz.CatiaError:
+                colados = []
             if colados:
                 junto += "Anda junto: " + ", ".join(colados)
             if not zonas:
