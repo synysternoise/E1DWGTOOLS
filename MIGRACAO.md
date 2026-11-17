@@ -252,6 +252,16 @@ compara uma foto do desenho antes e depois.
   número solto da legenda não quebra mais as colunas. Se a posição ou a escala lidas da Background
   View tiram a margem do lugar, vale a coordenada do texto como está. Com rótulo de um lado só, vale
   a regra da macro, mas a margem de cima ganha quando a de baixo vem mais curta.
+- **Margem pela geometria (17/11/2026).** A grade sai dos pares da margem: a mesma letra nos dois
+  lados, na mesma altura, e o mesmo número em cima e embaixo, na mesma coluna. Não depende mais do
+  tamanho nem da orientação do papel lidos do CATIA. O papel só confere se a margem achada está dentro
+  dele e ocupa quase toda a folha; se não ocupa, vale a coordenada do texto sem a posição e a escala
+  da Background View. Um rótulo coberto de um lado (pela legenda) não tira a coluna da grade. A busca
+  pela faixa da borda do papel ficou como reserva.
+- **Nada fica sem zona em silêncio.** Callout cuja posição o CATIA não informa fica com zona N/A, em
+  vez de cair no canto da folha. No fim do mapeamento, uma única mensagem lista vistas e callouts sem
+  posição, folhas com balão e sem grade, folhas em que a zona saiu por um caminho de reserva e folhas
+  com o mesmo nome.
 - **Grade desenhada de todos os formatos.** `ZONE A0`, `ZONES_A0_SHT1`, `ZONE_E3_SHT1` etc. são
   reconhecidas, não só as do A1. Continuam sendo reserva: só valem se a margem não fechar.
 - **Vista sem posição (erro "The method x failed").** O CATIA pode recusar a posição de uma vista.

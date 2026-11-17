@@ -184,7 +184,7 @@ class CatiaWorker(QObject):
         try:
             ok = fc.go_to_item(self._get_bridge(), report, item)
             self._documentos_navegados.add(report.doc_full_name)
-        except CatiaError:
+        except Exception:  # noqa: BLE001 - a tela espera a resposta, qualquer que seja a falha
             self._bridge = None
             ok = False
         self.nav_done.emit(request, ok)
@@ -215,7 +215,7 @@ class CatiaWorker(QObject):
             ir = tc.ir_para_folha if tool == "templatecheck" else fc.go_to_item
             ok = ir(self._get_bridge(), report, item)
             self._documentos_navegados.add(report.doc_full_name)
-        except CatiaError:
+        except Exception:  # noqa: BLE001 - a tela espera a resposta, qualquer que seja a falha
             self._bridge = None
             ok = False
         self.tool_nav_done.emit(tool, request, ok)
@@ -470,6 +470,10 @@ class CatiaWorker(QObject):
         except CatiaError as exc:
             self.pos_movido.emit(tool, None, str(exc))
             return
+        except Exception as exc:  # o botao nao pode ficar travado em "movendo"
+            self._bridge = None
+            self.pos_movido.emit(tool, None, f"Erro inesperado: {exc}")
+            return
         finally:
             self.busy.emit(False)
         self.pos_movido.emit(tool, mov, "")
@@ -481,6 +485,10 @@ class CatiaWorker(QObject):
             pz.desfazer_movimento(self._get_bridge(), report, mov)
         except CatiaError as exc:
             self.pos_desfeito.emit(tool, mov, str(exc))
+            return
+        except Exception as exc:  # o botao nao pode ficar travado em "desfazendo"
+            self._bridge = None
+            self.pos_desfeito.emit(tool, mov, f"Erro inesperado: {exc}")
             return
         finally:
             self.busy.emit(False)

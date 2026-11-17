@@ -144,6 +144,51 @@ class Zonas(unittest.TestCase):
         # Quando a escala vale de verdade, a margem fecha nos dois lados ja na primeira leitura.
         self.assertEqual(pz.border_zones(self.a1(escala=0.5), 1)[1], pz.FONTE_MARGEM)
 
+    def test_numero_coberto_pela_legenda_nao_perde_a_coluna(self):
+        # A legenda cobre o "1" de baixo: a coluna 1 continua na grade, pelo "1" de cima.
+        folha = self.a1()
+        fundo = folha.views[0]
+        fundo.texts = [t for t in fundo.texts if not (t.text == "1" and t.y < 100)]
+        zonas, fonte = pz.border_zones(folha, 1)
+        self.assertEqual((len(zonas), fonte), (24, pz.FONTE_MARGEM))
+        self.assertEqual(pz.nearest_zone(771, 74, zonas), "A001")
+
+    def test_tamanho_do_papel_errado_nao_muda_a_grade(self):
+        # Papel lido com a orientacao trocada, ou sem o tamanho: a margem acha a grade do mesmo jeito.
+        for largura, altura in ((594.0, 841.0), (0.0, 0.0)):
+            folha = self.a1()
+            folha.width, folha.height = largura, altura
+            zonas, fonte = pz.border_zones(folha, 1)
+            self.assertEqual((len(zonas), fonte), (24, pz.FONTE_MARGEM), (largura, altura))
+            self.assertEqual(pz.nearest_zone(324, 310, zonas), "C004")
+
+    def test_rotulo_da_legenda_nao_vira_linha(self):
+        # Revisao "A" e numeros soltos na legenda, so de um lado.
+        folha = self.a1(extras=[("A", 700, 20), ("B", 720, 20), ("1", 760, 40), ("2", 790, 40)])
+        zonas, fonte = pz.border_zones(folha, 1)
+        self.assertEqual((len(zonas), fonte), (24, pz.FONTE_MARGEM))
+        self.assertEqual(pz.nearest_zone(771, 74, zonas), "A001")
+
+    def test_texto_sem_posicao_fica_sem_zona_e_avisa(self):
+        folha = self.a1()
+        b = texto(1, "7", 324, 310, frame=3)
+        b.pos_ok = False
+        folha.views.append(vista("Front view", b, indice=3))
+        a = pz.Analyzer(lambda i, v: [])
+        a.process_sheet(1, folha)
+        self.assertEqual([(o.number, o.zone) for o in a.occs], [("7", "N/A")])
+        report = pz._relatorio("PN", "", "", a)
+        self.assertIn("Sheet.1 › Front view › 7", pz.aviso_mapeamento(report))
+
+    def test_folha_sem_grade_e_folha_repetida_avisam(self):
+        a = pz.Analyzer(lambda i, v: [])
+        for _ in range(2):
+            a.process_sheet(1, pz.SheetRead("Sheet.1", False, 841.0, 594.0, [vista("Front view", texto(1, "7", 10, 10, frame=3))]))
+        aviso = pz.aviso_mapeamento(pz._relatorio("PN", "", "", a))
+        self.assertIn("Não achei a grade de zonas", aviso)
+        self.assertIn("mesmo nome: Sheet.1", aviso)
+        self.assertEqual(pz.aviso_mapeamento(pz._relatorio("PN", "", "", pz.Analyzer(lambda i, v: []))), "")
+
     def test_grade_desenhada_de_todos_os_formatos(self):
         for nome in ("ZONE A0", "ZONE A0[3]", "ZONES_A0_SHT1", "ZONES_A2_SHT13", "ZONES_3A0_SHT2", "ZONE_E3_SHT1", "ZONES_A3_SHT1[2]"):
             self.assertTrue(pz.is_aux_view(nome), nome)

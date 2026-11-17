@@ -120,10 +120,14 @@ em três commits sobre `migracao-dwgtools`.
    - com rótulo de um lado só, vale a regra da macro, mas a margem de cima ganha quando a de baixo vem
      mais curta;
    - a grade desenhada de todos os formatos é reconhecida, como reserva.
-4. **Arquivo de conferência.** Cada mapeamento grava `%APPDATA%\E1DWGTools\poszone_grade.txt`: origem
+4. **Margem pela geometria e avisos (varredura do Position and Zone).** A grade sai dos pares de
+   rótulos da margem, sem depender do tamanho do papel (`_geometry_grid`); a faixa da borda virou
+   reserva. Callout sem posição fica N/A e um aviso único lista tudo o que pode ter deixado zona
+   errada ou vazia (`aviso_mapeamento`). Mover e navegar não travam a tela com erro inesperado.
+5. **Arquivo de conferência.** Cada mapeamento grava `%APPDATA%\E1DWGTools\poszone_grade.txt`: origem
    da grade de cada folha, posição das colunas e linhas, comparação com a grade desenhada e posição e
    zona de cada balão.
-5. **Update Template no E3.** `ZONE_E3_SHT1` passou a ser reconhecida como grade antiga, para ser
+6. **Update Template no E3.** `ZONE_E3_SHT1` passou a ser reconhecida como grade antiga, para ser
    apagada e numerada como as outras.
 
 ## O que falta, em ordem

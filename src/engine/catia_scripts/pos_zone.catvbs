@@ -59,7 +59,8 @@ End Function
 '   F, nome, e detalhe (0/1), largura, altura ("" se nao leu)
 '   V, indice, nome, e background (0/1), x, y, escala, angulo, posicao lida (0/1)
 '   T, indice da vista, indice do texto, conteudo, x, y, fonte, ancora, frame global lido (0/1),
-'      frame global, sublinhado (0/1), frame interno lido (0/1), frame interno, nome do texto
+'      frame global, sublinhado (0/1), frame interno lido (0/1), frame interno, nome do texto,
+'      posicao lida (0/1)
 ' ---------------------------------------------------------------------
 Function LerFolha(docCheio, iFolha)
     On Error Resume Next
@@ -175,7 +176,7 @@ End Sub
 
 ' Cada leitura e protegida: um texto ruim nao para os outros.
 Sub LerUmTexto(oTexts, iv, j, buf, n)
-    Dim t, s, x, y, fonte, ancora, gr, gf, sub_, ir, inf
+    Dim t, s, x, y, posT, fonte, ancora, gr, gf, sub_, ir, inf
     On Error Resume Next
     Set t = Nothing
     Set t = oTexts.Item(j)
@@ -186,9 +187,14 @@ Sub LerUmTexto(oTexts, iv, j, buf, n)
     s = ""
     s = CStr(t.Text)
     Err.Clear
-    x = 0: y = 0
-    x = t.x
-    y = t.y
+    ' Posicao que o CATIA recusar nao pode virar 0, 0: o callout cairia na zona do canto.
+    x = 0: y = 0: posT = 1
+    x = CDbl(t.x)
+    y = CDbl(t.y)
+    If Err.Number <> 0 Then
+        posT = 0: x = 0: y = 0
+    End If
+    Err.Clear
     fonte = 0
     fonte = CDbl(t.GetFontSize(0, 0))
     ancora = 0
@@ -199,7 +205,7 @@ Sub LerUmTexto(oTexts, iv, j, buf, n)
     sub_ = Sublinhado(t)
     ir = 0: inf = 0
     LerFrameInterno t, s, ir, inf
-    Anota buf, n, Registro(Array("T", iv, j, Campo(s), x, y, fonte, ancora, gr, gf, sub_, ir, inf, Campo(t.Name)))
+    Anota buf, n, Registro(Array("T", iv, j, Campo(s), x, y, fonte, ancora, gr, gf, sub_, ir, inf, Campo(t.Name), posT))
     Err.Clear
 End Sub
 
