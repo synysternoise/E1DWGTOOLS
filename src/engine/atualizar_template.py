@@ -557,6 +557,11 @@ class _IndiceTextos:
             except COM_ERROR:
                 continue
 
+    def esquecer(self) -> None:
+        """Textos foram recriados: a proxima busca le a vista de novo."""
+        self._por_nome = None
+        self._por_posicao = None
+
     def localizar(self, nome: str, x: float, y: float):
         c = self._nomes().get(nome.lower())
         if c is not None:
@@ -614,6 +619,86 @@ def _apagar(sel, objeto) -> None:
     sel.Add(objeto)
     sel.Delete()
     sel.Clear()
+
+
+def _ler(objeto, nome: str, *args):
+    try:
+        valor = getattr(objeto, nome)
+        return valor(*args) if args else valor
+    except (COM_ERROR, AttributeError):
+        return None
+
+
+def _copiar_formato(sel, velho, novo) -> None:
+    """Fonte, tamanho, ancora, angulo, largura, estilo e cor. O que nao der para copiar fica o padrao."""
+    for atributo in ("AnchorPosition", "Angle"):
+        valor = _ler(velho, atributo)
+        if valor is not None:
+            try:
+                setattr(novo, atributo, valor)
+            except COM_ERROR:
+                pass
+    fonte, tamanho = _ler(velho, "GetFontName", 0, 0), _ler(velho, "GetFontSize", 0, 0)
+    try:
+        if fonte:
+            novo.SetFontName(0, 0, fonte)
+        if tamanho:
+            novo.SetFontSize(0, 0, tamanho)
+    except COM_ERROR:
+        pass
+    largura = _ler(velho, "WrappingWidth")
+    if largura:
+        try:
+            novo.WrappingWidth = largura
+        except COM_ERROR:
+            pass
+    de, para = _ler(velho, "TextProperties"), _ler(novo, "TextProperties")
+    if de is not None and para is not None:
+        for atributo in ("Bold", "Italic", "Underline", "Justification", "FrameType"):
+            valor = _ler(de, atributo)
+            if valor is not None:
+                try:
+                    setattr(para, atributo, valor)
+                except COM_ERROR:
+                    pass
+        try:
+            para.Update()
+        except COM_ERROR:
+            pass
+    try:
+        sel.Clear()
+        sel.Add(velho)
+        cor = sel.VisProperties.GetRealColor(0, 0, 0)
+        sel.Clear()
+        if isinstance(cor, tuple) and len(cor) >= 4:
+            sel.Add(novo)
+            sel.VisProperties.SetRealColor(cor[1], cor[2], cor[3], 0)
+    except COM_ERROR:
+        pass
+    finally:
+        try:
+            sel.Clear()
+        except COM_ERROR:
+            pass
+
+
+def recriar_texto(sel, vista, velho, conteudo: str):
+    """Troca o texto colado por um novo, igual e sem vinculo nenhum.
+
+    Colado de outro documento, o texto continua ligado aos parametros daquele documento (Edit > Links
+    aponta para o template), e trocar o Text nao desfaz o vinculo. A API nao isola o vinculo: o texto
+    e recriado com o mesmo nome, lugar e formato, e o colado e apagado.
+    """
+    novo = vista.Texts.Add(conteudo, velho.x, velho.y)
+    _copiar_formato(sel, velho, novo)
+    nome = _ler(velho, "Name")
+    _apagar(sel, velho)
+    if nome:
+        try:
+            novo.Name = nome
+        except COM_ERROR:
+            pass
+    return novo
 
 
 # ---------------------------------------------------------------------
@@ -818,7 +903,7 @@ class _Conversao:
             with self.fase("Refazer os vínculos da legenda"):
                 if posicao == 1:
                     self._apagar_numero_antigo(sel, folha.Views.Item(1))
-                self._refazer_vinculos(indice, links, chave_total if posicao >= 2 else "", parametros)
+                self._refazer_vinculos(sel, indice, links, chave_total if posicao >= 2 else "", parametros, f["nome"])
             with self.fase("Numerar a folha e a margem"):
                 if posicao >= 2 and chave_total:
                     self._numerar_folha(sel, indice, folha.Views.Item(1), links[chave_total], prefixos, posicao, f["nome"])
@@ -934,19 +1019,30 @@ class _Conversao:
                 )
         return cache[chave]
 
-    def _refazer_vinculos(self, indice: _IndiceTextos, links: Dict[str, TextLink], pular: str, cache: dict) -> None:
-        """Cada reserva vira o parametro de mesmo nome do desenho, da direita para a esquerda."""
+    def _refazer_vinculos(self, sel, indice: _IndiceTextos, links: Dict[str, TextLink], pular: str, cache: dict, folha: str) -> None:
+        """Cada reserva vira o parametro de mesmo nome do desenho, da direita para a esquerda.
+
+        O texto colado e recriado antes: senao ele continua ligado ao parametro do template.
+        """
+        alvos = []
         for chave, link in links.items():
             if chave.lower() == pular.lower():
                 continue
             t = indice.localizar(link.nome, link.x, link.y)
-            if t is None:
-                continue
+            if t is not None:
+                alvos.append((link, t))
+        for link, velho in alvos:
             achados = [self._parametro(cache, n) for n in link.parametros]
-            if any(p is None for p in achados):
-                continue  # o texto fica como veio do template e a macro avisa
             try:
-                t.Text = link.template_text
+                t = recriar_texto(sel, indice.vista, velho, link.template_text)
+            except COM_ERROR:
+                self.report.warnings.append(
+                    f"Folha {folha}: o texto {link.nome} continua ligado ao template (Edit > Links > Isolate)."
+                )
+                continue
+            if any(p is None for p in achados):
+                continue  # sem o parametro no desenho, fica o texto do template, sem vinculo; a macro avisa
+            try:
                 pos = link.template_text.rfind(link.reserva)
                 k = len(achados) - 1
                 while pos >= 0 and k >= 0:
@@ -957,6 +1053,7 @@ class _Conversao:
                     pos = link.template_text.rfind(link.reserva, 0, pos)
             except COM_ERROR:
                 continue
+        indice.esquecer()
 
     def _numerar_folha(self, sel, indice, vista_principal, link, prefixos, numero, nome) -> None:
         """Folhas 2 em diante: o numero fica sem vinculo, para nenhum Update voltar a mostrar o total."""
@@ -979,7 +1076,9 @@ class _Conversao:
                 self.report.warnings.append(f"Folha {numero} ({nome}): não foi possível apagar o total do campo SHEET/OF.")
         else:
             try:
-                campo.Text = str(numero)
+                # Recriado: so trocar o Text deixava o vinculo do template, e a folha mostrava "2 XX".
+                campo = recriar_texto(sel, indice.vista, campo, str(numero))
+                indice.esquecer()
                 gravou = str(campo.Text) == str(numero)
             except COM_ERROR:
                 gravou = False

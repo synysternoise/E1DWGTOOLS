@@ -224,6 +224,14 @@ compara uma foto do desenho antes e depois.
     - `%APPDATA%\E1DWGTools\update_tempos.txt` guarda quanto cada fase levou na última conversão. Não
       aparece na tela. Serve para achar a fase lenta no PC da empresa, que não foi medido.
 
+- **Vínculo com o template (17/11/2026, só no Python).** O Background colado do template trazia os
+  textos da legenda ligados aos parâmetros **do arquivo do template** (Edit > Links apontava para
+  `E1_DRW_TEMPLATE_..._R00.CATDrawing`), o que atrapalha subir o PN no SmarTeam. Trocar o texto não
+  desfaz o vínculo, e a API não tem o Isolate do Edit > Links. Agora cada texto ligado é recriado com
+  o mesmo nome, lugar e formato, sem vínculo, e ligado aos parâmetros do próprio desenho. Nas folhas 2
+  em diante o campo SHEET/OF é recriado só com o número: antes ele ficava "2 XX", com o "XX" vindo do
+  vínculo com o template. `vba/update.txt` ainda não tem essa correção.
+
 ## Position and Zone: diferenças conhecidas em relação ao VBA
 
 - **Ordem.** O Excel só abre depois de ler o desenho, para não ficar aberto vazio se a leitura falhar.

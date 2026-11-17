@@ -2,6 +2,7 @@
 import os
 import sys
 import unittest
+from types import SimpleNamespace
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
 
@@ -143,3 +144,116 @@ class TemplateGuardado(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class _Props:
+    def __init__(self, **kw):
+        self.Bold, self.Italic, self.Underline, self.Justification, self.FrameType = 0, 0, 0, 1, 0
+        self.__dict__.update(kw)
+        self.atualizado = False
+
+    def Update(self):  # noqa: N802 - nome do COM
+        self.atualizado = True
+
+
+class _Texto:
+    def __init__(self, vista, texto, x, y, nome="", **formato):
+        self.vista, self.Text, self.x, self.y, self.Name = vista, texto, x, y, nome
+        self.AnchorPosition, self.Angle, self.WrappingWidth = formato.get("ancora", 1), formato.get("angulo", 0.0), 0.0
+        self.fonte, self.tamanho = formato.get("fonte", "Arial"), formato.get("tamanho", 3.5)
+        self.TextProperties = _Props(**formato.get("props", {}))
+        self.vinculo_template = formato.get("vinculo_template", False)
+        self.variaveis = []
+
+    def GetFontName(self, *_):  # noqa: N802
+        return self.fonte
+
+    def GetFontSize(self, *_):  # noqa: N802
+        return self.tamanho
+
+    def SetFontName(self, _a, _b, valor):  # noqa: N802
+        self.fonte = valor
+
+    def SetFontSize(self, _a, _b, valor):  # noqa: N802
+        self.tamanho = valor
+
+    def InsertVariable(self, pos, n, parametro):  # noqa: N802
+        self.variaveis.append((pos, n, parametro))
+
+
+class _Textos:
+    def __init__(self, vista):
+        self.vista, self.itens = vista, []
+
+    @property
+    def Count(self):  # noqa: N802
+        return len(self.itens)
+
+    def Item(self, i):  # noqa: N802
+        return self.itens[i - 1]
+
+    def Add(self, texto, x, y):  # noqa: N802
+        t = _Texto(self.vista, texto, x, y)
+        self.itens.append(t)
+        return t
+
+
+class _Vista:
+    def __init__(self):
+        self.Texts = _Textos(self)
+
+
+class _Sel:
+    def __init__(self):
+        self.itens = []
+        self.VisProperties = self
+
+    def Clear(self):  # noqa: N802
+        self.itens = []
+
+    def Add(self, o):  # noqa: N802
+        self.itens.append(o)
+
+    def Delete(self):  # noqa: N802
+        for o in self.itens:
+            o.vista.Texts.itens.remove(o)
+        self.itens = []
+
+    def GetRealColor(self, *_):  # noqa: N802
+        return (0, 0, 0, 0)
+
+    def SetRealColor(self, *_):  # noqa: N802
+        pass
+
+
+class TextoSemVinculoDoTemplate(unittest.TestCase):
+    """Colado do template, o texto fica ligado aos parametros dele (Edit > Links). Tem de ser recriado."""
+
+    def colado(self, texto="XX", nome="Text.219"):
+        v = _Vista()
+        t = _Texto(v, texto, 1114.0, 45.0, nome, ancora=5, angulo=0.0, fonte="Arial", tamanho=5.0,
+                   props={"Bold": 1}, vinculo_template=True)
+        v.Texts.itens.append(t)
+        return v, t
+
+    def test_recriado_igual_e_sem_vinculo(self):
+        v, velho = self.colado()
+        novo = at.recriar_texto(_Sel(), v, velho, "2")
+        self.assertEqual(v.Texts.itens, [novo])  # o colado, com o vinculo do template, saiu
+        self.assertFalse(novo.vinculo_template)
+        self.assertEqual((novo.Text, novo.x, novo.y, novo.Name), ("2", 1114.0, 45.0, "Text.219"))
+        self.assertEqual((novo.AnchorPosition, novo.fonte, novo.tamanho, novo.TextProperties.Bold), (5, "Arial", 5.0, 1))
+        self.assertTrue(novo.TextProperties.atualizado)
+
+    def test_vinculo_refeito_com_o_parametro_do_desenho(self):
+        v, velho = self.colado("XXX", "Text.159")
+        conv = at._Conversao.__new__(at._Conversao)
+        conv.report = SimpleNamespace(warnings=[])
+        parametro = object()
+        conv._parametro = lambda _cache, _nome: parametro
+        link = at.TextLink("XXX", "XXX", ["Drawing_No"], 1114.0, 45.0, "Text.159")
+        conv._refazer_vinculos(_Sel(), at._IndiceTextos(v), {"Text.159": link}, "", {}, "Sheet.1")
+        [novo] = v.Texts.itens
+        self.assertIsNot(novo, velho)
+        self.assertEqual(novo.variaveis, [(1, 1, parametro)])
+        self.assertEqual(conv.report.warnings, [])
