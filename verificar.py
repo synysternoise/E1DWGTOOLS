@@ -33,7 +33,7 @@ MANIFESTO = {
     "src/engine/fix_flags.py": (272, 'aab35321882e9640'),
     "src/engine/atualizar_template.py": (1285, '849e5a85d0d02105'),
     "src/engine/pos_zone.py": (1474, 'd65b983731e0bdc7'),
-    "src/engine/documento.py": (25, '3b219584475d1b93'),
+    "src/engine/documento.py": (25, 'fc3b16ac9de28d86'),
     "src/engine/symbol_shape.py": (65, 'b3789405193e3595'),
     "src/engine/splits.py": (422, '4dd3ab5f3ff71435'),
     "src/engine/part_list.py": (329, '0ba1c0b77078656a'),

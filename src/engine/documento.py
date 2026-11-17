@@ -8,18 +8,18 @@ from __future__ import annotations
 import re
 
 _RE_VPM_DESENHO = re.compile(r"---\s*CATDRAWING\b", re.I)
-_RE_BLOCOS = re.compile(r"\s{2,}")
+_RE_ARQUIVO = re.compile(r"\.catdrawing(\s*\(readonly\))?$", re.I)
 
 
 def eh_desenho(nome) -> bool:
-    nome = str(nome)
-    return nome.lower().endswith(".catdrawing") or _RE_VPM_DESENHO.search(nome) is not None
+    nome = str(nome).strip()
+    return _RE_ARQUIVO.search(nome) is not None or _RE_VPM_DESENHO.search(nome) is not None
 
 
 def pn_do_documento(nome) -> str:
     """O PN: o nome do arquivo sem a extensao ou, no VPM, o primeiro bloco do nome."""
-    nome = str(nome).strip(" ")
+    nome = str(nome).strip()
     if _RE_VPM_DESENHO.search(nome):
-        return _RE_BLOCOS.split(nome)[0]
+        return nome.split()[0]  # o PN nao tem espaco; os blocos vem separados por espacos ou tab
     ponto = nome.rfind(".")
     return nome[:ponto] if ponto > 0 else nome

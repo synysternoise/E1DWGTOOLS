@@ -21,6 +21,12 @@ class Documento(unittest.TestCase):
     def test_aberto_pelo_vpm(self):
         self.assertTrue(eh_desenho(VPM))
         self.assertEqual(pn_do_documento(VPM), "171-60466-803")
+        for nome in ("171-60466-803 1 1 --- CATDRAWING 1 ---", "171-60466-803\t1\t1\t--- CATDRAWING\t1 ---"):
+            self.assertTrue(eh_desenho(nome), nome)
+            self.assertEqual(pn_do_documento(nome), "171-60466-803")
+
+    def test_arquivo_somente_leitura(self):
+        self.assertTrue(eh_desenho("171-50964-401.CATDrawing (ReadOnly)"))
 
     def test_outros_documentos(self):
         for nome in ("", "Peca.CATPart", "Conjunto.CATProduct", "171-60466-803      1       1  --- CATPART     1 ---"):
