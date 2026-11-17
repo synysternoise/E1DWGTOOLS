@@ -96,6 +96,84 @@ class Zonas(unittest.TestCase):
     def test_poucos_marcadores_nao_formam_zona(self):
         self.assertEqual(pz.zones_from_border(self.folha(1), 1), [])
 
+    def a1(self, extras=(), escala=1.0, lados="ambos"):
+        """Margem do A1 como no template: 6 colunas da direita para a esquerda e 4 linhas, nos dois lados."""
+        textos = []
+
+        def poe(s, x, y):
+            textos.append(texto(len(textos) + 1, s, x / escala, y / escala))
+
+        for k in range(1, 7):
+            poe(str(k), 841 - 140 * k + 70, 5)
+            if lados == "ambos":
+                poe(str(k), 841 - 140 * k + 70, 589)
+        for i, letra in enumerate("ABCD"):
+            poe(letra, 5, 74 + 148.5 * i)
+            if lados == "ambos":
+                poe(letra, 836, 74 + 148.5 * i)
+        for s, x, y in extras:
+            poe(s, x, y)
+        fundo = vista("Background View", *textos, fundo=True, indice=2, escala=escala)
+        return pz.SheetRead("Sheet.1", False, 841.0, 594.0, [fundo])
+
+    def test_margem_dos_dois_lados(self):
+        zonas, fonte = pz.border_zones(self.a1(), 1)
+        self.assertEqual((len(zonas), fonte), (24, pz.FONTE_MARGEM))
+        self.assertEqual(pz.nearest_zone(324, 310, zonas), "C004")
+        self.assertEqual(pz.nearest_zone(628, 283, zonas), "B002")
+
+    def test_numero_da_legenda_nao_quebra_as_colunas(self):
+        # Um numero solto da legenda, entre as colunas 2 e 1 da margem de baixo.
+        zonas, fonte = pz.border_zones(self.a1(extras=[("7", 700, 30)]), 1)
+        self.assertEqual((len(zonas), fonte), (24, pz.FONTE_MARGEM))
+        self.assertEqual(pz.nearest_zone(771, 74, zonas), "A001")
+        # Mesmo com a margem de um lado so, vale a de cima, que veio inteira.
+        so_baixo = self.a1(extras=[("7", 700, 30)] + [(str(k), 841 - 140 * k + 70, 589) for k in range(1, 7)], lados="um")
+        zonas, fonte = pz.border_zones(so_baixo, 1)
+        self.assertEqual((len(zonas), fonte), (24, pz.FONTE_MARGEM_UM_LADO))
+        self.assertEqual(pz.nearest_zone(771, 74, zonas), "A001")
+
+    def test_escala_da_background_view_nao_desloca_a_margem(self):
+        # O CATIA devolve 0,75 na escala da Background View, mas o texto esta em mm de papel.
+        folha = self.a1()
+        folha.views[0].scale = 0.75
+        zonas, fonte = pz.border_zones(folha, 1)
+        self.assertEqual(fonte, pz.FONTE_MARGEM_CRUA)
+        self.assertEqual(pz.nearest_zone(324, 310, zonas), "C004")
+        self.assertEqual(pz.nearest_zone(628, 283, zonas), "B002")
+        # Quando a escala vale de verdade, a margem fecha nos dois lados ja na primeira leitura.
+        self.assertEqual(pz.border_zones(self.a1(escala=0.5), 1)[1], pz.FONTE_MARGEM)
+
+    def test_grade_desenhada_de_todos_os_formatos(self):
+        for nome in ("ZONE A0", "ZONE A0[3]", "ZONES_A0_SHT1", "ZONES_A2_SHT13", "ZONES_3A0_SHT2", "ZONE_E3_SHT1", "ZONES_A3_SHT1[2]"):
+            self.assertTrue(pz.is_aux_view(nome), nome)
+        for nome in ("ZONEX", "ZONE DETAIL", "VIEW ZONE", "ZONES"[:4] + " B"):
+            self.assertFalse(pz.is_aux_view(nome), nome)
+
+    def test_conferencia_com_a_grade_desenhada(self):
+        folha = self.a1()
+        folha.views.append(vista("ZONES_A1_SHT1", texto(1, "C004", 351, 371, fonte=20), texto(2, "B002", 500, 222, fonte=20)))
+        lidos, diferentes = pz.drawn_grid_mismatches(folha, pz.border_zones(folha, 1)[0])
+        self.assertEqual((lidos, diferentes), (2, ["B002 caiu em B003"]))
+
+    def test_vista_sem_posicao_nao_para_a_leitura(self):
+        registros = [
+            ["F", "Sheet.1", "0", "841", "594"],
+            ["V", "3", "Front view", "0", "0", "0", "1", "0", "0"],
+            ["T", "3", "1", "12", "324", "310", "3,5", "5", "1", "3", "0", "1", "0", "Text.1"],
+            ["V", "4", "Top view", "0", "0", "0", "1", "0"],
+        ]
+        folha = pz.parse_sheet(registros)
+        self.assertEqual([v.pos_ok for v in folha.views], [False, True])
+        folha.views.insert(0, self.a1().views[0])
+        a = pz.Analyzer(lambda i, v: [])
+        a.process_sheet(1, folha)
+        self.assertEqual([(o.number, o.zone) for o in a.occs], [("12", "N/A")])
+        self.assertEqual(a.sem_posicao, [("Sheet.1", "Front view")])
+        report = pz._relatorio("PN", "", "", a)
+        self.assertIn("Sheet.1 › Front view", pz.aviso_sem_posicao(report))
+        self.assertIn("POSIÇÃO NÃO INFORMADA", pz.texto_conferencia(report))
+
     def test_zona_pela_vista_auxiliar(self):
         aux = vista("ZONE[1]", texto(1, "A001", 10, 10), texto(2, "b2", 90, 10), texto(3, "NOTA", 5, 5))
         zonas = pz.zones_from_aux_view(pz.SheetRead("S", False, 0, 0, [aux]))

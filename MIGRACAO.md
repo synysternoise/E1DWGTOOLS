@@ -247,6 +247,20 @@ compara uma foto do desenho antes e depois.
 - **OK manual (novo).** Vale por posição e fica em `%APPDATA%\E1DWGTools\poszone_ok.json`, separado por
   desenho. Deixa de valer se a zona ou a quantidade mudarem, no desenho ou no SAP. Fica neste PC: não
   vai junto com o desenho para o PC de outra pessoa.
+- **Margem conferida nos dois lados (17/11/2026, diferente da macro).** A grade vem dos números que
+  aparecem em cima e embaixo e das letras que aparecem à esquerda e à direita, na mesma altura. Um
+  número solto da legenda não quebra mais as colunas. Se a posição ou a escala lidas da Background
+  View tiram a margem do lugar, vale a coordenada do texto como está. Com rótulo de um lado só, vale
+  a regra da macro, mas a margem de cima ganha quando a de baixo vem mais curta.
+- **Grade desenhada de todos os formatos.** `ZONE A0`, `ZONES_A0_SHT1`, `ZONE_E3_SHT1` etc. são
+  reconhecidas, não só as do A1. Continuam sendo reserva: só valem se a margem não fechar.
+- **Vista sem posição (erro "The method x failed").** O CATIA pode recusar a posição de uma vista.
+  Ela não para mais o mapeamento: os callouts dela são contados, ficam com zona N/A e a tela avisa.
+- **Arquivo de conferência.** Cada mapeamento grava `%APPDATA%\E1DWGTools\poszone_grade.txt`: de
+  onde veio a grade de cada folha, a posição das colunas e linhas, a comparação com a grade desenhada
+  e a posição de cada balão.
+- **Desenho do VPM.** O nome vem sem extensão (`171-60466-803   1   1  --- CATDRAWING   1 ---`).
+  `engine/documento.py` reconhece o desenho e tira o PN, para todas as ferramentas.
 - **Mover o balão (novo, só no Design).** A zona vem do lugar do balão, então corrigir é mover. O balão
   vai para o ponto da zona pedida mais perto de onde está, com os textos encostados (flag, número,
   quantidade), e a tela avisa quais. A ponta do leader não sai do lugar. Lê de volta para conferir e

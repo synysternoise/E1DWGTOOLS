@@ -106,9 +106,13 @@ def count_callout_lines(linhas: List[str]) -> Tuple[int, str]:
     return len(numeros), (numeros[0] if numeros else "")
 
 
+# Grade de zonas do template: ZONE, ZONE[2], ZONE A0, ZONES_A0_SHT1, ZONE_E3_SHT1...
+_RE_VISTA_ZONA = re.compile(r"^ZONES?([ _](3A0|A0|A1|A2|A3|E3))?(_SHT\d*)?(\[\d+\])?$")
+
+
 def is_aux_view(nome: str) -> bool:
     s = trim(nome).upper()
-    return s == "ZONE" or s.startswith("ZONE[") or s.startswith("ZONES_A1_SHT")
+    return s.startswith("ZONE[") or s.startswith("ZONES_A1_SHT") or _RE_VISTA_ZONA.match(s) is not None
 
 
 def is_zone_letter(s: str) -> bool:
@@ -174,6 +178,7 @@ class ViewRead:
     scale: float
     angle: float
     texts: List[TextRead] = field(default_factory=list)
+    pos_ok: bool = True  # False: o CATIA nao informou onde a vista esta na folha
 
     def to_sheet(self, px: float, py: float) -> Tuple[float, float]:
         """Ponto da vista para mm de papel na folha."""
@@ -210,6 +215,7 @@ def parse_sheet(registros: List[List[str]]) -> SheetRead:
             folha = SheetRead(r[1], r[2] == "1", parse_number(r[3]) if r[3] else 0.0, parse_number(r[4]) if r[4] else 0.0)
         elif r[0] == "V":
             vista = ViewRead(int(r[1]), r[2], r[3] == "1", parse_number(r[4]), parse_number(r[5]), parse_number(r[6]), parse_number(r[7]))
+            vista.pos_ok = len(r) < 9 or r[8] != "0"
             folha.views.append(vista)
         elif r[0] == "T":
             vista.texts.append(TextRead(
@@ -302,12 +308,16 @@ def border_already_numbered(colunas, numero_folha: int) -> bool:
     return numero_folha > 1 and bool(colunas) and min(c[1] for c in colunas) >= 10
 
 
-def zones_from_border(folha: SheetRead, numero_folha: int) -> List[Zone]:
-    if folha.width <= 0 or folha.height <= 0:
-        return []
-    fundo = next((v for v in folha.views if v.is_background), None)
-    if fundo is None:
-        return []
+MARGEM_PAR_TOL = 10.0  # o mesmo rotulo nos dois lados da folha, na mesma altura
+FONTE_MARGEM = "margem, conferida nos dois lados"
+FONTE_MARGEM_CRUA = "margem, conferida nos dois lados, sem a posição e a escala da Background View"
+FONTE_MARGEM_UM_LADO = "margem, um lado só"
+FONTE_GRADE = "grade desenhada (vista de zonas)"
+FONTE_NENHUMA = "nenhuma"
+
+
+def _read_border(folha: SheetRead, fundo: ViewRead, cru: bool) -> Tuple[list, list, list, list]:
+    """Letras e numeros perto das bordas: esquerda, direita, cima e baixo. (rotulo, valor, posicao)"""
     faixa_x = limit(folha.width * ZONE_EDGE_RATIO, ZONE_EDGE_MIN, ZONE_EDGE_MAX)
     faixa_y = limit(folha.height * ZONE_EDGE_RATIO, ZONE_EDGE_MIN, ZONE_EDGE_MAX)
     esq, dir_, topo, base = [], [], [], []
@@ -316,7 +326,7 @@ def zones_from_border(folha: SheetRead, numero_folha: int) -> List[Zone]:
         letra, numero = is_zone_letter(valor), is_zone_number(valor)
         if not (letra or numero):
             continue
-        x, y = fundo.to_sheet(t.x, t.y)
+        x, y = (t.x, t.y) if cru else fundo.to_sheet(t.x, t.y)
         if letra:
             if 0 <= x <= faixa_x:
                 esq.append((valor, ord(valor), y))
@@ -328,19 +338,15 @@ def zones_from_border(folha: SheetRead, numero_folha: int) -> List[Zone]:
                 topo.append((str(n), n, x))
             if 0 <= y <= faixa_y:
                 base.append((str(n), n, x))
-    m_esq, s_esq, ok_esq = _sequence(esq, True)
-    m_dir, s_dir, ok_dir = _sequence(dir_, True)
-    m_topo, _, ok_topo = _sequence(topo, False)
-    m_base, _, ok_base = _sequence(base, False)
-    if not ok_esq and not ok_dir:
-        return []
-    linhas = m_esq if ok_esq and (not ok_dir or s_esq >= s_dir) else m_dir
-    if ok_base:
-        colunas = m_base
-    elif ok_topo:
-        colunas = m_topo
-    else:
-        return []
+    return esq, dir_, topo, base
+
+
+def _both_sides(a: list, b: list) -> list:
+    """So o rotulo que aparece nos dois lados, na mesma altura: a legenda so esta de um lado."""
+    return [p for p in a if any(q[1] == p[1] and abs(q[2] - p[2]) <= MARGEM_PAR_TOL for q in b)]
+
+
+def _grid(linhas: list, colunas: list, numero_folha: int) -> List[Zone]:
     if len(linhas) < ZONE_MIN_ROWS or len(colunas) < ZONE_MIN_COLS:
         return []
     ja_numerada = border_already_numbered(colunas, numero_folha)
@@ -348,6 +354,63 @@ def zones_from_border(folha: SheetRead, numero_folha: int) -> List[Zone]:
         Zone(f"{r[0].upper()}{zone_column(c[1], numero_folha, ja_numerada):03d}", c[2], r[2])
         for r in linhas for c in colunas
     ]
+
+
+def _paired_grid(lidos, numero_folha: int) -> List[Zone]:
+    esq, dir_, topo, base = lidos
+    linhas, _, ok_linhas = _sequence(_both_sides(esq, dir_), True)
+    colunas, _, ok_colunas = _sequence(_both_sides(base, topo), False)
+    if not (ok_linhas and ok_colunas):
+        return []
+    # Um rotulo coberto de um lado nao pode custar uma linha ou coluna da grade.
+    for lado, alpha, achado in ((esq, True, linhas), (dir_, True, linhas), (topo, False, colunas), (base, False, colunas)):
+        if len(_sequence(lado, alpha)[0]) > len(achado):
+            return []
+    return _grid(linhas, colunas, numero_folha)
+
+
+def _one_side_grid(lidos, numero_folha: int) -> List[Zone]:
+    esq, dir_, topo, base = lidos
+    m_esq, s_esq, ok_esq = _sequence(esq, True)
+    m_dir, s_dir, ok_dir = _sequence(dir_, True)
+    m_topo, _, ok_topo = _sequence(topo, False)
+    m_base, _, ok_base = _sequence(base, False)
+    if not ok_esq and not ok_dir:
+        return []
+    linhas = m_esq if ok_esq and (not ok_dir or s_esq >= s_dir) else m_dir
+    if ok_base and not (ok_topo and len(m_topo) > len(m_base)):
+        colunas = m_base
+    elif ok_topo:
+        # A margem de cima vale quando a de baixo veio mais curta: a legenda fica embaixo.
+        colunas = m_topo
+    else:
+        return []
+    return _grid(linhas, colunas, numero_folha)
+
+
+def border_zones(folha: SheetRead, numero_folha: int) -> Tuple[List[Zone], str]:
+    """Zonas pela margem, e como foram achadas."""
+    if folha.width <= 0 or folha.height <= 0:
+        return [], FONTE_NENHUMA
+    fundo = next((v for v in folha.views if v.is_background), None)
+    if fundo is None:
+        return [], FONTE_NENHUMA
+    lidos = _read_border(folha, fundo, False)
+    zonas = _paired_grid(lidos, numero_folha)
+    if zonas:
+        return zonas, FONTE_MARGEM
+    if abs(fundo.x) > 0.001 or abs(fundo.y) > 0.001 or abs(fundo.scale - 1) > 0.000001 or abs(fundo.angle) > 0.001:
+        # O que esta na Background View e desenhado direto no papel. Se a posicao ou a escala
+        # lidas dela tiram a margem do lugar, vale a coordenada do texto como esta.
+        zonas = _paired_grid(_read_border(folha, fundo, True), numero_folha)
+        if zonas:
+            return zonas, FONTE_MARGEM_CRUA
+    zonas = _one_side_grid(lidos, numero_folha)
+    return zonas, (FONTE_MARGEM_UM_LADO if zonas else FONTE_NENHUMA)
+
+
+def zones_from_border(folha: SheetRead, numero_folha: int) -> List[Zone]:
+    return border_zones(folha, numero_folha)[0]
 
 
 def normalize_aux_zone(s: str) -> str:
@@ -376,8 +439,32 @@ def zones_from_aux_view(folha: SheetRead) -> List[Zone]:
     return []
 
 
+def map_zones_source(folha: SheetRead, numero_folha: int) -> Tuple[List[Zone], str]:
+    zonas, fonte = border_zones(folha, numero_folha)
+    if zonas:
+        return zonas, fonte
+    zonas = zones_from_aux_view(folha)
+    return zonas, (FONTE_GRADE if zonas else FONTE_NENHUMA)
+
+
 def map_zones(folha: SheetRead, numero_folha: int) -> List[Zone]:
-    return zones_from_border(folha, numero_folha) or zones_from_aux_view(folha)
+    return map_zones_source(folha, numero_folha)[0]
+
+
+def drawn_grid_mismatches(folha: SheetRead, zonas: List[Zone]) -> Tuple[int, List[str]]:
+    """Rotulos da grade desenhada que caem em outra zona. Devolve (rotulos lidos, divergencias)."""
+    lidos, diferentes = 0, []
+    for v in folha.views:
+        if is_aux_view(v.name):
+            for t in v.texts:
+                nome = normalize_aux_zone(t.text)
+                if nome:
+                    lidos += 1
+                    cx, cy = text_center(v, t)[:2]
+                    achada = nearest_zone(cx, cy, zonas)
+                    if achada != nome:
+                        diferentes.append(f"{nome} caiu em {achada}")
+    return lidos, diferentes
 
 
 def nearest_zone(x: float, y: float, zonas: List[Zone]) -> str:
@@ -512,12 +599,14 @@ class Analyzer:
         self.pendencias: List[Pending] = []
         self.folhas: Dict[str, SheetRead] = {}
         self.zonas: Dict[str, List[Zone]] = {}
+        self.fontes: Dict[str, str] = {}
+        self.sem_posicao: List[Tuple[str, str]] = []  # (folha, vista) com callout e sem posicao
         self._numero_folha = 0
 
     def process_sheet(self, indice: int, folha: SheetRead) -> None:
         if not folha.is_detail:
             self._numero_folha += 1
-        zonas = map_zones(folha, self._numero_folha)
+        zonas, self.fontes[folha.name] = map_zones_source(folha, self._numero_folha)
         self.folhas[folha.name] = folha
         self.zonas[folha.name] = zonas
         for v in folha.views:
@@ -529,6 +618,8 @@ class Analyzer:
         tem_ref = {t.index: has_ref(t.text) for t in v.texts}
         qtd = {t.index: (0 if tem_ref[t.index] else extract_quantity(t.text)) for t in v.texts}
         inicio = len(self.occs)
+        if not v.pos_ok:
+            zonas = []  # sem saber onde a vista esta, a zona seria um chute
         for t in v.texts:
             linhas = non_empty_lines(t.text)
             if linhas and not tem_ref[t.index]:
@@ -539,6 +630,8 @@ class Analyzer:
                     self._multiline(folha, v, t, linhas, qtd[t.index], zonas)
         vista_occs = self.occs[inicio:]
         if vista_occs:
+            if not v.pos_ok:
+                self.sem_posicao.append((folha.name, v.name))
             self._references(v, tem_ref, vista_occs)
             self._quantities(indice, v, tem_ref, qtd, vista_occs)
 
@@ -885,6 +978,8 @@ class PosZoneReport:
     occs: List[Occurrence] = field(default_factory=list)
     folhas: Dict[str, SheetRead] = field(default_factory=dict)
     zonas: Dict[str, List[Zone]] = field(default_factory=dict)
+    fontes: Dict[str, str] = field(default_factory=dict)  # de onde veio a grade de cada folha
+    sem_posicao: List[Tuple[str, str]] = field(default_factory=list)
     abertas: Optional[int] = None  # o que falta revisar na tela; None antes de a tela calcular
 
     @property
@@ -929,7 +1024,69 @@ def _ler_desenho(bridge: CatiaBridge, cheio: str, total: int, progress) -> Analy
 def _relatorio(pn: str, caminho: str, cheio: str, analise: Analyzer) -> PosZoneReport:
     return PosZoneReport(
         pn, caminho, analise.c, len(analise.occs), consolidate(analise.occs), analise.pendencias, cheio,
-        occs=analise.occs, folhas=analise.folhas, zonas=analise.zonas,
+        occs=analise.occs, folhas=analise.folhas, zonas=analise.zonas, fontes=analise.fontes,
+        sem_posicao=analise.sem_posicao,
+    )
+
+
+def arquivo_conferencia() -> str:
+    return os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), "E1DWGTools", "poszone_grade.txt")
+
+
+def texto_conferencia(report: PosZoneReport) -> str:
+    """De onde saiu a grade de cada folha, para conferir uma zona que pareca errada."""
+    linhas = [f"Position and Zone - {report.pn} - {time.strftime('%d/%m/%Y %H:%M:%S')}"]
+    for nome, folha in report.folhas.items():
+        zonas = report.zonas.get(nome, [])
+        linhas.append("")
+        linhas.append(f"{nome}: papel {folha.width:g} x {folha.height:g} mm")
+        fundo = next((v for v in folha.views if v.is_background), None)
+        if fundo is None:
+            linhas.append("  Background View: não encontrada")
+        else:
+            linhas.append(
+                f"  Background View: x {fundo.x:g}, y {fundo.y:g}, escala {fundo.scale:g}, "
+                f"posição {'lida' if fundo.pos_ok else 'NÃO INFORMADA PELO CATIA'}"
+            )
+        linhas.append(f"  Grade: {report.fontes.get(nome, FONTE_NENHUMA)}, {len(zonas)} zonas")
+        colunas = sorted({(z.name[1:], round(z.x, 1)) for z in zonas}, key=lambda c: c[1])
+        fileiras = sorted({(z.name[0], round(z.y, 1)) for z in zonas}, key=lambda c: c[1])
+        if zonas:
+            linhas.append("  Colunas (x na folha): " + "  ".join(f"{n}={x:g}" for n, x in colunas))
+            linhas.append("  Linhas (y na folha): " + "  ".join(f"{n}={y:g}" for n, y in fileiras))
+            lidos, diferentes = drawn_grid_mismatches(folha, zonas)
+            if lidos:
+                linhas.append(f"  Grade desenhada: {lidos} rótulos, {len(diferentes)} em zona diferente da calculada")
+                linhas.extend(f"    {d}" for d in diferentes[:12])
+        for v in folha.views:
+            if not v.is_background and not is_aux_view(v.name):
+                aviso = "" if v.pos_ok else "  POSIÇÃO NÃO INFORMADA PELO CATIA"
+                linhas.append(f"  Vista {v.name}: x {v.x:g}, y {v.y:g}, escala {v.scale:g}, {len(v.texts)} textos{aviso}")
+    linhas.append("")
+    linhas.append("Balões:")
+    for o in report.occs:
+        if o.source == SOURCE_BALLOON:
+            linhas.append(f"  {o.number}: {o.sheet} / {o.view}, x {o.x:.1f}, y {o.y:.1f}, zona {o.zone}")
+    return "\r\n".join(linhas) + "\r\n"
+
+
+def gravar_conferencia(report: PosZoneReport) -> None:
+    try:
+        caminho = arquivo_conferencia()
+        os.makedirs(os.path.dirname(caminho), exist_ok=True)
+        with open(caminho, "w", encoding="utf-8") as f:
+            f.write(texto_conferencia(report))
+    except OSError:
+        pass  # a conferencia e um apoio: sem ela o mapeamento vale do mesmo jeito
+
+
+def aviso_sem_posicao(report: PosZoneReport) -> str:
+    if not report.sem_posicao:
+        return ""
+    onde = "\r\n".join(f"{folha} › {vista}" for folha, vista in report.sem_posicao)
+    return (
+        "O CATIA não informou a posição destas vistas na folha. Os callouts delas foram contados, "
+        f"mas ficaram sem zona (N/A):\r\n\r\n{onde}"
     )
 
 
@@ -954,6 +1111,9 @@ def analisar_desenho(
     cheio, pn, total = lido
     report = _relatorio(pn, "", cheio, _ler_desenho(bridge, cheio, total, progress))
     bridge.call(SCRIPT, "RestaurarVistas", cheio)
+    gravar_conferencia(report)
+    if report.sem_posicao:
+        warn(aviso_sem_posicao(report), TITULO)
     return report
 
 
@@ -1109,6 +1269,8 @@ def mover_balao(bridge: CatiaBridge, report: PosZoneReport, occ: Occurrence, alv
     if alvo == occ.zone:
         raise CatiaError(f"O balão já está na zona {alvo}.")
     v, t = _localizar(report, occ)
+    if not v.pos_ok:
+        raise CatiaError(f"O CATIA não informou a posição da vista {v.name} na folha. Não dá para mover por zona.")
     nx, ny = ponto_na_zona(occ.x, occ.y, alvo, zonas)
     dvx, dvy = v.delta_to_view(nx - occ.x, ny - occ.y)
     mov = Movimento(occ, occ.zone, alvo, x_antes=occ.x, y_antes=occ.y, cx_antes=occ.cx, cy_antes=occ.cy)

@@ -57,7 +57,7 @@ End Function
 ' ---------------------------------------------------------------------
 ' Uma folha. Registros:
 '   F, nome, e detalhe (0/1), largura, altura ("" se nao leu)
-'   V, indice, nome, e background (0/1), x, y, escala, angulo
+'   V, indice, nome, e background (0/1), x, y, escala, angulo, posicao lida (0/1)
 '   T, indice da vista, indice do texto, conteudo, x, y, fonte, ancora, frame global lido (0/1),
 '      frame global, sublinhado (0/1), frame interno lido (0/1), frame interno, nome do texto
 ' ---------------------------------------------------------------------
@@ -69,7 +69,7 @@ Function LerFolha(docCheio, iFolha)
 End Function
 
 Function LerFolha_(docCheio, iFolha)
-    Dim doc, sh, i, v, buf(), n
+    Dim doc, sh, i, v, buf(), n, vx, vy, posOk
     Set doc = AcharDocumento(docCheio)
     Set sh = doc.Sheets.Item(iFolha)
     ReDim buf(1023)
@@ -77,7 +77,8 @@ Function LerFolha_(docCheio, iFolha)
     Anota buf, n, Registro(Array("F", Campo(sh.Name), EhDetalhe(sh), LerLargura(sh), LerAltura(sh)))
     For i = 1 To sh.Views.Count
         Set v = sh.Views.Item(i)
-        Anota buf, n, Registro(Array("V", i, Campo(v.Name), ViewEhFundo(v), v.x, v.y, EscalaSegura(v), AnguloSeguro(v)))
+        LerPosicao v, vx, vy, posOk
+        Anota buf, n, Registro(Array("V", i, Campo(v.Name), ViewEhFundo(v), vx, vy, EscalaSegura(v), AnguloSeguro(v), posOk))
         LerTextos v, i, buf, n
     Next
     ReDim Preserve buf(n - 1)
@@ -116,6 +117,24 @@ Function LerAltura(sh)
     LerAltura = CDbl(sh.GetPaperHeight)
     Err.Clear
 End Function
+
+' O CATIA pode recusar a posicao de uma vista ("The method x failed"). Uma vista assim nao
+' pode parar a leitura das outras: volta 0, 0 e posOk = 0.
+Sub LerPosicao(v, x, y, posOk)
+    On Error Resume Next
+    x = 0
+    y = 0
+    posOk = 0
+    x = CDbl(v.x)
+    y = CDbl(v.y)
+    If Err.Number = 0 Then
+        posOk = 1
+    Else
+        x = 0
+        y = 0
+    End If
+    Err.Clear
+End Sub
 
 Function EscalaSegura(v)
     Dim sc
@@ -361,6 +380,6 @@ Function VistaIgnorada(v)
     VistaIgnorada = True
     If v.ViewType = CAT_VIEW_BACKGROUND Then Exit Function
     s = UCase(Trim(v.Name))
-    If s = "ZONE" Or Left(s, 5) = "ZONE[" Or Left(s, 12) = "ZONES_A1_SHT" Then Exit Function
+    If s = "ZONE" Or Left(s, 5) = "ZONE[" Or Left(s, 5) = "ZONE " Or Left(s, 5) = "ZONE_" Or Left(s, 6) = "ZONES_" Then Exit Function
     VistaIgnorada = False
 End Function
