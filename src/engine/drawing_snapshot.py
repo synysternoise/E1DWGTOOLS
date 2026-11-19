@@ -10,6 +10,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import List, Tuple
 
+from engine.documento import eh_desenho
+
 # Dimensoes nominais (mm) por formato, para desenhar a folha no preview.
 FORMAT_MM = {
     "3A0": (1682.0, 1189.0),
@@ -65,10 +67,11 @@ def get_catia_state() -> DrawingSnapshot:
     if count == 0:
         return DrawingSnapshot(connected=True, message="CATIA aberto, nenhum documento.")
     try:
-        name = str(app.ActiveDocument.Name)
+        doc = app.ActiveDocument
+        name = str(doc.Name)
     except Exception:
         return DrawingSnapshot(connected=True, message="CATIA aberto.")
-    if not name.lower().endswith(".catdrawing"):
+    if not eh_desenho(doc):
         return DrawingSnapshot(connected=True, name=name,
                                message="O documento ativo não é um CATDrawing.")
     return DrawingSnapshot(connected=True, has_drawing=True, name=name)
@@ -88,7 +91,7 @@ def get_snapshot() -> DrawingSnapshot:
                 connected=True, message="CATIA aberto, nenhum documento.")
         doc = app.ActiveDocument
         name = str(doc.Name)
-        if not name.lower().endswith(".catdrawing"):
+        if not eh_desenho(doc):
             return DrawingSnapshot(
                 connected=True, name=name,
                 message="O documento ativo não é um CATDrawing.")

@@ -85,7 +85,7 @@ class MainWindow(ctk.CTk):
         badge.pack(side="left")
         titles = ctk.CTkFrame(logo, fg_color="transparent")
         titles.pack(side="left", padx=11)
-        t1 = ctk.CTkLabel(titles, text="DGW TOOLS", text_color=T.TEXT, anchor="w",
+        t1 = ctk.CTkLabel(titles, text="DWG TOOLS", text_color=T.TEXT, anchor="w",
                           font=ctk.CTkFont(size=18, weight="bold"))
         t1.pack(anchor="w")
         t2 = ctk.CTkLabel(titles, text="DESIGN ASSURANCE HUB", text_color=T.MUTED,

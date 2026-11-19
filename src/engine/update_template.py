@@ -9,6 +9,8 @@ import os
 import time
 from typing import Callable, Optional
 
+from engine.documento import eh_desenho
+
 ProgressCallback = Callable[[int], None]
 FormatResolver = Callable[[], Optional[str]]
 StatusCallback = Callable[[str, str], None]  # (mensagem, nivel)
@@ -200,7 +202,7 @@ def update_template(
         if app_com.Documents.Count == 0:
             raise UpdateTemplateError(1001, "Nenhum documento aberto.")
         active = app_com.ActiveDocument
-        if not str(active.Name).lower().endswith(".catdrawing"):
+        if not eh_desenho(active):
             raise UpdateTemplateError(1002, "O documento ativo nao e um CATDrawing.")
 
         source_doc = active

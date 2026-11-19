@@ -14,6 +14,7 @@ from __future__ import annotations
 import os
 from typing import Optional
 
+from engine.documento import eh_desenho
 from engine.update_template import (
     SHEET_NUMBER_TEXT_NAME,  # noqa: F401  (documenta a intencao)
     TEMPLATE_FOLDER,
@@ -78,7 +79,7 @@ def swap_template_background(
         if app_com.Documents.Count == 0:
             raise UpdateTemplateError(1001, "Nenhum documento aberto.")
         source_doc = app_com.ActiveDocument
-        if not str(source_doc.Name).lower().endswith(".catdrawing"):
+        if not eh_desenho(source_doc):
             raise UpdateTemplateError(1002, "O documento ativo nao e um CATDrawing.")
         source_sheets = source_doc.Sheets
         if source_sheets.Count == 0:

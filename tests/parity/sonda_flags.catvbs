@@ -1,0 +1,127 @@
+' Fotografa todos os textos do desenho ativo, para comparar o resultado do VBA e do Python.
+' Um registro por texto. Campo que nao pode ser lido aparece como "E".
+
+Function Ler(o, prop)
+    On Error Resume Next
+    Dim v
+    v = Eval("o." & prop)
+    If Err.Number <> 0 Then
+        Ler = "E"
+    Else
+        Ler = CStr(v)
+    End If
+    Err.Clear
+End Function
+
+Function Param(t, p, ini, qtd)
+    On Error Resume Next
+    Dim v
+    v = t.GetParameterOnSubString(p, ini, qtd)
+    If Err.Number <> 0 Then
+        Param = "E"
+    Else
+        Param = CStr(v)
+    End If
+    Err.Clear
+End Function
+
+Function ParamPorLetra(t, p, n)
+    Dim i, a
+    If n <= 0 Then
+        ParamPorLetra = ""
+        Exit Function
+    End If
+    ReDim a(n - 1)
+    For i = 0 To n - 1
+        a(i) = Param(t, p, i, 1)
+    Next
+    ParamPorLetra = Join(a, ",")
+End Function
+
+Function FrameProps(t)
+    On Error Resume Next
+    Dim tp, v
+    Set tp = t.TextProperties
+    v = tp.FrameType
+    If Err.Number <> 0 Then FrameProps = "E" Else FrameProps = CStr(v)
+    Err.Clear
+End Function
+
+Function CorProps(t)
+    On Error Resume Next
+    Dim tp, v
+    Set tp = t.TextProperties
+    v = tp.Color
+    If Err.Number <> 0 Then CorProps = "E" Else CorProps = CStr(v)
+    Err.Clear
+End Function
+
+Function Tamanho(t, ini, qtd)
+    On Error Resume Next
+    Dim v
+    v = t.GetFontSize(ini, qtd)
+    If Err.Number <> 0 Then Tamanho = "E" Else Tamanho = CStr(v)
+    Err.Clear
+End Function
+
+Function Leaders(t)
+    On Error Resume Next
+    Dim n, i, l, x, y, s
+    n = t.Leaders.Count
+    If Err.Number <> 0 Then
+        Leaders = "E"
+        Err.Clear
+        Exit Function
+    End If
+    s = CStr(n)
+    For i = 1 To n
+        Set l = t.Leaders.Item(i)
+        l.GetPoint 1, x, y
+        s = s & ":" & CStr(x) & "/" & CStr(y)
+    Next
+    Leaders = s
+    Err.Clear
+End Function
+
+Function Foto()
+    On Error Resume Next
+    Dim r
+    r = Foto_()
+    If Err.Number <> 0 Then Foto = "ERRO FOTO " & Err.Number & " " & Err.Description Else Foto = r
+End Function
+
+Function Foto_()
+    Dim doc, i, j, k, sh, v, t, buf(), n, s, m
+    Set doc = CATIA.ActiveDocument
+    ReDim buf(4095)
+    n = 0
+    For i = 1 To doc.Sheets.Count
+        Set sh = doc.Sheets.Item(i)
+        For j = 1 To sh.Views.Count
+            Set v = sh.Views.Item(j)
+            For k = 1 To v.Texts.Count
+                Set t = v.Texts.Item(k)
+                s = t.Text
+                m = Len(s)
+                buf(n) = Join(Array(sh.Name, v.Name, t.Name, Replace(Replace(s, vbCr, "<CR>"), vbLf, "<LF>"), _
+                    Ler(t, "FrameType"), FrameProps(t), CorProps(t), _
+                    ParamPorLetra(t, 10, m), ParamPorLetra(t, 12, m), _
+                    Tamanho(t, 0, 0), Tamanho(t, 0, 1), _
+                    Ler(t, "x"), Ler(t, "y"), Ler(t, "Angle"), Ler(t, "AnchorPosition"), Ler(t, "WrappingWidth"), _
+                    Leaders(t), Ler(v, "LockStatus")), Chr(31))
+                n = n + 1
+            Next
+        Next
+    Next
+    If n > 0 Then ReDim Preserve buf(n - 1) Else ReDim buf(0)
+    Foto_ = Join(buf, Chr(30))
+End Function
+
+Function Fechar()
+    On Error Resume Next
+    CATIA.DisplayFileAlerts = False
+    Do While CATIA.Documents.Count > 0
+        CATIA.Documents.Item(1).Close
+    Loop
+    Fechar = "OK"
+End Function

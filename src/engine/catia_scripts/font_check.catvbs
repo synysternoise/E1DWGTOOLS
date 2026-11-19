@@ -1,0 +1,416 @@
+' Font Size Check: parte que roda dentro do CATIA (porte de sizedetect.txt).
+' Protocolo da resposta: ver src/engine/catia_bridge.py.
+' As funcoes publicas so embrulham a parte real: um erro nela interrompe o
+' trabalho e volta como registro ERR, sem abrir janela de erro no CATIA.
+
+Function Campo(s)
+    Campo = Replace(Replace(CStr(s), Chr(30), " "), Chr(31), " ")
+End Function
+
+Function Registro(a)
+    Registro = Chr(30) & Join(a, Chr(31))
+End Function
+
+Function Falha()
+    Falha = "ERR" & Chr(31) & Err.Number & Chr(31) & Campo(Err.Description)
+    Err.Clear
+End Function
+
+' ---------------------------------------------------------------------
+' Dados do desenho ativo
+' ---------------------------------------------------------------------
+Function LerDesenho()
+    On Error Resume Next
+    Dim r
+    r = LerDesenho_()
+    If Err.Number <> 0 Then LerDesenho = Falha() Else LerDesenho = r
+End Function
+
+Function LerDesenho_()
+    Dim doc, numero
+    If CATIA.Documents.Count = 0 Then Err.Raise 1001, , "Nenhum documento aberto no CATIA."
+    Set doc = CATIA.ActiveDocument
+    If TypeName(doc) <> "DrawingDocument" Then Err.Raise 1002, , "O documento ativo nao e um desenho (CATDrawing)."
+    numero = ""
+    LerNumero doc, numero
+    LerDesenho_ = "OK" & Registro(Array(Campo(doc.FullName), Campo(numero), doc.Sheets.Count))
+End Function
+
+Sub LerNumero(doc, numero)
+    On Error Resume Next
+    numero = doc.Parameters.Item("Drawing_No").ValueAsString
+    Err.Clear
+End Sub
+
+' ---------------------------------------------------------------------
+' Textos do Background da folha, de onde sai o formato.
+' Registro "68": o texto Text.68. Registro "T": todos, na ordem.
+' ---------------------------------------------------------------------
+Function LerFundo(iFolha)
+    On Error Resume Next
+    Dim r
+    r = LerFundo_(iFolha)
+    If Err.Number <> 0 Then LerFundo = Falha() Else LerFundo = r
+End Function
+
+Function LerFundo_(iFolha)
+    Dim bg, r, n, i, partes(), texto
+    Set bg = CATIA.ActiveDocument.Sheets.Item(iFolha).Views.Item(2)
+    r = "OK"
+    If TextoPorNome(bg, "Text.68", texto) Then r = r & Registro(Array("68", Campo(texto)))
+    n = bg.Texts.Count
+    If n > 0 Then
+        ReDim partes(n - 1)
+        For i = 1 To n
+            partes(i - 1) = Registro(Array("T", Campo(bg.Texts.Item(i).Text)))
+        Next
+        r = r & Join(partes, "")
+    End If
+    LerFundo_ = r
+End Function
+
+Function TextoPorNome(bg, nome, texto)
+    Dim t
+    TextoPorNome = False
+    On Error Resume Next
+    Set t = bg.Texts.GetItem(nome)
+    If Err.Number <> 0 Or Not IsObject(t) Then
+        Err.Clear
+        Exit Function
+    End If
+    texto = t.Text
+    If Err.Number <> 0 Then
+        Err.Clear
+        Exit Function
+    End If
+    TextoPorNome = True
+End Function
+
+' ---------------------------------------------------------------------
+' Itens de uma folha. Primeiro registro: nome da folha.
+' Depois: tipo (T/C), indice da vista, indice do item, tamanho em mm,
+' nome do item, nome da vista, conteudo.
+' ---------------------------------------------------------------------
+Function LerFolha(iFolha)
+    On Error Resume Next
+    Dim r
+    r = LerFolha_(iFolha)
+    If Err.Number <> 0 Then LerFolha = Falha() Else LerFolha = r
+End Function
+
+Function LerFolha_(iFolha)
+    Dim doc, sh, sel, v, nomeV, vis, i, j, t, d, val, mm, cont, buf(), n
+    Set doc = CATIA.ActiveDocument
+    Set sh = doc.Sheets.Item(iFolha)
+    Set sel = doc.Selection
+    ReDim buf(1023)
+    n = 0
+    cont = ""
+    For i = 1 To sh.Views.Count
+        Set v = sh.Views.Item(i)
+        sel.Clear
+        sel.Add v
+        vis = -1
+        sel.VisProperties.GetShow vis
+        nomeV = v.Name
+        ' Vista trancada tambem e lida: ler nao altera nada. A Main View (1) e o Background (2)
+        ' ficam de fora: so as vistas sao conferidas.
+        If i > 2 And nomeV <> "Background View" And vis = 0 Then
+            For j = 1 To v.Texts.Count
+                Set t = v.Texts.Item(j)
+                mm = t.GetFontSize(0, 0)
+                If n > UBound(buf) Then ReDim Preserve buf(2 * n)
+                buf(n) = Registro(Array("T", i, j, CStr(mm), Campo(t.Name), Campo(nomeV), Campo(t.Text)))
+                n = n + 1
+            Next
+            For j = 1 To v.Dimensions.Count
+                Set d = v.Dimensions.Item(j)
+                Set val = d.GetValue
+                mm = 0
+                LerCota val, mm, cont
+                If mm > 0 Then
+                    If n > UBound(buf) Then ReDim Preserve buf(2 * n)
+                    buf(n) = Registro(Array("C", i, j, CStr(mm), Campo(d.Name), Campo(nomeV), Campo(cont)))
+                    n = n + 1
+                End If
+            Next
+        End If
+    Next
+    sel.Clear
+    If n > 0 Then ReDim Preserve buf(n - 1) Else ReDim buf(0)
+    LerFolha_ = "OK" & Registro(Array(Campo(sh.Name))) & Join(buf, "")
+End Function
+
+' Se a leitura falhar, mm continua 0 e a cota nao entra na conferencia.
+Sub LerCota(val, mm, cont)
+    On Error Resume Next
+    val.GetFontSize 1, mm
+    cont = CStr(val.Value)
+    Err.Clear
+End Sub
+
+' ---------------------------------------------------------------------
+' Quais destes itens estao ocultos. Lista: tipo:vista:item separados por ponto e virgula.
+' Registro: as posicoes dos ocultos na lista, a partir de 0, separadas por virgula.
+' So os fora do padrao passam por aqui: conferir um por um em toda a folha seria lento.
+' ---------------------------------------------------------------------
+Function Ocultos(iFolha, lista)
+    On Error Resume Next
+    Dim r
+    r = Ocultos_(iFolha, lista)
+    If Err.Number <> 0 Then Ocultos = Falha() Else Ocultos = r
+End Function
+
+Function Ocultos_(iFolha, lista)
+    Dim doc, sh, sel, itens, k, p, v, achados
+    Set doc = CATIA.ActiveDocument
+    Set sh = doc.Sheets.Item(iFolha)
+    Set sel = doc.Selection
+    itens = Split(lista, ";")
+    achados = ""
+    For k = 0 To UBound(itens)
+        p = Split(itens(k), ":")
+        Set v = sh.Views.Item(CLng(p(1)))
+        If p(0) = "C" Then
+            If Oculto(sel, v.Dimensions.Item(CLng(p(2)))) Then achados = achados & "," & k
+        Else
+            If Oculto(sel, v.Texts.Item(CLng(p(2)))) Then achados = achados & "," & k
+        End If
+    Next
+    sel.Clear
+    Ocultos_ = "OK" & Registro(Array(Mid(achados, 2)))
+End Function
+
+' Item oculto nao sai na folha: a macro o pintava sem ninguem ver, mas numa lista ele so confunde.
+' Se nao der para saber, o item continua na conferencia.
+Function Oculto(sel, item)
+    Dim vis
+    Oculto = False
+    On Error Resume Next
+    vis = 0
+    sel.Clear
+    sel.Add item
+    sel.VisProperties.GetShow vis
+    If Err.Number = 0 And vis = 1 Then Oculto = True
+    Err.Clear
+    sel.Clear
+End Function
+
+' ---------------------------------------------------------------------
+' Navegador: mostra a folha do item, centraliza nele com zoom e seleciona.
+' Vista e item sao procurados pelo indice e conferidos pelo nome, porque os
+' indices mudam quando algo e apagado. Item que nao existe mais volta como ERR.
+' ---------------------------------------------------------------------
+Dim mComSeta
+
+Function IrPara(docCheio, nomeFolha, iVista, nomeVista, ehCota, iItem, nomeItem, zoomVezes)
+    On Error Resume Next
+    Dim r
+    mComSeta = False
+    r = IrPara_(docCheio, nomeFolha, iVista, nomeVista, ehCota, iItem, nomeItem, zoomVezes)
+    If Err.Number <> 0 Then IrPara = Falha() Else IrPara = r
+End Function
+
+' Igual ao IrPara, mas enquadra o texto junto com a ponta das setas (leaders) dele.
+Function IrParaComSeta(docCheio, nomeFolha, iVista, nomeVista, ehCota, iItem, nomeItem, zoomVezes)
+    On Error Resume Next
+    Dim r
+    mComSeta = True
+    r = IrPara_(docCheio, nomeFolha, iVista, nomeVista, ehCota, iItem, nomeItem, zoomVezes)
+    mComSeta = False
+    If Err.Number <> 0 Then IrParaComSeta = Falha() Else IrParaComSeta = r
+End Function
+
+Function IrPara_(docCheio, nomeFolha, iVista, nomeVista, ehCota, iItem, nomeItem, zoomVezes)
+    Dim doc, d, sh, v, item, viewer, z, px, py, a, sc, x, y, bb(7)
+    Dim x0, x1, y0, y1, zf, cabe
+    Set doc = Nothing
+    For Each d In CATIA.Documents
+        If d.FullName = docCheio Then
+            Set doc = d
+            Exit For
+        End If
+    Next
+    If doc Is Nothing Then Err.Raise 1003, , "Desenho fechado."
+    doc.Activate
+    Set sh = Achar(doc.Sheets, 0, nomeFolha)
+    If sh Is Nothing Then Err.Raise 1004, , "Folha nao encontrada."
+    sh.Activate
+    Set v = Achar(sh.Views, iVista, nomeVista)
+    If v Is Nothing Then Err.Raise 1004, , "Vista nao encontrada."
+    If ehCota Then
+        Set item = Achar(v.Dimensions, iItem, nomeItem)
+    Else
+        Set item = Achar(v.Texts, iItem, nomeItem)
+    End If
+    If item Is Nothing Then Err.Raise 1004, , "Item nao encontrado."
+
+    If ehCota Then
+        item.GetBoundaryBox bb
+        px = (bb(0) + bb(2) + bb(4) + bb(6)) / 4
+        py = (bb(1) + bb(3) + bb(5) + bb(7)) / 4
+    Else
+        px = item.x
+        py = item.y
+    End If
+    sc = v.Scale
+    a = 0
+    LerAngulo v, a
+    x = v.x + (px * Cos(a) - py * Sin(a)) * sc
+    y = v.y + (px * Sin(a) + py * Cos(a)) * sc
+
+    x0 = x: x1 = x: y0 = y: y1 = y
+    If mComSeta And Not ehCota Then IncluirSetas item, v, a, sc, x0, x1, y0, y1
+
+    Set viewer = CATIA.ActiveWindow.ActiveViewer
+    viewer.Reframe
+    z = viewer.Viewpoint2D.Zoom
+    zf = z * zoomVezes
+    If x1 > x0 Or y1 > y0 Then
+        ' Com o zoom z cabe a folha inteira. Abre o quanto for preciso para caber a seta, com folga.
+        cabe = CabeNaTela(sh, x1 - x0, y1 - y0)
+        If cabe > 0 And z * cabe < zf Then zf = z * cabe
+        If zf < z Then zf = z
+    End If
+    viewer.Viewpoint2D.PutOrigin Array((x0 + x1) / 2, (y0 + y1) / 2)
+    viewer.Viewpoint2D.Zoom = zf
+    viewer.Update
+
+    doc.Selection.Clear
+    doc.Selection.Add item
+    IrPara_ = "OK"
+End Function
+
+' Estende a caixa ate a ponta de cada seta do texto, em coordenadas da folha.
+Sub IncluirSetas(item, v, a, sc, x0, x1, y0, y1)
+    Dim i, n, lx, ly, sx, sy
+    On Error Resume Next
+    n = 0
+    n = item.Leaders.Count
+    For i = 1 To n
+        Err.Clear
+        item.Leaders.Item(i).GetPoint 1, lx, ly
+        If Err.Number = 0 Then
+            sx = v.x + (lx * Cos(a) - ly * Sin(a)) * sc
+            sy = v.y + (lx * Sin(a) + ly * Cos(a)) * sc
+            If sx < x0 Then x0 = sx
+            If sx > x1 Then x1 = sx
+            If sy < y0 Then y0 = sy
+            If sy > y1 Then y1 = sy
+        End If
+    Next
+    Err.Clear
+End Sub
+
+' Quantas vezes o zoom da folha inteira ainda mostra uma caixa desse tamanho, com metade de folga.
+Function CabeNaTela(sh, largura, altura)
+    Dim w, h, c
+    On Error Resume Next
+    CabeNaTela = 0
+    w = sh.GetPaperWidth
+    h = sh.GetPaperHeight
+    If Err.Number <> 0 Or w <= 0 Or h <= 0 Then
+        Err.Clear
+        Exit Function
+    End If
+    c = 1000000
+    If largura > 0 Then c = w / largura
+    If altura > 0 Then
+        If h / altura < c Then c = h / altura
+    End If
+    CabeNaTela = c * 0.5
+End Function
+
+Sub LerAngulo(v, a)
+    On Error Resume Next
+    a = v.Angle
+    Err.Clear
+End Sub
+
+' Item da colecao com este nome: primeiro no indice guardado, depois em toda ela.
+Function Achar(colecao, indice, nome)
+    Dim i, n
+    Set Achar = Nothing
+    n = colecao.Count
+    If indice >= 1 And indice <= n Then
+        If colecao.Item(indice).Name = nome Then
+            Set Achar = colecao.Item(indice)
+            Exit Function
+        End If
+    End If
+    For i = 1 To n
+        If colecao.Item(i).Name = nome Then
+            Set Achar = colecao.Item(i)
+            Exit Function
+        End If
+    Next
+End Function
+
+' ---------------------------------------------------------------------
+' Restaura as cores brancas para preto (porte de ResetColors).
+' Registro: "1" se havia desenho ativo, "0" se nao.
+' ---------------------------------------------------------------------
+Function RestaurarCores()
+    On Error Resume Next
+    Dim r
+    r = RestaurarCores_()
+    If Err.Number <> 0 Then RestaurarCores = Falha() Else RestaurarCores = r
+End Function
+
+Function RestaurarCores_()
+    Dim doc, sel
+    RestaurarCores_ = "OK" & Registro(Array("0"))
+    If CATIA.Documents.Count = 0 Then Exit Function
+    Set doc = CATIA.ActiveDocument
+    If TypeName(doc) <> "DrawingDocument" Then Exit Function
+    Set sel = doc.Selection
+    sel.Clear
+    sel.Search "#Color=(255,255,255),All"
+    sel.VisProperties.SetRealColor 0, 0, 0, 0
+    sel.Clear
+    RestaurarCores_ = "OK" & Registro(Array("1"))
+End Function
+
+' ---------------------------------------------------------------------
+' Font Size Fix: muda so o tamanho de um texto. Registro: tamanho lido depois, em mm.
+' Item procurado como no navegador; item que nao existe mais volta como ERR.
+' ---------------------------------------------------------------------
+Function AjustarTamanho(docCheio, nomeFolha, iVista, nomeVista, iItem, nomeItem, mm)
+    On Error Resume Next
+    Dim r
+    r = AjustarTamanho_(docCheio, nomeFolha, iVista, nomeVista, iItem, nomeItem, mm)
+    If Err.Number <> 0 Then AjustarTamanho = Falha() Else AjustarTamanho = r
+End Function
+
+Function AjustarTamanho_(docCheio, nomeFolha, iVista, nomeVista, iItem, nomeItem, mm)
+    Dim doc, d, sh, v, item, travada, erro
+    Set doc = Nothing
+    For Each d In CATIA.Documents
+        If d.FullName = docCheio Then
+            Set doc = d
+            Exit For
+        End If
+    Next
+    If doc Is Nothing Then Err.Raise 1003, , "Desenho fechado."
+    Set sh = Achar(doc.Sheets, 0, nomeFolha)
+    If sh Is Nothing Then Err.Raise 1004, , "Folha nao encontrada."
+    Set v = Achar(sh.Views, iVista, nomeVista)
+    If v Is Nothing Then Err.Raise 1004, , "Vista nao encontrada."
+    Set item = Achar(v.Texts, iItem, nomeItem)
+    If item Is Nothing Then Err.Raise 1004, , "Item nao encontrado."
+    ' Vista trancada: destranca so para esta troca e tranca de novo, mesmo se a troca falhar.
+    travada = v.LockStatus
+    If travada Then v.LockStatus = False
+    GravarTamanho item, mm, erro
+    If travada Then v.LockStatus = True
+    If erro <> "" Then Err.Raise 1006, , erro
+    AjustarTamanho_ = "OK" & Registro(Array(CStr(item.GetFontSize(0, 0))))
+End Function
+
+Sub GravarTamanho(item, mm, erro)
+    On Error Resume Next
+    erro = ""
+    item.SetFontSize 0, 0, CDbl(mm)
+    If Err.Number <> 0 Then erro = "Nao foi possivel mudar o tamanho: " & Err.Description
+    Err.Clear
+End Sub

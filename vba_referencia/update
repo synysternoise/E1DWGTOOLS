@@ -1,0 +1,1188 @@
+Option Explicit
+
+Public gSourceDrawing As Object
+Public gTargetDrawing As Object
+
+' ============================================================
+' PASTA DOS TEMPLATES
+' ============================================================
+Private Const TEMPLATE_FOLDER As String = _
+    "\\nfscad05.sjk.emb\dmuv5\smarteam\b01\v5\DLNames\START_UP\"
+
+' ============================================================
+' CONVERTE O DRAWING PARA O NOVO TEMPLATE
+'
+' IDENTIFICACAO DO FORMATO:
+'
+' 1. Procura Text.68 no Background da primeira folha.
+' 2. Se Text.68 nao contiver um formato valido, procura
+'    qualquer outro DrawingText cujo conteudo completo seja:
+'
+'       3A0
+'       A0
+'       A1
+'       A2
+'       A3
+'       E3
+'
+' 3. Se nenhum texto valido for encontrado, solicita o
+'    formato manualmente.
+'
+' 4. Cancel, X ou ESC encerram silenciosamente.
+' ============================================================
+Public Sub ConvertTemplate()
+
+    On Error GoTo ErrorHandler
+
+    Dim oCATIA As Object
+
+    Dim objSourceDoc As drawingDocument
+    Dim objTargetDoc As drawingDocument
+
+    Dim objSourceSheets As drawingSheets
+    Dim objTargetSheets As drawingSheets
+
+    Dim operationSucceeded As Boolean
+    Dim operationCancelled As Boolean
+
+    Dim sFormat As String
+    Dim sFullPath As String
+    Dim sTemplateName As String
+
+    operationSucceeded = False
+    operationCancelled = False
+
+    Set oCATIA = CATIA
+
+    ' ========================================================
+    ' VALIDACOES INICIAIS
+    ' ========================================================
+    If oCATIA Is Nothing Then
+
+        Err.Raise _
+            1000, _
+            "ConvertTemplate", _
+            "A aplicacao CATIA nao foi encontrada."
+
+    End If
+
+    If oCATIA.Documents.count = 0 Then
+
+        Err.Raise _
+            1001, _
+            "ConvertTemplate", _
+            "Nenhum documento aberto."
+
+    End If
+
+    ' A validacao deve acontecer antes da atribuicao
+    ' para uma variavel DrawingDocument.
+    If TypeName(oCATIA.ActiveDocument) <> "DrawingDocument" Then
+
+        Err.Raise _
+            1002, _
+            "ConvertTemplate", _
+            "O documento ativo nao e um CATDrawing."
+
+    End If
+
+    Set objSourceDoc = oCATIA.ActiveDocument
+    Set gSourceDrawing = objSourceDoc
+    Set objSourceSheets = objSourceDoc.Sheets
+
+    If objSourceSheets.count = 0 Then
+
+        Err.Raise _
+            1003, _
+            "ConvertTemplate", _
+            "O documento nao possui folhas."
+
+    End If
+
+    oCATIA.DisplayFileAlerts = False
+    oCATIA.Interactive = False
+
+    ' ========================================================
+    ' IDENTIFICA O FORMATO PELO BACKGROUND DA PRIMEIRA FOLHA
+    '
+    ' ORDEM:
+    '
+    ' 1. Procura especificamente Text.68.
+    ' 2. Procura qualquer outro texto com conteudo exato.
+    ' 3. Se nao encontrar, solicita manualmente.
+    ' ========================================================
+    Dim objFirstSheet As drawingSheet
+
+    Set objFirstSheet = objSourceSheets.item(1)
+
+    sFormat = GetFormatFromBackground(objFirstSheet)
+
+    If Not IsValidTemplateFormat(sFormat) Then
+
+        ' A InputBox precisa de interacao.
+        oCATIA.Interactive = True
+
+        sFormat = InputBox( _
+            "Nao foi possivel identificar automaticamente " & _
+            "o tamanho da folha no Background." & _
+            vbCrLf & vbCrLf & _
+            "Digite um dos formatos abaixo:" & _
+            vbCrLf & vbCrLf & _
+            "3A0" & vbCrLf & _
+            "A0" & vbCrLf & _
+            "A1" & vbCrLf & _
+            "A2" & vbCrLf & _
+            "A3" & vbCrLf & _
+            "E3", _
+            "Definicao de Formato", _
+            "A0")
+
+        sFormat = NormalizeTemplateFormat(sFormat)
+
+        ' Cancel, X ou ESC retornam string vazia.
+        If Len(sFormat) = 0 Then
+
+            operationCancelled = True
+            GoTo CleanExit
+
+        End If
+
+        If Not IsValidTemplateFormat(sFormat) Then
+
+            Err.Raise _
+                1004, _
+                "ConvertTemplate", _
+                "Formato invalido: " & sFormat & _
+                vbCrLf & vbCrLf & _
+                "Utilize somente 3A0, A0, A1, A2, A3 ou E3."
+
+        End If
+
+        ' A conversao realmente continuara.
+        oCATIA.Interactive = False
+
+    End If
+
+    sFormat = NormalizeTemplateFormat(sFormat)
+
+    ' ========================================================
+    ' LOCALIZA O TEMPLATE
+    ' ========================================================
+    sFullPath = FindTemplateByFormat( _
+        TEMPLATE_FOLDER, _
+        sFormat)
+
+    If Len(sFullPath) = 0 Then
+
+        Err.Raise _
+            1005, _
+            "ConvertTemplate", _
+            "Template nao encontrado para o formato " & _
+            sFormat & "." & _
+            vbCrLf & vbCrLf & _
+            "Pasta pesquisada:" & vbCrLf & _
+            TEMPLATE_FOLDER
+
+    End If
+
+    sTemplateName = _
+        Mid$(sFullPath, InStrRev(sFullPath, "\") + 1)
+
+    ' ========================================================
+    ' CAPTURA OS PARAMETROS DO DRAWING ORIGINAL
+    ' ========================================================
+    Dim dictParams As Object
+    Dim objSourceParams As Parameters
+
+    Dim i As Long
+    Dim sParamName As String
+    Dim sParamVal As String
+
+    Set dictParams = _
+        CreateObject("Scripting.Dictionary")
+
+    Set objSourceParams = objSourceDoc.Parameters
+
+    For i = 1 To objSourceParams.count
+
+        sParamName = objSourceParams.item(i).name
+
+        If InStr( _
+            1, _
+            sParamName, _
+            "\", _
+            vbBinaryCompare) > 0 Then
+
+            sParamName = _
+                Mid$( _
+                    sParamName, _
+                    InStrRev(sParamName, "\") + 1)
+
+        End If
+
+        sParamVal = _
+            objSourceParams.item(i).ValueAsString
+
+        If Not dictParams.Exists(sParamName) Then
+            dictParams.Add sParamName, sParamVal
+        End If
+
+    Next i
+
+    ' ========================================================
+    ' ABRE OU LOCALIZA O TEMPLATE
+    ' ========================================================
+    Dim doc As Document
+    Dim bIsOpen As Boolean
+
+    bIsOpen = False
+    Set objTargetDoc = Nothing
+
+    For Each doc In oCATIA.Documents
+
+        If StrComp( _
+            doc.name, _
+            sTemplateName, _
+            vbTextCompare) = 0 Then
+
+            If TypeName(doc) = "DrawingDocument" Then
+
+                Set objTargetDoc = doc
+                bIsOpen = True
+                Exit For
+
+            End If
+
+        End If
+
+    Next doc
+
+    If Not bIsOpen Then
+
+        Set objTargetDoc = _
+            oCATIA.Documents.Open(sFullPath)
+
+    End If
+
+    Set gTargetDrawing = objTargetDoc
+
+    If objTargetDoc Is Nothing Then
+
+        Err.Raise _
+            1006, _
+            "ConvertTemplate", _
+            "Nao foi possivel abrir o template de destino."
+
+    End If
+
+    objTargetDoc.Activate
+
+    Set objTargetSheets = objTargetDoc.Sheets
+
+    ' ========================================================
+    ' ISOLA AS VIEWS DO DRAWING ORIGINAL
+    '
+    ' IGNORA:
+    '
+    ' Main View
+    ' Background View
+    ' qualquer view contendo ZONE no nome
+    ' ========================================================
+    Dim sIso As Long
+    Dim vIso As Long
+
+    Dim shIso As drawingSheet
+    Dim vwIso As drawingView
+
+    For sIso = 1 To objSourceSheets.count
+
+        Set shIso = objSourceSheets.item(sIso)
+
+        For vIso = 1 To shIso.Views.count
+
+            Set vwIso = shIso.Views.item(vIso)
+
+            If IsTransferableView(vwIso) Then
+
+                On Error Resume Next
+
+                vwIso.GenerativeBehavior.Isolate
+
+                Err.Clear
+                On Error GoTo ErrorHandler
+
+            End If
+
+        Next vIso
+
+    Next sIso
+
+    ' ========================================================
+    ' OBTEM O ROOT DO TEMPLATE
+    ' ========================================================
+    Dim objTargetRoot As Object
+
+    Set objTargetRoot = Nothing
+
+    On Error Resume Next
+
+    Set objTargetRoot = _
+        objTargetDoc.GetItem("CATIADrawingDrawing1")
+
+    Err.Clear
+    On Error GoTo ErrorHandler
+
+    If objTargetRoot Is Nothing Then
+        Set objTargetRoot = objTargetDoc
+    End If
+
+    ' ========================================================
+    ' CRIA FOLHAS ADICIONAIS NO TEMPLATE
+    ' ========================================================
+    Dim selTarget As Selection
+
+    Set selTarget = objTargetDoc.Selection
+
+    Do While objTargetSheets.count < objSourceSheets.count
+
+        selTarget.Clear
+        selTarget.Add objTargetSheets.item(1)
+        selTarget.Copy
+
+        selTarget.Clear
+        selTarget.Add objTargetRoot
+        selTarget.Paste
+
+        DoEvents
+
+    Loop
+
+    ' ========================================================
+    ' COPIA AS VIEWS PARA O TEMPLATE
+    ' ========================================================
+    Dim s As Long
+    Dim v As Long
+
+    Dim objSourceSheet As drawingSheet
+    Dim objTargetSheet As drawingSheet
+
+    Dim objSourceView As drawingView
+    Dim objTargetView As drawingView
+
+    Dim dX As Double
+    Dim dY As Double
+
+    Dim selSource As Selection
+
+    Set selSource = objSourceDoc.Selection
+    Set selTarget = objTargetDoc.Selection
+
+    For s = 1 To objSourceSheets.count
+
+        Set objSourceSheet = objSourceSheets.item(s)
+        Set objTargetSheet = objTargetSheets.item(s)
+
+        objTargetSheet.name = objSourceSheet.name
+
+        For v = 1 To objSourceSheet.Views.count
+
+            Set objSourceView = _
+                objSourceSheet.Views.item(v)
+
+            If IsTransferableView(objSourceView) Then
+
+                dX = objSourceView.x
+                dY = objSourceView.y
+
+                selSource.Clear
+                selSource.Add objSourceView
+                selSource.Copy
+
+                selTarget.Clear
+                selTarget.Add objTargetSheet
+                selTarget.Paste
+
+                DoEvents
+
+                Set objTargetView = _
+                    objTargetSheet.Views.item( _
+                        objTargetSheet.Views.count)
+
+                objTargetView.x = dX
+                objTargetView.y = dY
+
+            End If
+
+        Next v
+
+    Next s
+
+    ' ========================================================
+    ' REMOVE FOLHAS EXCEDENTES
+    ' ========================================================
+    Dim selDel As Selection
+    Dim d As Long
+
+    Set selDel = objTargetDoc.Selection
+
+    For d = objTargetSheets.count _
+        To objSourceSheets.count + 1 Step -1
+
+        selDel.Clear
+        selDel.Add objTargetSheets.item(d)
+        selDel.Delete
+
+        DoEvents
+
+    Next d
+
+    ' ========================================================
+    ' INJETA OS PARAMETROS NO TEMPLATE
+    ' ========================================================
+    Dim objTargetParams As Parameters
+    Dim vKey As Variant
+
+    Set objTargetParams = objTargetDoc.Parameters
+
+    For Each vKey In dictParams.Keys
+
+        On Error Resume Next
+
+        objTargetParams.item( _
+            CStr(vKey)).ValuateFromString _
+            CStr(dictParams(vKey))
+
+        Err.Clear
+        On Error GoTo ErrorHandler
+
+    Next vKey
+
+    ' ========================================================
+    ' ATUALIZA O TOTAL DE FOLHAS
+    ' ========================================================
+    Dim sTotal As String
+
+    sTotal = CStr(objTargetSheets.count)
+
+    On Error Resume Next
+
+    objTargetParams.item( _
+        "No_of_Sheets").ValuateFromString sTotal
+
+    Err.Clear
+    On Error GoTo ErrorHandler
+
+    ' ========================================================
+    ' ATUALIZA O NUMERO INDIVIDUAL DE CADA FOLHA
+    '
+    ' O Text.75 esta localizado no Background View.
+    '
+    ' A primeira folha permanece com o preenchimento original
+    ' do template, pois ja esta sendo preenchida corretamente.
+    '
+    ' A partir da segunda folha:
+    '
+    ' Folha 2 recebe "2"
+    ' Folha 3 recebe "3"
+    ' Folha 4 recebe "4"
+    ' ========================================================
+    UpdateTargetSheetNumbers objTargetSheets
+
+    ' Atualiza o template depois de todas as alteracoes.
+    objTargetDoc.Update
+
+    operationSucceeded = True
+    GoTo CleanExit
+
+' ============================================================
+' TRATAMENTO DE ERRO
+' ============================================================
+ErrorHandler:
+
+    Dim savedErrorNumber As Long
+    Dim savedErrorDescription As String
+    Dim savedErrorSource As String
+
+    savedErrorNumber = Err.number
+    savedErrorDescription = Err.Description
+    savedErrorSource = Err.source
+
+    On Error Resume Next
+
+    If Not oCATIA Is Nothing Then
+
+        oCATIA.Interactive = True
+        oCATIA.DisplayFileAlerts = True
+
+        If Not objSourceDoc Is Nothing Then
+            objSourceDoc.Activate
+        End If
+
+    End If
+
+    On Error GoTo 0
+
+    MsgBox _
+        "Falha na execucao." & _
+        vbCrLf & vbCrLf & _
+        "Erro numero: " & _
+        CStr(savedErrorNumber) & vbCrLf & _
+        "Origem: " & _
+        savedErrorSource & vbCrLf & _
+        "Descricao: " & _
+        savedErrorDescription, _
+        vbCritical, _
+        "Erro"
+
+    GoTo FinalExit
+
+' ============================================================
+' SAIDA NORMAL OU CANCELAMENTO
+' ============================================================
+CleanExit:
+
+    On Error Resume Next
+
+    If Not oCATIA Is Nothing Then
+
+        oCATIA.Interactive = True
+        oCATIA.DisplayFileAlerts = True
+
+        DoEvents
+
+        If operationSucceeded Then
+
+            ' Depois da conversao, mantem o template novo ativo.
+            If Not objTargetDoc Is Nothing Then
+                objTargetDoc.Activate
+            End If
+
+        ElseIf operationCancelled Then
+
+            ' No cancelamento, retorna ao desenho original.
+            If Not objSourceDoc Is Nothing Then
+                objSourceDoc.Activate
+            End If
+
+        End If
+
+        DoEvents
+
+    End If
+
+    On Error GoTo 0
+
+    If operationSucceeded Then
+
+        MsgBox _
+            "Conversao concluida. Zonas filtradas." & _
+            vbCrLf & vbCrLf & _
+            "Formato identificado: " & sFormat, _
+            vbInformation, _
+            "Migracao de Template"
+
+        ' A MsgBox pode transferir o foco.
+        ' Reativa o template novo depois da mensagem.
+        On Error Resume Next
+
+        If Not objTargetDoc Is Nothing Then
+            objTargetDoc.Activate
+        End If
+
+        DoEvents
+        On Error GoTo 0
+
+    End If
+
+' ============================================================
+' LIMPEZA FINAL
+' ============================================================
+FinalExit:
+
+    On Error Resume Next
+
+    If Not selSource Is Nothing Then
+        selSource.Clear
+    End If
+
+    If Not selTarget Is Nothing Then
+        selTarget.Clear
+    End If
+
+    If Not selDel Is Nothing Then
+        selDel.Clear
+    End If
+
+    Set selDel = Nothing
+    Set selSource = Nothing
+    Set selTarget = Nothing
+
+    Set objTargetParams = Nothing
+    Set objSourceParams = Nothing
+    Set dictParams = Nothing
+
+    Set objTargetRoot = Nothing
+
+    Set objTargetSheets = Nothing
+    Set objSourceSheets = Nothing
+
+    Set objTargetDoc = Nothing
+    Set objSourceDoc = Nothing
+
+    Set oCATIA = Nothing
+
+    Err.Clear
+    On Error GoTo 0
+
+End Sub
+
+' ============================================================
+' ATUALIZA O NUMERO INDIVIDUAL DAS FOLHAS
+'
+' A NUMERACAO E BASEADA NA POSICAO DA FOLHA NA COLECAO
+' DrawingSheets, E NAO NO NOME DA FOLHA.
+'
+' ISSO EVITA ERROS QUANDO AS FOLHAS POSSUEM NOMES DIFERENTES
+' DE Sheet.1, Sheet.2, Sheet.3 ETC.
+'
+' A PRIMEIRA FOLHA NAO E ALTERADA PORQUE O TEMPLATE JA
+' PREENCHE O NUMERO DA PRIMEIRA FOLHA CORRETAMENTE.
+' ============================================================
+Private Sub UpdateTargetSheetNumbers( _
+    ByVal objTargetSheets As drawingSheets)
+
+    On Error GoTo ErrorHandler
+
+    Dim sheetIndex As Long
+
+    Dim targetSheet As drawingSheet
+    Dim backgroundView As drawingView
+    Dim sheetNumberText As Object
+
+    If objTargetSheets Is Nothing Then
+
+        Err.Raise _
+            1100, _
+            "UpdateTargetSheetNumbers", _
+            "A colecao de folhas do template nao foi encontrada."
+
+    End If
+
+    ' Nao existe folha adicional para atualizar.
+    If objTargetSheets.count < 2 Then
+        Exit Sub
+    End If
+
+    For sheetIndex = 2 To objTargetSheets.count
+
+        Set targetSheet = Nothing
+        Set backgroundView = Nothing
+        Set sheetNumberText = Nothing
+
+        Set targetSheet = _
+            objTargetSheets.item(sheetIndex)
+
+        ' Localiza o Background View da folha atual.
+        Set backgroundView = _
+            FindBackgroundViewForFormat(targetSheet)
+
+        If backgroundView Is Nothing Then
+
+            Err.Raise _
+                1101, _
+                "UpdateTargetSheetNumbers", _
+                "A Background View nao foi encontrada na folha " & _
+                CStr(sheetIndex) & _
+                " (" & targetSheet.name & ")."
+
+        End If
+
+        ' Localiza especificamente o Text.75 no Background.
+        Set sheetNumberText = _
+            FindDrawingTextByName( _
+                backgroundView, _
+                "Text.75")
+
+        If sheetNumberText Is Nothing Then
+
+            Err.Raise _
+                1102, _
+                "UpdateTargetSheetNumbers", _
+                "O DrawingText Text.75 nao foi encontrado no " & _
+                "Background da folha " & _
+                CStr(sheetIndex) & _
+                " (" & targetSheet.name & ")."
+
+        End If
+
+        ' Grava o numero conforme a posicao real da folha.
+        sheetNumberText.Text = CStr(sheetIndex)
+
+        Set sheetNumberText = Nothing
+        Set backgroundView = Nothing
+        Set targetSheet = Nothing
+
+    Next sheetIndex
+
+    Exit Sub
+
+ErrorHandler:
+
+    Dim savedErrorNumber As Long
+    Dim savedErrorDescription As String
+
+    savedErrorNumber = Err.number
+    savedErrorDescription = Err.Description
+
+    Set sheetNumberText = Nothing
+    Set backgroundView = Nothing
+    Set targetSheet = Nothing
+
+    Err.Raise _
+        savedErrorNumber, _
+        "UpdateTargetSheetNumbers", _
+        savedErrorDescription
+
+End Sub
+
+' ============================================================
+' LOCALIZA UM DRAWINGTEXT PELO NOME
+'
+' PERCORRE TODOS OS TEXTOS DA VIEW E COMPARA O NOME.
+'
+' ESTA ABORDAGEM E MAIS SEGURA DO QUE DEPENDER SOMENTE DE:
+'
+'     objView.Texts.item("Text.75")
+'
+' POIS EVITA PROBLEMAS DE ACESSO POR NOME EM DIFERENTES
+' VERSOES OU CONFIGURACOES DO CATIA V5.
+' ============================================================
+Private Function FindDrawingTextByName( _
+    ByVal objView As drawingView, _
+    ByVal textName As String) As Object
+
+    On Error GoTo SafeExit
+
+    Dim objTexts As Object
+    Dim candidateText As Object
+
+    Dim textIndex As Long
+    Dim candidateName As String
+
+    Set FindDrawingTextByName = Nothing
+
+    If objView Is Nothing Then
+        Exit Function
+    End If
+
+    Set objTexts = Nothing
+
+    On Error Resume Next
+
+    Set objTexts = objView.Texts
+
+    Err.Clear
+    On Error GoTo SafeExit
+
+    If objTexts Is Nothing Then
+        Exit Function
+    End If
+
+    For textIndex = 1 To objTexts.count
+
+        Set candidateText = Nothing
+        candidateName = ""
+
+        On Error Resume Next
+
+        Set candidateText = _
+            objTexts.item(textIndex)
+
+        If Not candidateText Is Nothing Then
+
+            candidateName = _
+                Trim$(CStr(candidateText.name))
+
+        End If
+
+        Err.Clear
+        On Error GoTo SafeExit
+
+        If StrComp( _
+            candidateName, _
+            Trim$(textName), _
+            vbTextCompare) = 0 Then
+
+            Set FindDrawingTextByName = _
+                candidateText
+
+            Exit Function
+
+        End If
+
+    Next textIndex
+
+    Exit Function
+
+SafeExit:
+
+    Set FindDrawingTextByName = Nothing
+    Err.Clear
+
+End Function
+
+' ============================================================
+' VERIFICA SE UMA VIEW DEVE SER TRANSFERIDA
+'
+' IGNORA:
+'
+' Main View
+' Background View
+' qualquer view contendo ZONE no nome
+' ============================================================
+Private Function IsTransferableView( _
+    ByVal objView As drawingView) As Boolean
+
+    Dim viewName As String
+
+    IsTransferableView = False
+
+    If objView Is Nothing Then
+        Exit Function
+    End If
+
+    viewName = UCase$(Trim$(objView.name))
+
+    If StrComp( _
+        viewName, _
+        "MAIN VIEW", _
+        vbTextCompare) = 0 Then
+
+        Exit Function
+
+    End If
+
+    If StrComp( _
+        viewName, _
+        "BACKGROUND VIEW", _
+        vbTextCompare) = 0 Then
+
+        Exit Function
+
+    End If
+
+    If InStr( _
+        1, _
+        viewName, _
+        "ZONE", _
+        vbTextCompare) > 0 Then
+
+        Exit Function
+
+    End If
+
+    IsTransferableView = True
+
+End Function
+
+' ============================================================
+' IDENTIFICA O FORMATO NO BACKGROUND
+'
+' PRIORIDADE:
+'
+' 1. DrawingText chamado Text.68.
+' 2. Qualquer DrawingText cujo conteudo completo seja
+'    exatamente um formato aceito.
+' ============================================================
+Private Function GetFormatFromBackground( _
+    ByVal objSheet As drawingSheet) As String
+
+    On Error GoTo SafeExit
+
+    Dim objBackgroundView As drawingView
+    Dim objTexts As Object
+    Dim objText As Object
+
+    Dim i As Long
+
+    Dim objectName As String
+    Dim objectValue As String
+
+    GetFormatFromBackground = ""
+
+    If objSheet Is Nothing Then
+        Exit Function
+    End If
+
+    Set objBackgroundView = _
+        FindBackgroundViewForFormat(objSheet)
+
+    If objBackgroundView Is Nothing Then
+        Exit Function
+    End If
+
+    Set objTexts = Nothing
+
+    On Error Resume Next
+
+    Set objTexts = objBackgroundView.Texts
+
+    Err.Clear
+    On Error GoTo SafeExit
+
+    If objTexts Is Nothing Then
+        Exit Function
+    End If
+
+    ' ========================================================
+    ' PRIMEIRA PASSAGEM:
+    ' PROCURA ESPECIFICAMENTE TEXT.68
+    ' ========================================================
+    For i = 1 To objTexts.count
+
+        Set objText = Nothing
+
+        objectName = ""
+        objectValue = ""
+
+        On Error Resume Next
+
+        Set objText = objTexts.item(i)
+
+        If Not objText Is Nothing Then
+            objectName = Trim$(CStr(objText.name))
+        End If
+
+        Err.Clear
+        On Error GoTo SafeExit
+
+        If StrComp( _
+            objectName, _
+            "Text.68", _
+            vbTextCompare) = 0 Then
+
+            On Error Resume Next
+
+            objectValue = CStr(objText.Text)
+
+            Err.Clear
+            On Error GoTo SafeExit
+
+            objectValue = _
+                NormalizeTemplateFormat(objectValue)
+
+            If IsValidTemplateFormat(objectValue) Then
+
+                GetFormatFromBackground = objectValue
+                Exit Function
+
+            End If
+
+        End If
+
+    Next i
+
+    ' ========================================================
+    ' SEGUNDA PASSAGEM:
+    ' PROCURA QUALQUER TEXTO COM CONTEUDO EXATO VALIDO
+    ' ========================================================
+    For i = 1 To objTexts.count
+
+        Set objText = Nothing
+        objectValue = ""
+
+        On Error Resume Next
+
+        Set objText = objTexts.item(i)
+
+        If Not objText Is Nothing Then
+            objectValue = CStr(objText.Text)
+        End If
+
+        Err.Clear
+        On Error GoTo SafeExit
+
+        objectValue = _
+            NormalizeTemplateFormat(objectValue)
+
+        If IsValidTemplateFormat(objectValue) Then
+
+            GetFormatFromBackground = objectValue
+            Exit Function
+
+        End If
+
+    Next i
+
+    Exit Function
+
+SafeExit:
+
+    GetFormatFromBackground = ""
+    Err.Clear
+
+End Function
+
+' ============================================================
+' LOCALIZA A BACKGROUND VIEW
+'
+' Primeiro procura pelo nome padrao.
+' Se nao encontrar, percorre todas as views.
+' ============================================================
+Private Function FindBackgroundViewForFormat( _
+    ByVal objSheet As drawingSheet) As drawingView
+
+    On Error GoTo SearchAllViews
+
+    Set FindBackgroundViewForFormat = _
+        objSheet.Views.item("Background View")
+
+    Exit Function
+
+SearchAllViews:
+
+    Err.Clear
+
+    Dim i As Long
+    Dim candidateView As drawingView
+    Dim candidateName As String
+
+    Set FindBackgroundViewForFormat = Nothing
+
+    On Error Resume Next
+
+    For i = 1 To objSheet.Views.count
+
+        Set candidateView = Nothing
+
+        Set candidateView = _
+            objSheet.Views.item(i)
+
+        If Not candidateView Is Nothing Then
+
+            candidateName = _
+                UCase$(Trim$(CStr(candidateView.name)))
+
+            If InStr( _
+                1, _
+                candidateName, _
+                "BACKGROUND", _
+                vbTextCompare) > 0 Then
+
+                Set FindBackgroundViewForFormat = _
+                    candidateView
+
+                Exit Function
+
+            End If
+
+        End If
+
+        Err.Clear
+
+    Next i
+
+    On Error GoTo 0
+
+End Function
+
+' ============================================================
+' NORMALIZA O CONTEUDO DO DRAWINGTEXT
+'
+' O conteudo precisa resultar exatamente em um dos formatos.
+' A funcao nao procura o formato dentro de frases.
+' ============================================================
+Private Function NormalizeTemplateFormat( _
+    ByVal rawValue As String) As String
+
+    Dim normalizedValue As String
+
+    normalizedValue = UCase$(Trim$(rawValue))
+
+    normalizedValue = _
+        Replace(normalizedValue, vbCrLf, "")
+
+    normalizedValue = _
+        Replace(normalizedValue, vbCr, "")
+
+    normalizedValue = _
+        Replace(normalizedValue, vbLf, "")
+
+    normalizedValue = _
+        Replace(normalizedValue, vbTab, "")
+
+    normalizedValue = _
+        Replace(normalizedValue, Chr$(160), "")
+
+    normalizedValue = _
+        Trim$(normalizedValue)
+
+    NormalizeTemplateFormat = normalizedValue
+
+End Function
+
+' ============================================================
+' VALIDA OS FORMATOS DISPONIVEIS
+' ============================================================
+Private Function IsValidTemplateFormat( _
+    ByVal sFormat As String) As Boolean
+
+    Select Case NormalizeTemplateFormat(sFormat)
+
+        Case "3A0", "A0", "A1", "A2", "A3", "E3"
+
+            IsValidTemplateFormat = True
+
+        Case Else
+
+            IsValidTemplateFormat = False
+
+    End Select
+
+End Function
+
+' ============================================================
+' LOCALIZA O TEMPLATE PELO FORMATO
+' ============================================================
+Private Function FindTemplateByFormat( _
+    ByVal sFolder As String, _
+    ByVal sFormat As String) As String
+
+    Dim sFile As String
+    Dim sPattern As String
+
+    FindTemplateByFormat = ""
+
+    If Right$(sFolder, 1) <> "\" Then
+        sFolder = sFolder & "\"
+    End If
+
+    sFormat = NormalizeTemplateFormat(sFormat)
+
+    sPattern = _
+        "E1_DRAWING TEMPLATE_SHEET " & _
+        sFormat & _
+        "_CATIAV5R32"
+
+    sFile = Dir$(sFolder & "*.CATDrawing")
+
+    Do While Len(sFile) > 0
+
+        If StrComp( _
+            Left$(sFile, Len(sPattern)), _
+            sPattern, _
+            vbTextCompare) = 0 Then
+
+            FindTemplateByFormat = _
+                sFolder & sFile
+
+            Exit Function
+
+        End If
+
+        sFile = Dir$()
+
+    Loop
+
+End Function
+

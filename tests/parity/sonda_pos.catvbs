@@ -1,0 +1,71 @@
+' Apoio do teste da tela do Position and Zone: um balao com flag, numero e leader.
+Function Criar(docCheio, nomeVista)
+    On Error Resume Next
+    Criar = Criar_(docCheio, nomeVista)
+    If Err.Number <> 0 Then Criar = "ERRO " & Err.Description
+End Function
+
+Function Criar_(docCheio, nomeVista)
+    Dim doc, v, t, p, f, n
+    Set doc = Documento(docCheio)
+    Set v = doc.Sheets.Item(1).Views.Item(nomeVista)
+    v.Activate
+    Set t = v.Texts.Add("58", 0, -100)
+    t.SetFontSize 0, 0, 3.5
+    t.AnchorPosition = 5
+    Set p = t.TextProperties
+    p.FrameType = 3
+    p.Update
+    t.Leaders.Add 40, -130
+    Set f = v.Texts.Add("NI1008", 13, -100)
+    f.SetFontSize 0, 0, 3.5
+    f.AnchorPosition = 5
+    Set n = v.Texts.Add("42", 0, -107)
+    n.SetFontSize 0, 0, 3.5
+    n.AnchorPosition = 5
+    Set p = n.TextProperties
+    p.Underline = 1
+    p.Update
+    Criar_ = "OK"
+End Function
+
+Function Documento(docCheio)
+    Dim d
+    For Each d In CATIA.Documents
+        If d.FullName = docCheio Then
+            Set Documento = d
+            Exit Function
+        End If
+    Next
+End Function
+
+' Ponta do leader do texto: fica onde estava quando o balao anda.
+Function Leader(docCheio, nomeVista, nomeTexto)
+    On Error Resume Next
+    Leader = Leader_(docCheio, nomeVista, nomeTexto)
+    If Err.Number <> 0 Then Leader = "ERRO " & Err.Description
+End Function
+
+Function Leader_(docCheio, nomeVista, nomeTexto)
+    Dim v, t, i, l, x, y
+    Set v = Documento(docCheio).Sheets.Item(1).Views.Item(nomeVista)
+    For i = 1 To v.Texts.Count
+        If v.Texts.Item(i).Text = nomeTexto Then Set t = v.Texts.Item(i)
+    Next
+    Set l = t.Leaders.Item(1)
+    l.GetPoint l.NbPoint, x, y
+    Leader_ = CStr(l.NbPoint) & ";" & Round(x, 4) & ";" & Round(y, 4)
+End Function
+
+' Nome e vista do que esta selecionado, para conferir o navegador.
+Function Selecionado(docCheio)
+    On Error Resume Next
+    Dim s
+    Set s = Documento(docCheio).Selection
+    If s.Count <> 1 Then
+        Selecionado = "contagem " & s.Count
+        Exit Function
+    End If
+    Selecionado = s.Item(1).Value.Text & "|" & s.Item(1).Value.Name
+    If Err.Number <> 0 Then Selecionado = "ERRO " & Err.Description
+End Function

@@ -1,4 +1,4 @@
-# E1DGWTOOLS
+# E1DWGTOOLS
 
 HUB de ferramentas para automação de desenhos (CATDrawing) no **CATIA V5**,
 com interface gráfica própria (customtkinter). Porte em Python/pycatia de
@@ -29,8 +29,8 @@ macros VBA legadas, começando pela troca de template (Update Template).
 ## Instalação
 
 ```bat
-git clone https://github.com/synysternoise/E1DGWTOOLS.git
-cd E1DGWTOOLS
+git clone https://github.com/synysternoise/E1DWGTOOLS.git
+cd E1DWGTOOLS
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt

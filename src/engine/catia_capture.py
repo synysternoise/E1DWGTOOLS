@@ -10,12 +10,14 @@ import os
 import tempfile
 from typing import Optional
 
+from engine.documento import eh_desenho
+
 # (valor do enum CatCaptureFormat, extensao). Tenta em ordem ate gerar arquivo.
 _CAPTURE_FORMATS = ((4, "png"), (3, "jpg"), (0, "bmp"), (5, "tif"))
 
 
 def _temp_path(ext: str) -> str:
-    return os.path.join(tempfile.gettempdir(), f"dgw_sheet_preview.{ext}")
+    return os.path.join(tempfile.gettempdir(), f"dwg_sheet_preview.{ext}")
 
 
 def get_active_sheet_name() -> Optional[str]:
@@ -26,7 +28,7 @@ def get_active_sheet_name() -> Optional[str]:
         if app.Documents.Count == 0:
             return None
         doc = app.ActiveDocument
-        if not str(doc.Name).lower().endswith(".catdrawing"):
+        if not eh_desenho(doc):
             return None
         return str(doc.Sheets.ActiveSheet.Name)
     except Exception:
@@ -44,7 +46,7 @@ def capture_active_sheet(sheet_name: Optional[str] = None) -> Optional[str]:
         if app.Documents.Count == 0:
             return None
         doc = app.ActiveDocument
-        if not str(doc.Name).lower().endswith(".catdrawing"):
+        if not eh_desenho(doc):
             return None
 
         # Ativa a folha selecionada no HUB (reflete a folha escolhida).

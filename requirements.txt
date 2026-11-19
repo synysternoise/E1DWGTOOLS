@@ -1,4 +1,4 @@
-# Dependências do E1DGWTOOLS (Python 3.10+ no Windows)
+# Dependências do E1DWGTOOLS (Python 3.10+ no Windows)
 # Instale com:  pip install -r requirements.txt
 #
 # Observação: o app controla o CATIA V5 via COM (pywin32), então só funciona
@@ -7,4 +7,7 @@
 pycatia==0.10.1          # wrapper de automação do CATIA V5
 pywin32==312             # ponte COM com o CATIA (GetActiveObject, etc.)
 customtkinter==6.0.0     # interface gráfica (HUB)
+PySide6-Essentials==6.12.0  # nova interface grafica (HUB)
 pillow==12.3.0           # exibição da captura do desenho no preview
+openpyxl==3.1.5           # aba VPM: le o Excel de entrada
+playwright==1.65.2         # aba VPM: abre o VPM no Edge

@@ -1,0 +1,238 @@
+Option Explicit
+ 
+Sub ExecutarSplit2D()
+ 
+On Error GoTo TrataErro
+ 
+Dim CATIA As Application
+Dim DocOriginal As drawingDocument
+Dim DocCopia As drawingDocument
+ 
+Dim FSO As Object
+ 
+Dim PastaDestino As String
+Dim ArquivoOriginal As String
+Dim ArquivoTemp As String
+Dim ArquivoFinal As String
+ 
+Dim NomeFolha As String
+ 
+Dim i As Long
+Dim j As Long
+Dim TotalFolhas As Long
+ 
+Set CATIA = GetObject(, "CATIA.Application")
+ 
+If CATIA Is Nothing Then
+MsgBox "CATIA não encontrado.", vbCritical
+Exit Sub
+End If
+ 
+If CATIA.Documents.count = 0 Then
+MsgBox "Nenhum documento aberto.", vbExclamation
+Exit Sub
+End If
+ 
+If TypeName(CATIA.ActiveDocument) <> "DrawingDocument" Then
+MsgBox "Abra um CATDrawing antes de executar.", vbExclamation
+Exit Sub
+End If
+ 
+Set DocOriginal = CATIA.ActiveDocument
+ 
+If DocOriginal.path = "" Then
+MsgBox "Salve o CATDrawing antes de executar a macro.", vbExclamation
+Exit Sub
+End If
+ 
+'===================================================
+' VERIFICAÇÃO E BLOQUEIO AUTOMÁTICO DAS VISTAS
+'===================================================
+ 
+BloquearVistasDesbloqueadas DocOriginal
+ 
+'===================================================
+' PREPARAÇÃO
+'===================================================
+ 
+ArquivoOriginal = DocOriginal.fullName
+ 
+PastaDestino = Environ$("USERPROFILE") & "\Downloads\" & _
+Left(DocOriginal.name, _
+InStrRev(DocOriginal.name, ".") - 1) & "\"
+ 
+Set FSO = CreateObject("Scripting.FileSystemObject")
+ 
+If Not FSO.FolderExists(PastaDestino) Then
+FSO.CreateFolder PastaDestino
+End If
+ 
+TotalFolhas = DocOriginal.Sheets.count
+ 
+CATIA.DisplayFileAlerts = False
+ 
+'===================================================
+' EXPORTAÇÃO
+'===================================================
+ 
+For i = 1 To TotalFolhas
+ 
+NomeFolha = LimparNomeArquivo( _
+DocOriginal.Sheets.item(i).name)
+ 
+ArquivoTemp = PastaDestino & "~TMP_" & _
+NomeFolha & ".CATDrawing"
+ 
+ArquivoFinal = PastaDestino & _
+NomeFolha & ".CATDrawing"
+ 
+If FSO.FileExists(ArquivoTemp) Then
+FSO.DeleteFile ArquivoTemp, True
+End If
+ 
+FSO.CopyFile ArquivoOriginal, ArquivoTemp, True
+ 
+Set DocCopia = CATIA.Documents.Open(ArquivoTemp)
+ 
+For j = DocCopia.Sheets.count To 1 Step -1
+ 
+If DocCopia.Sheets.item(j).name <> _
+DocOriginal.Sheets.item(i).name Then
+ 
+ExcluirFolha DocCopia, j
+ 
+End If
+ 
+Next j
+ 
+If FSO.FileExists(ArquivoFinal) Then
+FSO.DeleteFile ArquivoFinal, True
+End If
+ 
+' O arquivo exportado vem do disco, sem as travas aplicadas agora no
+' desenho aberto: trava de novo, para sair com todas as vistas travadas.
+BloquearVistasDesbloqueadas DocCopia, False
+ 
+DocCopia.SaveAs ArquivoFinal
+ 
+DocCopia.Close
+ 
+Set DocCopia = Nothing
+ 
+If FSO.FileExists(ArquivoTemp) Then
+FSO.DeleteFile ArquivoTemp, True
+End If
+ 
+CATIA.StatusBar = _
+"Exportado: " & i & " de " & TotalFolhas
+ 
+DoEvents
+ 
+Next i
+ 
+CATIA.DisplayFileAlerts = True
+ 
+MsgBox TotalFolhas & _
+" folha(s) exportada(s) com sucesso." & _
+vbCrLf & vbCrLf & PastaDestino, _
+vbInformation
+ 
+Exit Sub
+ 
+TrataErro:
+ 
+CATIA.DisplayFileAlerts = True
+ 
+MsgBox "Erro Nº " & Err.number & vbCrLf & _
+Err.Description, vbCritical
+ 
+End Sub
+ 
+ 
+Private Sub BloquearVistasDesbloqueadas( _
+ByVal oDoc As drawingDocument, _
+Optional ByVal avisar As Boolean = True)
+ 
+On Error Resume Next
+ 
+Dim oSheet As drawingSheet
+Dim oView As drawingView
+ 
+Dim QtdeBloqueadas As Long
+ 
+For Each oSheet In oDoc.Sheets
+ 
+For Each oView In oSheet.Views
+ 
+If oView.name <> "Background View" Then
+ 
+If oView.LockStatus = False Then
+ 
+oView.LockStatus = True
+ 
+QtdeBloqueadas = QtdeBloqueadas + 1
+ 
+End If
+ 
+End If
+ 
+Next oView
+ 
+Next oSheet
+ 
+If QtdeBloqueadas > 0 And avisar Then
+ 
+MsgBox QtdeBloqueadas & _
+" vista(s) foram bloqueadas automaticamente.", _
+vbInformation
+ 
+End If
+ 
+On Error GoTo 0
+ 
+End Sub
+ 
+ 
+Private Sub ExcluirFolha( _
+ByVal oDoc As drawingDocument, _
+ByVal IndiceFolha As Long)
+ 
+On Error Resume Next
+ 
+oDoc.Sheets.Remove IndiceFolha
+ 
+If Err.number <> 0 Then
+ 
+Err.Clear
+ 
+oDoc.Selection.Clear
+ 
+oDoc.Selection.Add _
+oDoc.Sheets.item(IndiceFolha)
+ 
+oDoc.Selection.Delete
+ 
+End If
+ 
+On Error GoTo 0
+ 
+End Sub
+ 
+ 
+Private Function LimparNomeArquivo( _
+ByVal Nome As String) As String
+ 
+Nome = Replace(Nome, "\", "_")
+Nome = Replace(Nome, "/", "_")
+Nome = Replace(Nome, ":", "_")
+Nome = Replace(Nome, "*", "_")
+Nome = Replace(Nome, "?", "_")
+Nome = Replace(Nome, """", "_")
+Nome = Replace(Nome, "<", "_")
+Nome = Replace(Nome, ">", "_")
+Nome = Replace(Nome, "|", "_")
+ 
+LimparNomeArquivo = Trim(Nome)
+ 
+End Function
+

@@ -1,4 +1,4 @@
-"""Ponto de entrada do E1DGWTOOLS: inicia o HUB de ferramentas.
+"""Ponto de entrada do E1DWGTOOLS: inicia o HUB de ferramentas.
 
 Uso:  python main.py   (com o CATIA V5 aberto, idealmente com um CATDrawing)
 """

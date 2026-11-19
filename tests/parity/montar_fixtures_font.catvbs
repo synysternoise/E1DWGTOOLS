@@ -1,0 +1,127 @@
+' Monta os desenhos de teste do Font Size Check na pasta informada.
+Sub Txt(v, s, x, y, mm)
+    Dim t: Set t = v.Texts.Add(s, x, y): t.SetFontSize 0, 0, mm
+End Sub
+
+Function Folha(doc, idx, formato, nomeFundo)
+    Dim sh, bg, t
+    If idx = 1 Then Set sh = doc.Sheets.Item(1) Else Set sh = doc.Sheets.Add("Sheet." & idx)
+    sh.PaperSize = 2: sh.Activate
+    Set bg = sh.Views.Item(2): bg.Activate
+    Txt bg, "DESENHO TESTE", 50, 20, 3
+    If formato <> "" Then
+        Set t = bg.Texts.Add(formato, 900, 20)
+        If nomeFundo <> "" Then t.Name = nomeFundo
+    End If
+    Set Folha = sh
+End Function
+
+Function Vista(sh, nome, x, y)
+    Dim v: Set v = sh.Views.Add(nome)
+    v.x = x: v.y = y: v.Activate
+    Set Vista = v
+End Function
+
+Sub Salvar(doc, caminho)
+    Dim fso: Set fso = CreateObject("Scripting.FileSystemObject")
+    If fso.FileExists(caminho) Then fso.DeleteFile caminho
+    doc.SaveAs caminho
+    doc.Close
+End Sub
+
+Function Montar(pasta)
+    On Error Resume Next
+    Montar_ pasta
+    If Err.Number <> 0 Then Montar = "ERRO " & Err.Number & ": " & Err.Description Else Montar = "OK"
+End Function
+
+Sub Montar_(pasta)
+    Dim doc, sh, v, i, t, ln, k, nomes, tam
+    CATIA.DisplayFileAlerts = False
+    Do While CATIA.Documents.Count > 0: CATIA.Documents.Item(1).Close: Loop
+
+    ' Desenho com todos os casos.
+    Set doc = CATIA.Documents.Add("Drawing")
+    doc.Parameters.CreateString "Drawing_No", "123-456-789"
+
+    ' Folha 1: Text.68 com espacos e minusculas; limites da tolerancia e textos especiais.
+    Set sh = Folha(doc, 1, " a1 ", "Text.68")
+    Set v = Vista(sh, "V limites", 300, 300)
+    tam = Array(4.318, 6.35, 4.2926, 4.3434, 4.3180001, 4.33, 6.3246, 6.3754, 4.5, 4.3307, 4.3053, 0.5, 20)
+    For i = 0 To UBound(tam)
+        Txt v, "L" & i, 0, -15 * i, tam(i)
+    Next
+    Set v = Vista(sh, "V especiais", 600, 300)
+    Txt v, "Acentua" & Chr(231) & Chr(227) & "o " & Chr(233) & Chr(186), 0, 0, 3
+    Txt v, "linha 1" & vbLf & "linha 2" & vbCrLf & "linha 3", 0, -30, 3
+    Txt v, String(60, "x"), 0, -60, 3
+    Txt v, String(61, "y"), 0, -90, 3
+    Txt v, "aspas "" e | barra", 0, -120, 3
+    Set t = v.Texts.Add("mistura de tamanhos", 0, -150)
+    t.SetFontSize 0, 0, 4.318
+    t.SetFontSize 1, 5, 6.35
+
+    ' Vista escondida e vista travada nao entram na conferencia.
+    Set v = Vista(sh, "V escondida", 100, 100)
+    Txt v, "NAO CONTA ESCONDIDA", 0, 0, 2
+    doc.Selection.Clear: doc.Selection.Add v: doc.Selection.VisProperties.SetShow 1: doc.Selection.Clear
+    Set v = Vista(sh, "V travada", 100, 200)
+    Txt v, "NAO CONTA TRAVADA", 0, 0, 2
+    v.LockStatus = True
+
+    ' Folha 2: texto solto igual ao formato; frase que contem formato nao conta.
+    Set sh = Folha(doc, 2, "A0", "")
+    Txt sh.Views.Item(2), "SIZE A1", 50, 40, 3
+    Set v = Vista(sh, "V2", 300, 300)
+    Txt v, "F2 ok", 0, 0, 5.0038
+    Txt v, "F2 errado", 0, -20, 4.318
+
+    ' Folha 3: sem formato, usa o da primeira folha.
+    Set sh = Folha(doc, 3, "", "")
+    Set v = Vista(sh, "V3", 300, 300)
+    Txt v, "F3 errado", 0, 0, 7
+
+    ' Folha 4: vista em escala e girada, com cota, e texto na Main View.
+    Set sh = Folha(doc, 4, "A2", "Text.68")
+    Set v = sh.Views.Item(1): v.Activate
+    Txt v, "NA MAIN VIEW", 150, 150, 2
+    Set v = Vista(sh, "V escala", 400, 350)
+    v.Scale = 0.5: v.Angle = 0.5
+    Txt v, "F4 escala", 30, -40, 3
+    Set ln = v.Factory2D.CreateLine(0, -100, 60, -100)
+    On Error Resume Next
+    For k = 0 To 5
+        Err.Clear: v.Dimensions.Add k, Array(ln), Array(0, -100, 60, -100), 0
+        If v.Dimensions.Count > 0 Then Exit For
+    Next
+    On Error GoTo 0
+
+    ' Folhas 5 a 9: demais formatos, com quebra de linha, tabulacao e espaco duro.
+    nomes = Array("A3", "A4" & vbLf, vbTab & "E0", "E3" & Chr(160), "3a0")
+    For i = 0 To 4
+        Set sh = Folha(doc, 5 + i, nomes(i), "")
+        Set v = Vista(sh, "VF" & (5 + i), 300, 300)
+        Txt v, "F" & (5 + i) & " a", 0, 0, 3.1
+        Txt v, "F" & (5 + i) & " b", 0, -20, 4.318
+        Txt v, "F" & (5 + i) & " c", 0, -40, 5.0038
+    Next
+    ' Folha 10: sem nenhum item fora do Background.
+    Set sh = Folha(doc, 10, "A1", "Text.68")
+    Salvar doc, pasta & "\FONT_RICO.CATDrawing"
+
+    ' Nenhuma folha com formato: o formato e pedido ao usuario.
+    Set doc = CATIA.Documents.Add("Drawing")
+    Set sh = Folha(doc, 1, "", "")
+    Set v = Vista(sh, "V1", 300, 300)
+    Txt v, "P ok", 0, 0, 2.7432
+    Txt v, "P errado", 0, -20, 4.318
+    Salvar doc, pasta & "\FONT_SEMFORMATO.CATDrawing"
+
+    ' Tudo dentro do padrao.
+    Set doc = CATIA.Documents.Add("Drawing")
+    Set sh = Folha(doc, 1, "A1", "Text.68")
+    Set v = Vista(sh, "V1", 300, 300)
+    Txt v, "OK 1", 0, 0, 4.318
+    Txt v, "OK 2", 0, -20, 6.35
+    Salvar doc, pasta & "\FONT_TUDOOK.CATDrawing"
+End Sub

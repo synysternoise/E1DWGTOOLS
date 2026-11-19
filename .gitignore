@@ -6,7 +6,7 @@ __pycache__/
 venv/
 
 # Preview temporário gerado pela captura do CATIA
-dgw_sheet_preview.*
+dwg_sheet_preview.*
 _shot.png
 
 # Config local do Claude Code

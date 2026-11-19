@@ -1,0 +1,534 @@
+"""Thread que fala com o CATIA, para a janela nunca travar enquanto ele trabalha.
+
+Toda chamada COM acontece aqui. A janela pede por sinais e recebe por sinais.
+"""
+from __future__ import annotations
+
+import threading
+from typing import Optional
+
+import pythoncom
+import pywintypes
+from PySide6.QtCore import QObject, QThread, Signal, Slot
+
+from engine import atualizar_template as at
+from engine import fix_flags as ff
+from engine import font_check as fc
+from engine import part_list as pl
+from engine import pos_zone as pz
+from engine import splits as sp
+from engine import symbol_shape as ss
+from engine import template_check as tc
+from engine.catia_bridge import CatiaBridge, CatiaError, titulo_janela_catia
+from engine.documento import eh_desenho
+
+
+class CatiaWorker(QObject):
+    status = Signal(bool, str, bool)  # conectado, nome do documento ativo ("" se nenhum), e desenho
+    started_analysis = Signal()
+    progress = Signal(int, int)
+    report_ready = Signal(object)  # FontReport, ou None se o pedido de formato foi cancelado
+    failed = Signal(str)
+    nav_done = Signal(int, bool)  # pedido, resultado
+    ask_format = Signal(str, str, str)  # pergunta, titulo, sugestao
+    warn = Signal(str, str)  # mensagem, titulo
+
+    flags_started = Signal()
+    flags_progress = Signal(int, int)
+    flags_ready = Signal(object)  # FixReport, ou None se nao havia desenho ou respondeu Nao
+    flags_failed = Signal(str, object)  # mensagem, FixReport com o que ja foi feito (ou None)
+    flags_nav_done = Signal(int, bool)
+    flags_confirm = Signal(str, str)  # mensagem, titulo
+    flags_warn = Signal(str, str)
+
+    # Update Template, Position and Zone e Splits: o primeiro campo e o nome da ferramenta.
+    tool_started = Signal(str)
+    tool_progress = Signal(str, int, int)
+    tool_status = Signal(str, str)
+    tool_ready = Signal(str, object)
+    tool_failed = Signal(str, str, object)  # mensagem e o que ja foi feito (ou None)
+    tool_ask = Signal(str, str, str, str)  # pergunta, titulo, sugestao
+    tool_warn = Signal(str, str, str)
+    tool_info = Signal(str, str, str)
+    tool_preview = Signal(str, object)
+    tool_nav_done = Signal(str, int, bool)
+    font_fixed = Signal(object)
+
+    partlist_ready = Signal(object)
+    partlist_failed = Signal(str)
+    pos_movido = Signal(str, object, str)  # tela, Movimento, erro ("" se deu certo)
+    pos_desfeito = Signal(str, object, str)
+    excel_failed = Signal(str, str)  # tela, mensagem
+
+    busy = Signal(bool)  # o CATIA esta trabalhando numa ferramenta
+
+    seq_started = Signal(list)
+    seq_step = Signal(int, str, str)  # etapa, estado, texto
+    seq_progress = Signal(int, int, int)
+    seq_finished = Signal(str, str)  # concluida, parada ou erro; mensagem
+
+    def __init__(self):
+        super().__init__()
+        self._bridge: Optional[CatiaBridge] = None
+        self._stop = threading.Event()
+        self._answer_ready = threading.Event()
+        self._answer = ""
+        self._last_nav = 0
+        self._confirm_ready = threading.Event()
+        self._confirmed = False
+        self._last_flag_nav = 0
+        self._last_tool_nav = 0
+        self._stop_seq = threading.Event()
+        self._formatos = {}
+        self._ultimo_titulo: Optional[str] = None
+        self.janela_ativa = True  # a janela do HUB esta em uso
+        self._documentos_navegados = set()  # onde o HUB deixou algo selecionado
+
+    # Chamados da thread da janela.
+    def request_stop(self) -> None:
+        self._stop.set()
+
+    def answer_format(self, text: str) -> None:
+        self._answer = text
+        self._answer_ready.set()
+
+    def mark_latest_nav(self, request: int) -> None:
+        self._last_nav = request
+
+    def answer_confirm(self, yes: bool) -> None:
+        self._confirmed = yes
+        self._confirm_ready.set()
+
+    def mark_latest_flag_nav(self, request: int) -> None:
+        self._last_flag_nav = request
+
+    def mark_latest_tool_nav(self, request: int) -> None:
+        self._last_tool_nav = request
+
+    def set_update_formats(self, formatos) -> None:
+        self._formatos = dict(formatos)
+
+    def request_stop_sequence(self) -> None:
+        self._stop_seq.set()
+
+    def _get_bridge(self) -> CatiaBridge:
+        if self._bridge is None:
+            self._bridge = CatiaBridge()
+        return self._bridge
+
+    @Slot()
+    def poll(self) -> None:
+        """Pergunta ao CATIA qual e o documento ativo."""
+        try:
+            app = self._get_bridge().app
+            doc = app.ActiveDocument if app.Documents.Count else None
+            name = str(doc.Name) if doc is not None else ""
+            # Pelo tipo do documento, e nao pelo nome: o nome muda conforme venha do PC ou do VPM.
+            desenho = doc is not None and eh_desenho(doc)
+        except (CatiaError, pywintypes.com_error):
+            self._bridge = None
+            self._ultimo_titulo = None
+            self.status.emit(False, "", False)
+            return
+        self._ultimo_titulo = titulo_janela_catia()
+        self.status.emit(True, name, desenho)
+
+    @Slot()
+    def poll_leve(self) -> None:
+        """Consulta repetida. So fala com o CATIA se o titulo da janela dele mudou, para nao
+        atrapalhar o que estiver rodando nele, como a conexao do SmarTeam."""
+        titulo = titulo_janela_catia()
+        if titulo is None:
+            self._bridge = None
+            self._ultimo_titulo = None
+            self.status.emit(False, "", False)
+            return
+        # Sem o nome do documento no titulo (janela interna nao maximizada), so a pergunta ao CATIA
+        # diz qual e. Nesse caso, pergunta apenas enquanto a pessoa esta usando o HUB.
+        if titulo == self._ultimo_titulo and ("[" in titulo or not self.janela_ativa):
+            return
+        self.poll()
+
+    def _ask(self, question: str, title: str, default: str) -> str:
+        self._answer_ready.clear()
+        self.ask_format.emit(question, title, default)
+        self._answer_ready.wait()
+        return self._answer
+
+    @Slot()
+    def analyze(self) -> None:
+        self._stop.clear()
+        self.busy.emit(True)
+        self.started_analysis.emit()
+        try:
+            report = fc.run_font_inspection(
+                self._get_bridge(),
+                self._ask,
+                self.warn.emit,
+                progress=self.progress.emit,
+                should_stop=self._stop.is_set,
+            )
+        except CatiaError as exc:
+            self._bridge = None
+            self.failed.emit(str(exc))
+            return
+        except Exception as exc:  # um erro inesperado nao pode deixar a tela presa em andamento
+            self._bridge = None
+            self.failed.emit(f"Erro inesperado: {exc}")
+            return
+        finally:
+            self.busy.emit(False)
+        self.report_ready.emit(report)
+
+    @Slot(object, object, int)
+    def go_to(self, report, item, request: int) -> None:
+        # Cliques seguidos em PROXIMO: so o ultimo pedido precisa mover a tela.
+        if request != self._last_nav:
+            return
+        try:
+            ok = fc.go_to_item(self._get_bridge(), report, item)
+            self._documentos_navegados.add(report.doc_full_name)
+        except Exception:  # noqa: BLE001 - a tela espera a resposta, qualquer que seja a falha
+            self._bridge = None
+            ok = False
+        self.nav_done.emit(request, ok)
+
+    @Slot(str)
+    def preview(self, tool: str) -> None:
+        """O que a ferramenta faria, sem alterar nada no documento."""
+        try:
+            ponte = self._get_bridge()
+            if tool == "update":
+                previa = at.preview_update(ponte)
+            elif tool == "split2d":
+                previa = sp.preview_2d(ponte)
+            elif tool == "split3d":
+                previa = sp.preview_3d(ponte)
+            else:
+                previa = None
+        except (CatiaError, pywintypes.com_error):
+            self._bridge = None
+            previa = None
+        self.tool_preview.emit(tool, previa)
+
+    @Slot(str, object, object, int)
+    def go_to_tool_item(self, tool: str, report, item, request: int) -> None:
+        if request != self._last_tool_nav:
+            return
+        try:
+            ir = tc.ir_para_folha if tool == "templatecheck" else fc.go_to_item
+            ok = ir(self._get_bridge(), report, item)
+            self._documentos_navegados.add(report.doc_full_name)
+        except Exception:  # noqa: BLE001 - a tela espera a resposta, qualquer que seja a falha
+            self._bridge = None
+            ok = False
+        self.tool_nav_done.emit(tool, request, ok)
+
+    @Slot(object, object)
+    def fix_fonts(self, report, lista) -> None:
+        """Corrige o tamanho de cada item. Um item que falha nao impede os outros."""
+        self.busy.emit(True)
+        resultados = []
+        try:
+            ponte = self._get_bridge()
+            for i, (item, polegadas) in enumerate(lista, 1):
+                try:
+                    resultados.append((item, fc.fix_font_size(ponte, report, item, polegadas)))
+                except CatiaError:
+                    resultados.append((item, None))
+                self.tool_progress.emit("fontfix", i, len(lista))
+        except CatiaError:
+            self._bridge = None
+            resultados += [(item, None) for item, _ in lista[len(resultados):]]
+        finally:
+            self.busy.emit(False)
+        self.font_fixed.emit(resultados)
+
+    @Slot(list)
+    def run_sequence(self, etapas: list) -> None:
+        """Roda as etapas em ordem. Um erro para a sequencia: as seguintes nao rodam."""
+        self._stop_seq.clear()
+        self._stop.clear()
+        self.busy.emit(True)
+        self.seq_started.emit(list(etapas))
+        resultado, mensagem = "concluida", ""
+        try:
+            ponte = self._get_bridge()
+            for i, etapa in enumerate(etapas):
+                if self._stop_seq.is_set():
+                    self.seq_step.emit(i, "pulado", "Não rodou: você parou a sequência")
+                    resultado = "parada"
+                    continue
+                self.seq_step.emit(i, "rodando", "Começando")
+                resumo = self._rodar_etapa(ponte, i, etapa)
+                if resumo is None:
+                    self.seq_step.emit(i, "pulado", "Cancelada")
+                    resultado = "parada"
+                    self._stop_seq.set()
+                else:
+                    self.seq_step.emit(i, "feito", resumo)
+        except (at.TemplateError, ff.FixInterrompido) as exc:
+            self._bridge = None
+            self.seq_step.emit(i, "erro", "Falhou")
+            resultado, mensagem = "erro", exc.mensagem
+            if isinstance(exc, ff.FixInterrompido) and exc.report is not None:
+                self.flags_ready.emit(exc.report)
+        except CatiaError as exc:
+            self._bridge = None
+            resultado, mensagem = "erro", str(exc)
+        except Exception as exc:  # um erro inesperado nao pode deixar a tela presa em andamento
+            self._bridge = None
+            resultado, mensagem = "erro", f"Erro inesperado: {exc}"
+        finally:
+            self.busy.emit(False)
+        self.seq_finished.emit(resultado, mensagem)
+
+    def _rodar_etapa(self, ponte, i: int, etapa: str):
+        """Devolve o resumo do que aconteceu, ou None se o usuario cancelar."""
+
+        def progresso(atual: int, total: int) -> None:
+            self.seq_progress.emit(i, atual, total)
+
+        def situacao(texto: str) -> None:
+            self.seq_step.emit(i, "rodando", texto)
+
+        def perguntar(pergunta: str, titulo: str, sugestao: str) -> str:
+            self._answer_ready.clear()
+            self.tool_ask.emit("update", pergunta, titulo, sugestao)
+            self._answer_ready.wait()
+            return self._answer
+
+        if etapa == "fontfix":
+            # Nao corrige nada sozinho: analisa e deixa pronto para a pessoa revisar.
+            rep = fc.run_font_inspection(
+                ponte, perguntar, lambda m, t: self.tool_warn.emit("fontfix", m, t),
+                progress=progresso, should_stop=self._stop.is_set,
+            )
+            if rep is None:
+                return None
+            self.tool_ready.emit("fontfix", rep)
+            return f"{rep.total_nok} fora do padrão: você revisa"
+        if etapa == "symbol":
+            rep = ss.run_symbol_shape(ponte)
+            progresso(1, 1)
+            self.tool_ready.emit("symbol", rep)
+            return f"{rep.convertidos} símbolos convertidos" if rep.convertidos else "Nenhum símbolo para converter"
+        if etapa == "update":
+            rep = at.run_update_template(ponte, perguntar, status=situacao, progress=progresso, formatos=self._formatos)
+            if rep is None:
+                return None
+            self.tool_ready.emit("update", rep)
+            avisos = f", {len(rep.warnings)} aviso(s)" if rep.warnings else ""
+            return f"Etiqueta trocada em {len(rep.sheets)} folhas{avisos}"
+        rep = ff.run_fix_flags(ponte, self._confirm, self.flags_warn.emit, progress=progresso, should_stop=self._stop.is_set)
+        if rep is None:
+            return None
+        self.flags_ready.emit(rep)
+        return f"{rep.corrigidas} corrigidas, {rep.ja_corretas} já certas"
+
+    @Slot(str)
+    def run_tool(self, tool: str) -> None:
+        self._stop.clear()
+        self.busy.emit(True)
+        self.tool_started.emit(tool)
+
+        def perguntar(pergunta: str, titulo: str, sugestao: str) -> str:
+            self._answer_ready.clear()
+            self.tool_ask.emit(tool, pergunta, titulo, sugestao)
+            self._answer_ready.wait()
+            return self._answer
+
+        def progresso(atual: int, total: int) -> None:
+            self.tool_progress.emit(tool, atual, total)
+
+        def situacao(texto: str) -> None:
+            self.tool_status.emit(tool, texto)
+
+        try:
+            ponte = self._get_bridge()
+            if tool == "update":
+                report = at.run_update_template(ponte, perguntar, status=situacao, progress=progresso, formatos=self._formatos)
+            elif tool in ("poszone", "poszonefix"):
+                report = pz.analisar_desenho(ponte, lambda m, t: self.tool_warn.emit(tool, m, t), progress=progresso)
+            elif tool == "flagcheck":
+                report = ff.check_flags(ponte, progress=progresso, should_stop=self._stop.is_set)
+            elif tool == "templatecheck":
+                report = tc.conferir_template(ponte, progress=progresso, should_stop=self._stop.is_set)
+            elif tool == "fontfix":
+                report = fc.run_font_inspection(
+                    ponte, perguntar, lambda m, t: self.tool_warn.emit(tool, m, t),
+                    progress=progresso, should_stop=self._stop.is_set,
+                )
+            elif tool == "symbol":
+                report = ss.run_symbol_shape(ponte)
+            elif tool == "split2d":
+                report = sp.run_split_2d(
+                    ponte,
+                    lambda m: self.tool_warn.emit(tool, m, "Split 2D"),
+                    lambda m: self.tool_info.emit(tool, m, "Split 2D"),
+                    progress=progresso,
+                    should_stop=self._stop.is_set,
+                )
+            elif tool == "split3d":
+                report = sp.run_split_3d(
+                    ponte,
+                    perguntar,
+                    lambda m: self.tool_warn.emit(tool, m, "Split 3D"),
+                    progress=progresso,
+                    should_stop=self._stop.is_set,
+                )
+            else:
+                raise CatiaError(f"Ferramenta desconhecida: {tool}")
+        except (at.TemplateError, pz.PosZoneError, sp.SplitError) as exc:
+            self._bridge = None
+            self.tool_failed.emit(tool, exc.mensagem, exc.report)
+            return
+        except CatiaError as exc:
+            self._bridge = None
+            self.tool_failed.emit(tool, str(exc), None)
+            return
+        except Exception as exc:  # um erro inesperado nao pode deixar a tela presa em andamento
+            self._bridge = None
+            self.tool_failed.emit(tool, f"Erro inesperado: {exc}", None)
+            return
+        finally:
+            self.busy.emit(False)
+        self.tool_ready.emit(tool, report)
+
+    def _confirm(self, message: str, title: str) -> bool:
+        self._confirm_ready.clear()
+        self.flags_confirm.emit(message, title)
+        self._confirm_ready.wait()
+        return self._confirmed
+
+    @Slot()
+    def fix_flags(self) -> None:
+        self._stop.clear()
+        self.busy.emit(True)
+        self.flags_started.emit()
+        try:
+            report = ff.run_fix_flags(
+                self._get_bridge(),
+                self._confirm,
+                self.flags_warn.emit,
+                progress=self.flags_progress.emit,
+                should_stop=self._stop.is_set,
+            )
+        except ff.FixInterrompido as exc:
+            self._bridge = None
+            self.flags_failed.emit(exc.mensagem, exc.report)
+            return
+        except CatiaError as exc:
+            self._bridge = None
+            self.flags_failed.emit(ff.FixInterrompido(str(exc), exc.number).mensagem, None)
+            return
+        except Exception as exc:  # um erro inesperado nao pode deixar a tela presa em andamento
+            self._bridge = None
+            self.flags_failed.emit(f"Erro inesperado: {exc}", None)
+            return
+        finally:
+            self.busy.emit(False)
+        self.flags_ready.emit(report)
+
+    @Slot(object, object, int)
+    def go_to_flag(self, report, item, request: int) -> None:
+        if request != self._last_flag_nav:
+            return
+        try:
+            ok = ff.go_to_flag(self._get_bridge(), report, item)
+            self._documentos_navegados.add(report.doc_full_name)
+        except CatiaError:
+            self._bridge = None
+            ok = False
+        self.flags_nav_done.emit(request, ok)
+
+    # ------------------------------------------------------------------
+    # Position and Zone
+    # ------------------------------------------------------------------
+    @Slot(list)
+    def ler_part_list(self, caminhos: list) -> None:
+        """Abre um Excel escondido so para ler e fecha. Nao usa o CATIA."""
+        self.busy.emit(True)
+        try:
+            self._iniciar_com()
+            parte = pl.ler_part_list(caminhos)
+        except pl.PartListError as exc:
+            self.partlist_failed.emit(str(exc))
+            return
+        except Exception as exc:  # o Excel pode falhar de muitas formas
+            self.partlist_failed.emit(f"Não foi possível importar os dados do SAP.\r\n\r\n{exc}")
+            return
+        finally:
+            self.busy.emit(False)
+        self.partlist_ready.emit(parte)
+
+    @staticmethod
+    def _iniciar_com() -> None:
+        pythoncom.CoInitialize()  # o Excel pode ser a primeira coisa que esta thread usa
+
+    @Slot(str, object, object, str)
+    def mover_balao(self, tool: str, report, occ, zona: str) -> None:
+        self.busy.emit(True)
+        try:
+            mov = pz.mover_balao(self._get_bridge(), report, occ, zona)
+        except CatiaError as exc:
+            self.pos_movido.emit(tool, None, str(exc))
+            return
+        except Exception as exc:  # o botao nao pode ficar travado em "movendo"
+            self._bridge = None
+            self.pos_movido.emit(tool, None, f"Erro inesperado: {exc}")
+            return
+        finally:
+            self.busy.emit(False)
+        self.pos_movido.emit(tool, mov, "")
+
+    @Slot(str, object, object)
+    def desfazer_movimento(self, tool: str, report, mov) -> None:
+        self.busy.emit(True)
+        try:
+            pz.desfazer_movimento(self._get_bridge(), report, mov)
+        except CatiaError as exc:
+            self.pos_desfeito.emit(tool, mov, str(exc))
+            return
+        except Exception as exc:  # o botao nao pode ficar travado em "desfazendo"
+            self._bridge = None
+            self.pos_desfeito.emit(tool, mov, f"Erro inesperado: {exc}")
+            return
+        finally:
+            self.busy.emit(False)
+        self.pos_desfeito.emit(tool, mov, "")
+
+    @Slot(str, object)
+    def abrir_excel(self, tool: str, report) -> None:
+        """A copia da planilha, para quem ainda quiser o Excel. Ele fica aberto para o usuario."""
+        self.busy.emit(True)
+        try:
+            self._iniciar_com()
+            pz.exportar_planilha(report)
+        except CatiaError as exc:
+            self.excel_failed.emit(tool, str(exc))
+        finally:
+            self.busy.emit(False)
+
+    # ------------------------------------------------------------------
+    # Fim
+    # ------------------------------------------------------------------
+    @Slot()
+    def encerrar(self) -> None:
+        """Ao fechar o HUB: tira a selecao que ele deixou e devolve o CATIA como a macro deixaria."""
+        ponte = self._bridge
+        if ponte is not None:
+            try:
+                app = ponte.app
+                for i in range(1, app.Documents.Count + 1):
+                    d = app.Documents.Item(i)
+                    if d.FullName in self._documentos_navegados:
+                        d.Selection.Clear()
+                app.Interactive = True
+                app.DisplayFileAlerts = True
+                app.RefreshDisplay = True
+            except (CatiaError, pywintypes.com_error):
+                pass
+        thread = QThread.currentThread()
+        if thread is not None:
+            thread.quit()

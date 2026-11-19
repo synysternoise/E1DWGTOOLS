@@ -1,0 +1,173 @@
+' Monta os documentos de teste dos dois Splits na pasta informada.
+
+Sub Salvar(doc, caminho)
+    Dim fso: Set fso = CreateObject("Scripting.FileSystemObject")
+    If fso.FileExists(caminho) Then fso.DeleteFile caminho
+    doc.SaveAs caminho
+    doc.Close
+End Sub
+
+Function Montar(pasta)
+    On Error Resume Next
+    Montar_ pasta
+    If Err.Number <> 0 Then Montar = "ERRO " & Err.Number & ": " & Err.Description Else Montar = "OK"
+End Function
+
+Sub Vista(sh, nome, travada)
+    Dim v
+    Set v = sh.Views.Add(nome)
+    v.x = 200: v.y = 200
+    v.Activate
+    v.Texts.Add "NOTA " & nome, 10, 10
+    v.Factory2D.CreateLine 0, 0, 50, 50
+    v.LockStatus = travada
+End Sub
+
+Sub Corpo(peca, nome, raio)
+    Dim b, s, f
+    Set b = peca.Bodies.Add()
+    b.Name = nome
+    peca.InWorkObject = b
+    Set s = b.Sketches.Add(peca.OriginElements.PlaneXY)
+    Set f = s.OpenEdition()
+    f.CreateClosedCircle 0, 0, raio
+    s.CloseEdition
+    peca.ShapeFactory.AddNewPad s, 10 + raio
+    peca.Update
+End Sub
+
+Sub Montar_(pasta)
+    Dim doc, sh, peca, i
+    CATIA.DisplayFileAlerts = False
+    Do While CATIA.Documents.Count > 0: CATIA.Documents.Item(1).Close: Loop
+
+    ' Quatro folhas, uma com caracteres que nao podem ir no nome do arquivo.
+    Set doc = CATIA.Documents.Add("Drawing")
+    Set sh = doc.Sheets.Item(1)
+    sh.Name = "Folha 1"
+    sh.Activate
+    sh.Views.Item(2).Activate
+    sh.Views.Item(2).Texts.Add "FUNDO 1", 100, 100
+    Vista sh, "V1", False
+    Vista sh, "V1 travada", True
+    Set sh = doc.Sheets.Add("Folha: 2?")
+    sh.Activate
+    sh.Views.Item(2).Activate
+    sh.Views.Item(2).Texts.Add "FUNDO 2", 100, 100
+    Vista sh, "V2", False
+    Set sh = doc.Sheets.Add("Folha 3")
+    sh.Activate
+    Vista sh, "V3", False
+    Set sh = doc.Sheets.Add("Folha 4")
+    sh.Activate
+    Salvar doc, pasta & "\SPL_DESENHO.CATDrawing"
+
+    ' So vistas ja travadas.
+    Set doc = CATIA.Documents.Add("Drawing")
+    Set sh = doc.Sheets.Item(1)
+    sh.Activate
+    sh.Views.Item(1).LockStatus = True
+    Vista sh, "V1", True
+    Set sh = doc.Sheets.Add("Sheet.2")
+    sh.Activate
+    sh.Views.Item(1).LockStatus = True
+    Salvar doc, pasta & "\SPL_TRAVADO.CATDrawing"
+
+    ' Cinco Bodies alem do PartBody.
+    Set doc = CATIA.Documents.Add("Part")
+    doc.Product.PartNumber = "PN-TESTE-3D"
+    Set peca = doc.Part
+    For i = 1 To 5
+        Corpo peca, "CORPO_" & i, 5 + i
+    Next
+    Salvar doc, pasta & "\SPL_PECA.CATPart"
+
+    ' So o PartBody.
+    Set doc = CATIA.Documents.Add("Part")
+    Salvar doc, pasta & "\SPL_SEM_BODIES.CATPart"
+End Sub
+
+' Foto de um documento salvo: abre, le e fecha.
+Function FotoArquivo(caminho)
+    On Error Resume Next
+    Dim doc, s, i, j, k, sh, v, peca, sel, vis
+    CATIA.DisplayFileAlerts = False
+    Set doc = CATIA.Documents.Open(caminho)
+    If Err.Number <> 0 Then
+        FotoArquivo = "NAO ABRE " & Err.Description
+        Err.Clear
+        Exit Function
+    End If
+    s = doc.Name
+    If TypeName(doc) = "DrawingDocument" Then
+        For i = 1 To doc.Sheets.Count
+            Set sh = doc.Sheets.Item(i)
+            s = s & "|F:" & sh.Name
+            For j = 1 To sh.Views.Count
+                Set v = sh.Views.Item(j)
+                s = s & "|V:" & v.Name & ":" & v.LockStatus & ":" & v.Texts.Count & ":" & v.GeometricElements.Count
+                For k = 1 To v.Texts.Count
+                    s = s & "|T:" & v.Texts.Item(k).Text
+                Next
+            Next
+        Next
+    Else
+        Set peca = doc.Part
+        s = s & "|PN:" & doc.Product.PartNumber & "|MAIN:" & peca.MainBody.Name
+        For i = 1 To peca.Bodies.Count
+            s = s & "|B:" & peca.Bodies.Item(i).Name & ":" & peca.Bodies.Item(i).Shapes.Count
+        Next
+        Set sel = doc.Selection
+        For Each v In Array(peca.OriginElements.PlaneXY, peca.OriginElements.PlaneYZ, peca.OriginElements.PlaneZX)
+            sel.Clear
+            sel.Add v
+            vis = -1
+            sel.VisProperties.GetShow vis
+            s = s & "|P:" & vis
+        Next
+        sel.Clear
+    End If
+    doc.Close
+    Err.Clear
+    FotoArquivo = s
+End Function
+
+' Estado do documento aberto: vistas travadas, documento ativo e alertas.
+Function Estado()
+    On Error Resume Next
+    Dim doc, s, i, j, sh, d, nomes
+    nomes = ""
+    For Each d In CATIA.Documents
+        nomes = nomes & "|" & d.Name
+    Next
+    s = "abertos=" & nomes & " alertas=" & CATIA.DisplayFileAlerts & " tela=" & CATIA.RefreshDisplay
+    Set doc = CATIA.ActiveDocument
+    s = s & " ativo=" & doc.Name
+    If TypeName(doc) = "DrawingDocument" Then
+        For i = 1 To doc.Sheets.Count
+            Set sh = doc.Sheets.Item(i)
+            For j = 1 To sh.Views.Count
+                s = s & " " & sh.Views.Item(j).LockStatus
+            Next
+        Next
+    End If
+    Err.Clear
+    Estado = s
+End Function
+
+Function DesenhoNovo()
+    On Error Resume Next
+    CATIA.DisplayFileAlerts = False
+    Do While CATIA.Documents.Count > 0: CATIA.Documents.Item(1).Close: Loop
+    CATIA.Documents.Add "Drawing"
+    DesenhoNovo = "OK"
+End Function
+
+Function Fechar()
+    On Error Resume Next
+    CATIA.DisplayFileAlerts = False
+    Do While CATIA.Documents.Count > 0
+        CATIA.Documents.Item(1).Close
+    Loop
+    Fechar = "OK"
+End Function

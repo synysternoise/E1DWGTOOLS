@@ -1,0 +1,293 @@
+' Monta os desenhos de teste do Position and Zone na pasta informada.
+Const CIRCULO = 3
+Const LEGADO = 53
+
+Function Txt(v, s, x, y)
+    Dim t
+    Set t = v.Texts.Add(s, x, y)
+    t.SetFontSize 0, 0, 3.5
+    t.AnchorPosition = 5
+    Set Txt = t
+End Function
+
+Function Balao(v, s, x, y)
+    Dim t, p
+    Set t = Txt(v, s, x, y)
+    Set p = t.TextProperties
+    p.FrameType = CIRCULO
+    p.Update
+    Set Balao = t
+End Function
+
+Function Sublinhado(v, s, x, y)
+    Dim t, p
+    Set t = Txt(v, s, x, y)
+    Set p = t.TextProperties
+    p.Underline = 1
+    p.Update
+    Set Sublinhado = t
+End Function
+
+Function BalaoSublinhado(v, s, x, y)
+    Dim t, p
+    Set t = Balao(v, s, x, y)
+    Set p = t.TextProperties
+    p.Underline = 1
+    p.Update
+    Set BalaoSublinhado = t
+End Function
+
+Function Vista(sh, nome, x, y, escala, angulo)
+    Dim v
+    Set v = sh.Views.Add(nome)
+    v.x = x: v.y = y: v.Scale = escala: v.Angle = angulo
+    v.Activate
+    Set Vista = v
+End Function
+
+' Carimbo com letras nas laterais e numeros em cima e embaixo.
+Sub Carimbo(sh, largura, altura, colunas)
+    CarimboDe sh, largura, altura, colunas, 1
+End Sub
+
+' primeira: numero da primeira coluna. 21 imita a margem real da folha 2, que ja traz a dezena.
+Sub CarimboDe(sh, largura, altura, colunas, primeira)
+    Dim bg, i, letras, t
+    sh.Activate
+    Set bg = sh.Views.Item(2)
+    bg.Activate
+    letras = Array("A", "B", "C", "D", "E", "F")
+    For i = 0 To 5
+        bg.Texts.Add letras(i), 8, altura - 40 - i * (altura - 80) / 5
+        bg.Texts.Add letras(i), largura - 8, altura - 40 - i * (altura - 80) / 5
+    Next
+    For i = 1 To colunas
+        bg.Texts.Add CStr(primeira - 1 + i), largura - i * (largura / (colunas + 1)), 8
+        bg.Texts.Add CStr(primeira - 1 + i), largura - i * (largura / (colunas + 1)), altura - 8
+    Next
+    bg.Texts.Add "NOTA DO CARIMBO 12", 300, 40
+End Sub
+
+Sub Salvar(doc, caminho)
+    Dim fso: Set fso = CreateObject("Scripting.FileSystemObject")
+    If fso.FileExists(caminho) Then fso.DeleteFile caminho
+    doc.SaveAs caminho
+    doc.Close
+End Sub
+
+Function Montar(pasta)
+    On Error Resume Next
+    Montar_ pasta
+    If Err.Number <> 0 Then Montar = "ERRO " & Err.Number & ": " & Err.Description Else Montar = "OK"
+End Function
+
+Sub Montar_(pasta)
+    Dim doc, sh, v, t, g, i
+    CATIA.DisplayFileAlerts = False
+    Do While CATIA.Documents.Count > 0: CATIA.Documents.Item(1).Close: Loop
+
+    Set doc = CATIA.Documents.Add("Drawing")
+
+    ' Folha 1: zonas pela margem. Todos os jeitos de escrever callout e quantidade.
+    Set sh = doc.Sheets.Item(1)
+    sh.PaperSize = 2
+    sh.Orientation = 1
+    Carimbo sh, sh.GetPaperWidth, sh.GetPaperHeight, 8
+
+    Set v = Vista(sh, "BALOES", 100, 600, 1, 0)
+    Balao v, "12", 0, 0
+    Balao v, "012", 30, 0
+    Balao v, "1234", 60, 0
+    Balao v, "12345", 90, 0
+    Set t = Txt(v, "77", 120, 0): t.TextProperties.FrameType = LEGADO: t.TextProperties.Update
+    Txt v, "888", 150, 0
+    Balao(v, "15" & vbLf & "4 PL", 0, -40).TextProperties.Update
+    Balao(v, "16" & vbCrLf, 40, -40).TextProperties.Update
+    Set t = Txt(v, "17", 80, -40): t.SetParameterOnSubString 12, 1, 2, CIRCULO
+    Set t = Txt(v, "2345", 120, -40): t.SetParameterOnSubString 12, 1, 4, CIRCULO
+    Set t = Txt(v, "18", 160, -40): t.TextProperties.FrameType = 1: t.TextProperties.Update: t.SetParameterOnSubString 12, 1, 2, CIRCULO
+
+    Set v = Vista(sh, "QTD AO LADO", 350, 600, 1, 0)
+    Balao v, "21", 0, 0
+    Txt v, "2 PL", 25, 0
+    Balao v, "22", 0, -30
+    Txt v, "3 REQD", 25, -30
+    Balao v, "23", 0, -60
+    Txt v, "(4) PLCS", 25, -60
+    Balao v, "24", 0, -90
+    Txt v, "REQ'D: 5", 25, -90
+    Balao v, "25", 0, -120
+    Txt v, "6 PLATES", 25, -120
+    Balao v, "26", 0, -150
+    Txt v, "7X PLACES", 25, -150
+    Balao v, "27", 0, -180
+    Txt v, "ITEM 12, 8 PL", 40, -180
+    Balao v, "28", 0, -210
+    Txt v, "9 PL", 200, -210
+    Sublinhado v, "29", 100, -240
+    Txt v, "2 PL REF", 125, -240
+
+    Set v = Vista(sh, "AGLOMERADO", 600, 600, 1, 0)
+    Balao v, "31", 0, 0
+    Balao v, "32", 0, -12
+    Balao v, "33", 0, -24
+    Txt v, "2 PL", 0, -38
+    Balao v, "34", 60, 0
+    Balao v, "35", 60, -12
+    Txt v, "3 PL", 85, -12
+    Txt v, "2 PL", 60, -26
+    Balao v, "36", 120, 0
+    Balao v, "37", 135, 0
+
+    Set v = Vista(sh, "CHAVE", 100, 300, 1, 0)
+    Set g = v.Factory2D
+    Balao v, "38", 0, 0
+    Balao v, "39", 0, -14
+    Balao v, "40", 0, -28
+    g.CreateLine 8, 4, 8, -32
+    Txt v, "2 REQD", 20, -14
+    Balao v, "41", 100, 0
+    Balao v, "42", 100, -14
+    g.CreateLine 92, 4, 92, -18
+    Txt v, "3 REQD", 80, -7
+    Balao v, "43", 200, 0
+    g.CreateLine 208, 4, 208, -4
+    Txt v, "4 REQD", 220, 0
+    g.CreateLine 300, 0, 340, 0
+
+    Set v = Vista(sh, "ESCALA GIRADA", 400, 300, 0.25, 0.5)
+    Balao v, "51", 0, 0
+    Txt v, "2 PL", 100, 0
+    Balao v, "52", 200, -200
+
+    Set v = Vista(sh, "REFERENCIAS", 600, 300, 1, 0)
+    Sublinhado v, "61", 0, 0
+    Txt v, "REF", 15, 0
+    Sublinhado v, "62", 0, -60
+    Txt v, "REFERENCE", 15, -60
+    Txt v, "REF 63", 80, 0
+    Balao v, "64", 150, 0
+    Txt v, "REF", 165, 0
+    Sublinhado v, "65" & vbLf & "66" & vbLf & "67", 200, -60
+    Txt v, "2 PL", 225, -70
+    Sublinhado v, "68" & vbLf & "4 PL", 0, -120
+    Sublinhado v, "69" & vbLf & "70" & vbLf & "NOTA", 60, -120
+    Txt v, "NOTA 71 COMUM", 0, -160
+    Txt v, "71", 100, -160
+
+    ' A mesma posicao em duas vistas e folhas: consolida.
+    Set v = Vista(sh, "REPETIDOS", 150, 150, 1, 0)
+    Balao v, "12", 0, 0
+    Balao v, "21", 30, 0
+    Txt v, "5 PL", 55, 0
+    v.LockStatus = True
+    Set v = sh.Views.Item(1)
+    v.Activate
+    Balao v, "81", 700, 700
+
+    Set v = Vista(sh, "ZONE", 0, 0, 1, 0)
+    Balao v, "99", 10, 10
+
+    ' Folha 2: mesmo carimbo. A coluna entra na dezena: A029 em vez de A009.
+    Set sh = doc.Sheets.Add("Folha Dois")
+    sh.PaperSize = 2
+    sh.Orientation = 1
+    Carimbo sh, sh.GetPaperWidth, sh.GetPaperHeight, 8
+    Set v = Vista(sh, "V2", 200, 500, 1, 0)
+    Balao v, "12", 0, 0
+    Balao v, "91", 200, -100
+    Txt v, "3 PL", 225, -100
+
+    ' Folha 3: sem carimbo, zonas pela vista auxiliar.
+    Set sh = doc.Sheets.Add("Folha Tres")
+    sh.PaperSize = 2
+    sh.Activate
+    Set v = Vista(sh, "ZONE[1]", 0, 0, 1, 0)
+    v.Texts.Add "A001", 100, 100
+    v.Texts.Add "B2", 400, 100
+    v.Texts.Add "C003", 100, 400
+    v.Texts.Add "NOTA", 500, 500
+    v.LockStatus = True
+    Set v = Vista(sh, "V3", 100, 110, 1, 0)
+    Balao v, "92", 0, 0
+    Balao v, "93", 300, 290
+
+    ' Folha 4: sem carimbo e sem zona.
+    Set sh = doc.Sheets.Add("Folha Quatro")
+    sh.PaperSize = 2
+    sh.Activate
+    Set v = Vista(sh, "V4", 100, 100, 1, 0)
+    Balao v, "94", 0, 0
+
+    ' Detail sheet: nao conta na numeracao.
+    Salvar doc, pasta & "\POS_RICO.CATDrawing"
+
+    Set doc = CATIA.Documents.Add("Drawing")
+    Set sh = doc.Sheets.Item(1)
+    sh.Activate
+    Set v = Vista(sh, "V1", 100, 100, 1, 0)
+    Txt v, "NENHUM CALLOUT", 0, 0
+    Salvar doc, pasta & "\POS_VAZIO.CATDrawing"
+
+    ' Desenho grande, para medir o tempo: 3000 baloes e 3000 notas em duas folhas.
+    Set doc = CATIA.Documents.Add("Drawing")
+    Set sh = doc.Sheets.Item(1)
+    sh.PaperSize = 2
+    sh.Orientation = 1
+    Carimbo sh, sh.GetPaperWidth, sh.GetPaperHeight, 8
+    Set v = Vista(sh, "G1", 50, 50, 1, 0)
+    For i = 1 To 1500
+        Balao v, CStr(1000 + i), (i Mod 50) * 20, (i \ 50) * 20
+        Txt v, "NOTA COMUM " & i, (i Mod 50) * 20, (i \ 50) * 20 + 8
+    Next
+    Set sh = doc.Sheets.Add("Sheet.2")
+    sh.PaperSize = 2
+    sh.Orientation = 1
+    Carimbo sh, sh.GetPaperWidth, sh.GetPaperHeight, 8
+    Set v = Vista(sh, "G2", 50, 50, 1, 0)
+    For i = 1501 To 3000
+        Balao v, CStr(1000 + i), (i Mod 50) * 20, (i \ 50 - 30) * 20
+        Txt v, "NOTA COMUM " & i, (i Mod 50) * 20, (i \ 50 - 30) * 20 + 8
+    Next
+    Salvar doc, pasta & "\POS_GRANDE.CATDrawing"
+
+    ' Zona vem do balao sem sublinhado. Balao tambem sublinhado so da zona se a posicao nao tiver outro.
+    Set doc = CATIA.Documents.Add("Drawing")
+    Set sh = doc.Sheets.Item(1)
+    sh.PaperSize = 2
+    sh.Orientation = 1
+    Carimbo sh, sh.GetPaperWidth, sh.GetPaperHeight, 8
+    Set v = Vista(sh, "SUBLINHADOS", 100, 500, 1, 0)
+    Balao v, "71", 0, 0
+    BalaoSublinhado v, "71", 600, 0
+    BalaoSublinhado v, "72", 0, -100
+    BalaoSublinhado v, "72", 600, -100
+    Balao v, "73", 0, -200
+    Sublinhado v, "73", 600, -200
+    ' Folhas 2 e 3 com a margem real: 21 a 28 e 31 a 38. A zona e a que esta escrita.
+    Set sh = doc.Sheets.Add("Margem 2")
+    sh.PaperSize = 2
+    sh.Orientation = 1
+    CarimboDe sh, sh.GetPaperWidth, sh.GetPaperHeight, 8, 21
+    Set v = Vista(sh, "M2", 100, 500, 1, 0)
+    Balao v, "74", 0, 0
+    Set sh = doc.Sheets.Add("Margem 3")
+    sh.PaperSize = 2
+    sh.Orientation = 1
+    CarimboDe sh, sh.GetPaperWidth, sh.GetPaperHeight, 8, 31
+    Set v = Vista(sh, "M3", 100, 500, 1, 0)
+    Balao v, "75", 0, 0
+    Salvar doc, pasta & "\POS_SUBLINHADO.CATDrawing"
+
+    Set doc = CATIA.Documents.Add("Part")
+    Salvar doc, pasta & "\NAO_E_DESENHO.CATPart"
+End Sub
+
+Function Fechar()
+    On Error Resume Next
+    CATIA.DisplayFileAlerts = False
+    Do While CATIA.Documents.Count > 0
+        CATIA.Documents.Item(1).Close
+    Loop
+    Fechar = "OK"
+End Function

@@ -1,0 +1,3218 @@
+Option Explicit
+
+Public gSourceDrawing As Object
+Public gTargetDrawing As Object
+
+' ============================================================
+' PASTA DOS TEMPLATES
+' ============================================================
+Private Const TEMPLATE_FOLDER As String = _
+    "\\nfscad05.sjk.emb\dmuv5\smarteam\b01\v5\DLNames\START_UP\"
+
+' ============================================================
+' NOMES FIXOS DO TEMPLATE
+' ============================================================
+Private Const FORMAT_TEXT_NAME As String = "Text.68"
+Private Const SHEET_COUNT_PARAMETER As String = "No_of_Sheets"
+
+' Texto da Main View com o numero da folha nos desenhos E1.
+Private Const WORKING_SHEET_NUMBER_TEXT As String = "Text.1"
+
+' ============================================================
+' BUSCA QUE SELECIONA TODO O CONTEUDO 2D DE UMA VIEW
+'
+' Uma unica chamada de Selection.Search seleciona o conteudo
+' inteiro do Background (geometria, textos, preenchimentos da
+' logo, tabelas, imagens, cotas e anotacoes), sem o eixo
+' AbsoluteAxis e sem as views. Percorrer elemento por elemento
+' pela API era lento demais e nao enxergava os preenchimentos
+' (Area Fill), por isso a logo era colada sem preenchimento.
+'
+' Se algum tipo nao existir na versao do CATIA, a busca falha
+' inteira; por isso ha buscas reserva com menos tipos.
+' ============================================================
+Private Const BACKGROUND_SEARCH_FULL As String = _
+    "(Drafting.Geometry + Drafting.Text + Drafting.Area Fill + " & _
+    "Drafting.Table + Drafting.Picture + Drafting.Dimension + " & _
+    "Drafting.Arrow + Drafting.Axis Line + Drafting.Center Line + " & _
+    "Drafting.Thread + Drafting.Datum Feature + " & _
+    "Drafting.Datum Target + Drafting.Geometrical Tolerance + " & _
+    "Drafting.Balloon),sel"
+
+Private Const BACKGROUND_SEARCH_MEDIUM As String = _
+    "(Drafting.Geometry + Drafting.Text + Drafting.Area Fill + " & _
+    "Drafting.Table + Drafting.Picture),sel"
+
+Private Const BACKGROUND_SEARCH_BASIC As String = _
+    "(Drafting.Geometry + Drafting.Text),sel"
+
+' Tolerancia (mm) para reconhecer um texto colado pela posicao.
+Private Const POSITION_TOLERANCE As Double = 0.001
+
+' ============================================================
+' ATUALIZA O TEMPLATE NO PROPRIO DRAWING
+'
+' O DOCUMENTO ATIVO E MANTIDO. AS VIEWS NAO SAO TOCADAS.
+' PARA CADA FOLHA DE DESENHO:
+'
+' 1. Identifica o formato pelo Background (Text.68 ou texto
+'    com conteudo exato 3A0, A0, A1, A2, A3 ou E3). Se nao
+'    encontrar, usa o formato da primeira folha, que pode ser
+'    informado manualmente.
+'
+' 2. Ajusta o Page Setup (tamanho e orientacao do papel)
+'    conforme a primeira folha do template.
+'
+' 3. Cola o conteudo do Background do template no Background
+'    da folha e so depois apaga o conteudo antigo.
+'
+' 4. Remove as views auxiliares de zona do template antigo e
+'    cola as views auxiliares do template novo, se existirem.
+'
+' 5. Refaz os Attribute Links da legenda com os parametros do
+'    desenho e numera as folhas: folha 1 = 1/<total>, folhas
+'    2 em diante = so o numero da folha.
+'
+' Cancel, X ou ESC encerram silenciosamente.
+' ============================================================
+Public Sub ConvertTemplate()
+
+    On Error GoTo ErrorHandler
+
+    Dim oCATIA As Object
+
+    Dim objDoc As drawingDocument
+    Dim drawingSheetsList As Collection
+
+    Dim sheetFormats() As String
+    Dim dictTemplates As Object
+    Dim warnings As Collection
+
+    Dim operationSucceeded As Boolean
+    Dim operationCancelled As Boolean
+    Dim documentModified As Boolean
+
+    Dim sDefaultFormat As String
+    Dim sFormat As String
+    Dim sFullPath As String
+
+    Dim sheetIndex As Long
+    Dim vFormat As Variant
+
+    operationSucceeded = False
+    operationCancelled = False
+    documentModified = False
+
+    Set oCATIA = CATIA
+
+    ' ========================================================
+    ' VALIDACOES INICIAIS
+    ' ========================================================
+    If oCATIA Is Nothing Then
+
+        Err.Raise _
+            vbObjectError + 1000, _
+            "ConvertTemplate", _
+            "A aplicacao CATIA nao foi encontrada."
+
+    End If
+
+    If oCATIA.Documents.count = 0 Then
+
+        Err.Raise _
+            vbObjectError + 1001, _
+            "ConvertTemplate", _
+            "Nenhum documento aberto."
+
+    End If
+
+    ' A validacao deve acontecer antes da atribuicao
+    ' para uma variavel DrawingDocument.
+    If TypeName(oCATIA.ActiveDocument) <> "DrawingDocument" Then
+
+        Err.Raise _
+            vbObjectError + 1002, _
+            "ConvertTemplate", _
+            "O documento ativo nao e um CATDrawing."
+
+    End If
+
+    Set objDoc = oCATIA.ActiveDocument
+
+    ' O documento convertido e o proprio documento original.
+    Set gSourceDrawing = objDoc
+    Set gTargetDrawing = objDoc
+
+    Set drawingSheetsList = GetDrawingSheets(objDoc.Sheets)
+
+    If drawingSheetsList.count = 0 Then
+
+        Err.Raise _
+            vbObjectError + 1003, _
+            "ConvertTemplate", _
+            "O documento nao possui folhas de desenho."
+
+    End If
+
+    oCATIA.DisplayFileAlerts = False
+    oCATIA.Interactive = False
+
+    ' ========================================================
+    ' IDENTIFICA O FORMATO PADRAO PELA PRIMEIRA FOLHA
+    ' ========================================================
+    sDefaultFormat = _
+        GetFormatFromBackground(drawingSheetsList.item(1))
+
+    If Not IsValidTemplateFormat(sDefaultFormat) Then
+
+        sDefaultFormat = AskTemplateFormat(oCATIA)
+
+        ' Cancel, X ou ESC retornam string vazia.
+        If Len(sDefaultFormat) = 0 Then
+
+            operationCancelled = True
+            GoTo CleanExit
+
+        End If
+
+    End If
+
+    sDefaultFormat = NormalizeTemplateFormat(sDefaultFormat)
+
+    ' ========================================================
+    ' IDENTIFICA O FORMATO DE CADA FOLHA E LOCALIZA OS
+    ' TEMPLATES ANTES DE QUALQUER ALTERACAO NO DESENHO
+    ' ========================================================
+    Set warnings = New Collection
+    Set dictTemplates = CreateObject("Scripting.Dictionary")
+
+    ReDim sheetFormats(1 To drawingSheetsList.count)
+
+    For sheetIndex = 1 To drawingSheetsList.count
+
+        sFormat = _
+            GetFormatFromBackground( _
+                drawingSheetsList.item(sheetIndex))
+
+        If Not IsValidTemplateFormat(sFormat) Then
+
+            sFormat = sDefaultFormat
+
+            If sheetIndex > 1 Then
+
+                warnings.Add _
+                    "Folha " & CStr(sheetIndex) & " (" & _
+                    drawingSheetsList.item(sheetIndex).name & _
+                    "): formato nao identificado, usado " & _
+                    sFormat & "."
+
+            End If
+
+        End If
+
+        sFormat = NormalizeTemplateFormat(sFormat)
+        sheetFormats(sheetIndex) = sFormat
+
+        If Not dictTemplates.Exists(sFormat) Then
+
+            sFullPath = _
+                FindTemplateByFormat( _
+                    TEMPLATE_FOLDER, _
+                    sFormat)
+
+            If Len(sFullPath) = 0 Then
+
+                Err.Raise _
+                    vbObjectError + 1005, _
+                    "ConvertTemplate", _
+                    "Template nao encontrado para o formato " & _
+                    sFormat & "." & _
+                    vbCrLf & vbCrLf & _
+                    "Pasta pesquisada:" & vbCrLf & _
+                    TEMPLATE_FOLDER
+
+            End If
+
+            dictTemplates.Add sFormat, sFullPath
+
+        End If
+
+    Next sheetIndex
+
+    ' ========================================================
+    ' APLICA CADA TEMPLATE NAS FOLHAS DO SEU FORMATO
+    '
+    ' Cada template e aberto uma unica vez.
+    ' ========================================================
+    documentModified = True
+
+    For Each vFormat In dictTemplates.Keys
+
+        ApplyTemplateToSheets _
+            oCATIA, _
+            objDoc, _
+            FilterSheetsByFormat( _
+                drawingSheetsList, _
+                sheetFormats, _
+                CStr(vFormat)), _
+            CStr(dictTemplates(vFormat)), _
+            drawingSheetsList, _
+            warnings
+
+    Next vFormat
+
+    ' ========================================================
+    ' ATUALIZA O TOTAL DE FOLHAS
+    '
+    ' O campo SHEET/OF da folha 1 fica ligado a No_of_Sheets e
+    ' passa a mostrar 1/<total>. As folhas 2 em diante ja
+    ' receberam so o proprio numero na troca do Background.
+    ' ========================================================
+    UpdateSheetCount _
+        objDoc, _
+        drawingSheetsList.count, _
+        warnings
+
+    ' As views nao sao atualizadas aqui de proposito:
+    ' a conversao troca somente o formato.
+    ActivateWorkingViews drawingSheetsList
+
+    operationSucceeded = True
+    GoTo CleanExit
+
+' ============================================================
+' TRATAMENTO DE ERRO
+' ============================================================
+ErrorHandler:
+
+    Dim savedErrorNumber As Long
+    Dim savedErrorDescription As String
+    Dim savedErrorSource As String
+    Dim partialMessage As String
+
+    savedErrorNumber = Err.number
+    savedErrorDescription = Err.Description
+    savedErrorSource = Err.source
+
+    On Error Resume Next
+
+    If Not oCATIA Is Nothing Then
+
+        oCATIA.Interactive = True
+        oCATIA.DisplayFileAlerts = True
+
+        If Not objDoc Is Nothing Then
+            objDoc.Activate
+        End If
+
+    End If
+
+    On Error GoTo 0
+
+    partialMessage = ""
+
+    If documentModified Then
+
+        partialMessage = _
+            vbCrLf & vbCrLf & _
+            "O desenho pode ter ficado parcialmente convertido." & _
+            vbCrLf & _
+            "Feche-o SEM SALVAR e abra novamente antes de " & _
+            "repetir a conversao."
+
+    End If
+
+    MsgBox _
+        "Falha na execucao." & _
+        vbCrLf & vbCrLf & _
+        "Erro numero: " & _
+        CStr(savedErrorNumber) & vbCrLf & _
+        "Origem: " & _
+        savedErrorSource & vbCrLf & _
+        "Descricao: " & _
+        savedErrorDescription & _
+        partialMessage, _
+        vbCritical, _
+        "Erro"
+
+    GoTo FinalExit
+
+' ============================================================
+' SAIDA NORMAL OU CANCELAMENTO
+' ============================================================
+CleanExit:
+
+    On Error Resume Next
+
+    If Not oCATIA Is Nothing Then
+
+        oCATIA.Interactive = True
+        oCATIA.DisplayFileAlerts = True
+
+        If Not objDoc Is Nothing Then
+            objDoc.Activate
+        End If
+
+        oCATIA.ActiveWindow.ActiveViewer.Update
+
+        DoEvents
+
+    End If
+
+    On Error GoTo 0
+
+    If operationSucceeded Then
+
+        MsgBox _
+            "Template atualizado no proprio desenho." & _
+            vbCrLf & vbCrLf & _
+            BuildSheetSummary(drawingSheetsList, sheetFormats) & _
+            BuildWarningSummary(warnings) & _
+            vbCrLf & _
+            "Confira o desenho e salve para confirmar.", _
+            vbInformation, _
+            "Migracao de Template"
+
+    End If
+
+' ============================================================
+' LIMPEZA FINAL
+' ============================================================
+FinalExit:
+
+    On Error Resume Next
+
+    If Not objDoc Is Nothing Then
+        objDoc.Selection.Clear
+    End If
+
+    CATIA.StatusBar = ""
+
+    Set warnings = Nothing
+    Set dictTemplates = Nothing
+    Set drawingSheetsList = Nothing
+
+    Set objDoc = Nothing
+    Set oCATIA = Nothing
+
+    Err.Clear
+    On Error GoTo 0
+
+End Sub
+
+' ============================================================
+' SOLICITA O FORMATO MANUALMENTE
+'
+' RETORNA STRING VAZIA EM CANCEL, X OU ESC.
+' ============================================================
+Private Function AskTemplateFormat( _
+    ByVal oCATIA As Object) As String
+
+    Dim sFormat As String
+
+    ' A InputBox precisa de interacao.
+    oCATIA.Interactive = True
+
+    sFormat = InputBox( _
+        "Nao foi possivel identificar automaticamente " & _
+        "o tamanho da folha no Background." & _
+        vbCrLf & vbCrLf & _
+        "Digite um dos formatos abaixo:" & _
+        vbCrLf & vbCrLf & _
+        "3A0" & vbCrLf & _
+        "A0" & vbCrLf & _
+        "A1" & vbCrLf & _
+        "A2" & vbCrLf & _
+        "A3" & vbCrLf & _
+        "E3", _
+        "Definicao de Formato", _
+        "A0")
+
+    sFormat = NormalizeTemplateFormat(sFormat)
+
+    If Len(sFormat) = 0 Then
+
+        AskTemplateFormat = ""
+        Exit Function
+
+    End If
+
+    If Not IsValidTemplateFormat(sFormat) Then
+
+        Err.Raise _
+            vbObjectError + 1004, _
+            "ConvertTemplate", _
+            "Formato invalido: " & sFormat & _
+            vbCrLf & vbCrLf & _
+            "Utilize somente 3A0, A0, A1, A2, A3 ou E3."
+
+    End If
+
+    ' A conversao realmente continuara.
+    oCATIA.Interactive = False
+
+    AskTemplateFormat = sFormat
+
+End Function
+
+' ============================================================
+' APLICA UM TEMPLATE EM UM GRUPO DE FOLHAS
+'
+' O CONTEUDO DO BACKGROUND E COPIADO UMA UNICA VEZ E COLADO
+' EM TODAS AS FOLHAS DO GRUPO. O CONTEUDO ANTIGO SO E APAGADO
+' DEPOIS QUE A COLAGEM FOR CONFIRMADA, PARA QUE A FOLHA NUNCA
+' FIQUE SEM FORMATO.
+' ============================================================
+Private Sub ApplyTemplateToSheets( _
+    ByVal oCATIA As Object, _
+    ByVal objDoc As drawingDocument, _
+    ByVal targetSheets As Collection, _
+    ByVal templatePath As String, _
+    ByVal allSheets As Collection, _
+    ByVal warnings As Collection)
+
+    On Error GoTo ErrorHandler
+
+    Dim objTemplateDoc As drawingDocument
+    Dim templateOpenedHere As Boolean
+
+    Dim templateSheet As drawingSheet
+    Dim templateBackground As drawingView
+    Dim templateView As drawingView
+
+    Dim targetSheet As drawingSheet
+    Dim targetBackground As drawingView
+    Dim pastedView As drawingView
+
+    Dim templateTextCount As Long
+    Dim textLinks As Object
+    Dim targetParameters As Object
+    Dim nameIndex As Object
+    Dim positionIndex As Object
+
+    Dim sheetCountKey As String
+    Dim skipLinkKey As String
+    Dim sheetPrefixes As Collection
+    Dim sheetNumber As Long
+
+    Dim selTemplate As Selection
+    Dim selTarget As Selection
+
+    Dim sheetIndex As Long
+    Dim viewIndex As Long
+    Dim viewCountBefore As Long
+    Dim marginColumns As Collection
+    Dim hasLaterSheet As Boolean
+
+    templateOpenedHere = False
+
+    Set objTemplateDoc = _
+        OpenTemplate( _
+            oCATIA, _
+            templatePath, _
+            templateOpenedHere)
+
+    Set templateSheet = _
+        GetDrawingSheets(objTemplateDoc.Sheets).item(1)
+
+    Set templateBackground = _
+        GetBackgroundView(templateSheet)
+
+    Set selTemplate = objTemplateDoc.Selection
+    Set selTarget = objDoc.Selection
+
+    ' ========================================================
+    ' MAPEIA OS VINCULOS TEXTO -> PARAMETRO DO TEMPLATE
+    '
+    ' A colagem entre documentos perde os Attribute Links: os
+    ' campos da legenda chegavam como "XXX". O mapa e lido antes
+    ' da copia e os vinculos sao refeitos depois da colagem com
+    ' os parametros do proprio desenho.
+    ' ========================================================
+    SetStatus "Conversao de template: lendo os vinculos da legenda..."
+
+    Set textLinks = _
+        MapTemplateTextLinks( _
+            objTemplateDoc.Parameters, _
+            templateBackground)
+
+    Set targetParameters = _
+        CreateObject("Scripting.Dictionary")
+
+    targetParameters.CompareMode = vbTextCompare
+
+    ' Campo SHEET/OF = texto ligado a No_of_Sheets. Se o "1 /"
+    ' for um texto separado ao lado, ele tambem e localizado.
+    sheetCountKey = _
+        FindLinkKeyForParameter(textLinks, SHEET_COUNT_PARAMETER)
+
+    Set sheetPrefixes = New Collection
+
+    ' Template novo (R00): o campo SHEET/OF e um "XX" sem vinculo.
+    ' Folha 1 vira 1/<total>, as outras so o numero da folha.
+    If Len(sheetCountKey) = 0 Then
+
+        sheetCountKey = _
+            FindSheetFieldWithoutLink( _
+                templateSheet, _
+                templateBackground, _
+                textLinks)
+
+    End If
+
+    If Len(sheetCountKey) = 0 Then
+
+        warnings.Add _
+            "Nenhum texto do template esta ligado a " & _
+            SHEET_COUNT_PARAMETER & ": numeracao das folhas " & _
+            "nao atualizada."
+
+    Else
+
+        Set sheetPrefixes = _
+            FindSheetFieldPrefixes( _
+                templateBackground, _
+                textLinks(sheetCountKey))
+
+    End If
+
+    ' ========================================================
+    ' NUMEROS DAS COLUNAS NA MARGEM
+    '
+    ' Lidos uma vez no template e trocados em cada folha 2 em
+    ' diante: 29, 28, 27... na folha 2, 39, 38, 37... na folha 3.
+    ' ========================================================
+    Set marginColumns = New Collection
+    hasLaterSheet = False
+
+    For sheetIndex = 1 To targetSheets.count
+        If SheetPosition(allSheets, targetSheets.item(sheetIndex).name) >= 2 Then
+            hasLaterSheet = True
+        End If
+    Next sheetIndex
+
+    If hasLaterSheet Then
+        Set marginColumns = _
+            ReadMarginColumns(templateSheet, templateBackground, warnings)
+    End If
+
+    ' ========================================================
+    ' COPIA O CONTEUDO DO BACKGROUND DO TEMPLATE
+    '
+    ' O template precisa estar ativo: com ele inativo o CATIA
+    ' recusa selecionar os textos.
+    ' ========================================================
+    objTemplateDoc.Activate
+
+    SetStatus "Conversao de template: copiando o formato novo..."
+
+    If SelectViewContents(selTemplate, templateBackground) = 0 Then
+
+        Err.Raise _
+            vbObjectError + 1200, _
+            "ApplyTemplateToSheets", _
+            "O Background do template esta vazio:" & _
+            vbCrLf & templatePath
+
+    End If
+
+    templateTextCount = templateBackground.Texts.count
+
+    selTemplate.Copy
+    selTemplate.Clear
+
+    objDoc.Activate
+
+    ' ========================================================
+    ' PAGE SETUP + TROCA DO BACKGROUND EM CADA FOLHA
+    '
+    ' Uma busca + um Delete apagam o formato antigo e um Paste
+    ' cola o novo. Nada e feito elemento por elemento.
+    ' ========================================================
+    For sheetIndex = 1 To targetSheets.count
+
+        Set targetSheet = targetSheets.item(sheetIndex)
+        Set targetBackground = GetBackgroundView(targetSheet)
+
+        SetStatus "Conversao de template: folha " & _
+            CStr(sheetIndex) & " de " & CStr(targetSheets.count) & _
+            " (" & targetSheet.name & ")..."
+
+        ApplyPaperSetup templateSheet, targetSheet
+
+        If SelectViewContents(selTarget, targetBackground) > 0 Then
+            selTarget.Delete
+        End If
+
+        selTarget.Clear
+
+        PasteInto selTarget, targetBackground
+
+        ' Os textos da legenda precisam ter chegado.
+        If targetBackground.Texts.count < templateTextCount Then
+
+            Err.Raise _
+                vbObjectError + 1201, _
+                "ApplyTemplateToSheets", _
+                "Nao foi possivel colar o Background do template " & _
+                "na folha " & targetSheet.name & "."
+
+        End If
+
+        ' Indices dos textos colados, montados sob demanda e
+        ' reaproveitados pelos vinculos e pela numeracao.
+        Set nameIndex = Nothing
+        Set positionIndex = Nothing
+
+        ' Folha 1: SHEET/OF fica ligado e mostra 1/<total>.
+        ' Folhas 2 em diante: o campo nao e religado e recebe so
+        ' o numero da folha.
+        sheetNumber = SheetPosition(allSheets, targetSheet.name)
+
+        If sheetNumber >= 2 Then
+            skipLinkKey = sheetCountKey
+        Else
+            skipLinkKey = ""
+        End If
+
+        ' Folha 1: o Background ja mostra "1 / <total>". O numero
+        ' antigo da Main View (Text.1) sai para nao duplicar o "1".
+        If sheetNumber = 1 Then
+            DeleteWorkingSheetNumber selTarget, targetSheet.Views.item(1)
+        End If
+
+        ApplyTextLinks _
+            objDoc.Parameters, _
+            targetParameters, _
+            targetBackground, _
+            textLinks, _
+            skipLinkKey, _
+            nameIndex, _
+            positionIndex, _
+            warnings
+
+        If sheetNumber >= 2 And Len(sheetCountKey) > 0 Then
+
+            ApplySheetNumber _
+                selTarget, _
+                targetBackground, _
+                targetSheet.Views.item(1), _
+                textLinks(sheetCountKey), _
+                sheetPrefixes, _
+                sheetNumber, _
+                targetSheet.name, _
+                nameIndex, _
+                positionIndex, _
+                warnings
+
+        End If
+
+        If sheetNumber >= 2 Then
+
+            ApplyMarginNumbers _
+                targetBackground, _
+                positionIndex, _
+                marginColumns, _
+                sheetNumber, _
+                targetSheet.name, _
+                warnings
+
+        End If
+
+        DeleteTemplateAuxiliaryViews selTarget, targetSheet
+
+    Next sheetIndex
+
+    ' ========================================================
+    ' COPIA AS VIEWS AUXILIARES DO TEMPLATE (EX.: ZONAS)
+    '
+    ' Views 1 e 2 sao sempre Main View e Background View.
+    ' ========================================================
+    For viewIndex = 3 To templateSheet.Views.count
+
+        Set templateView = templateSheet.Views.item(viewIndex)
+
+        objTemplateDoc.Activate
+
+        selTemplate.Clear
+        selTemplate.Add templateView
+
+        If selTemplate.count = 0 Then
+
+            Err.Raise _
+                vbObjectError + 1203, _
+                "ApplyTemplateToSheets", _
+                "Nao foi possivel selecionar a view " & _
+                templateView.name & " do template."
+
+        End If
+
+        selTemplate.Copy
+        selTemplate.Clear
+
+        objDoc.Activate
+
+        For sheetIndex = 1 To targetSheets.count
+
+            Set targetSheet = targetSheets.item(sheetIndex)
+
+            viewCountBefore = targetSheet.Views.count
+
+            PasteInto selTarget, targetSheet
+
+            ' So reposiciona se a view foi realmente colada; senao
+            ' a ultima view do proprio desenho seria movida.
+            If targetSheet.Views.count <= viewCountBefore Then
+
+                Err.Raise _
+                    vbObjectError + 1204, _
+                    "ApplyTemplateToSheets", _
+                    "Nao foi possivel colar a view " & _
+                    templateView.name & " na folha " & _
+                    targetSheet.name & "."
+
+            End If
+
+            Set pastedView = _
+                targetSheet.Views.item( _
+                    targetSheet.Views.count)
+
+            pastedView.x = templateView.x
+            pastedView.y = templateView.y
+
+            ' Folhas 2 em diante: a grade de zonas ganha a dezena
+            ' da folha (F6 vira F26 na folha 2).
+            sheetNumber = SheetPosition(allSheets, targetSheet.name)
+
+            If sheetNumber >= 2 And IsTemplateAuxiliaryView(templateView) Then
+                ApplyGridNumbers pastedView, sheetNumber, warnings
+            End If
+
+        Next sheetIndex
+
+    Next viewIndex
+
+    GoTo CleanExit
+
+ErrorHandler:
+
+    Dim savedErrorNumber As Long
+    Dim savedErrorDescription As String
+    Dim savedErrorSource As String
+
+    savedErrorNumber = Err.number
+    savedErrorDescription = Err.Description
+    savedErrorSource = Err.source
+
+    CloseTemplate objTemplateDoc, templateOpenedHere, objDoc
+
+    Err.Raise _
+        savedErrorNumber, _
+        savedErrorSource, _
+        savedErrorDescription
+
+CleanExit:
+
+    CloseTemplate objTemplateDoc, templateOpenedHere, objDoc
+
+End Sub
+
+' ============================================================
+' ABRE O TEMPLATE OU REUTILIZA O QUE JA ESTIVER ABERTO
+'
+' O TEMPLATE NUNCA E ALTERADO NEM SALVO. SE JA ESTIVER ABERTO
+' COM ALTERACOES, A CONVERSAO E INTERROMPIDA, POIS O CONTEUDO
+' NAO SERIA MAIS O DO ARQUIVO ORIGINAL.
+' ============================================================
+Private Function OpenTemplate( _
+    ByVal oCATIA As Object, _
+    ByVal templatePath As String, _
+    ByRef openedHere As Boolean) As drawingDocument
+
+    Dim doc As Document
+    Dim docFullName As String
+    Dim templateDoc As Object
+
+    openedHere = False
+    Set OpenTemplate = Nothing
+
+    For Each doc In oCATIA.Documents
+
+        docFullName = ""
+
+        On Error Resume Next
+        docFullName = doc.FullName
+        Err.Clear
+        On Error GoTo 0
+
+        If StrComp( _
+            docFullName, _
+            templatePath, _
+            vbTextCompare) = 0 Then
+
+            If TypeName(doc) = "DrawingDocument" Then
+
+                If Not doc.Saved Then
+
+                    Err.Raise _
+                        vbObjectError + 1006, _
+                        "OpenTemplate", _
+                        "O template esta aberto com alteracoes:" & _
+                        vbCrLf & templatePath & _
+                        vbCrLf & vbCrLf & _
+                        "Feche-o sem salvar e execute novamente."
+
+                End If
+
+                Set OpenTemplate = doc
+                Exit Function
+
+            End If
+
+        End If
+
+    Next doc
+
+    ' O template abre com o CATIA interativo: se o CATIA ou o
+    ' SmarTeam mostrar alguma janela ao abrir o arquivo, com
+    ' Interactive = False ela ficaria invisivel e o CATIA
+    ' travaria esperando uma resposta.
+    oCATIA.Interactive = True
+
+    Set templateDoc = oCATIA.Documents.Open(templatePath)
+
+    oCATIA.Interactive = False
+
+    If templateDoc Is Nothing Then
+
+        Err.Raise _
+            vbObjectError + 1007, _
+            "OpenTemplate", _
+            "Nao foi possivel abrir o template:" & _
+            vbCrLf & templatePath
+
+    End If
+
+    openedHere = True
+    Set OpenTemplate = templateDoc
+
+End Function
+
+' ============================================================
+' FECHA O TEMPLATE SE ELE FOI ABERTO PELA MACRO
+' ============================================================
+Private Sub CloseTemplate( _
+    ByRef objTemplateDoc As drawingDocument, _
+    ByRef openedHere As Boolean, _
+    ByVal objDoc As drawingDocument)
+
+    On Error Resume Next
+
+    If Not objTemplateDoc Is Nothing Then
+
+        objTemplateDoc.Selection.Clear
+
+        If openedHere Then
+            objTemplateDoc.Close
+        End If
+
+    End If
+
+    Set objTemplateDoc = Nothing
+    openedHere = False
+
+    If Not objDoc Is Nothing Then
+        objDoc.Activate
+    End If
+
+    Err.Clear
+    On Error GoTo 0
+
+End Sub
+
+' ============================================================
+' PAGE SETUP: COPIA TAMANHO E ORIENTACAO DO PAPEL
+'
+' 3A0 E E3 NAO SAO FORMATOS PADRAO DO CATIA, ENTAO CHEGAM
+' COMO catPaperUser E PRECISAM DA LARGURA E ALTURA EXPLICITAS.
+' A ESCALA E O METODO DE PROJECAO DA FOLHA NAO SAO ALTERADOS.
+' ============================================================
+Private Sub ApplyPaperSetup( _
+    ByVal templateSheet As drawingSheet, _
+    ByVal targetSheet As drawingSheet)
+
+    targetSheet.PaperSize = templateSheet.PaperSize
+    targetSheet.Orientation = templateSheet.Orientation
+
+    If templateSheet.PaperSize = catPaperUser Then
+
+        targetSheet.SetPaperWidth templateSheet.GetPaperWidth
+        targetSheet.SetPaperHeight templateSheet.GetPaperHeight
+
+    End If
+
+End Sub
+
+' ============================================================
+' REMOVE AS VIEWS AUXILIARES DE ZONA DO TEMPLATE ANTIGO
+'
+' MESMO CRITERIO USADO PELO POSZONE, PARA NAO APAGAR VIEWS DO
+' USUARIO QUE APENAS CONTENHAM "ZONE" NO NOME.
+' ============================================================
+Private Sub DeleteTemplateAuxiliaryViews( _
+    ByVal sel As Selection, _
+    ByVal objSheet As drawingSheet)
+
+    Dim auxiliaryViews As Collection
+    Dim viewIndex As Long
+
+    Set auxiliaryViews = New Collection
+
+    For viewIndex = 3 To objSheet.Views.count
+
+        If IsTemplateAuxiliaryView( _
+            objSheet.Views.item(viewIndex)) Then
+
+            auxiliaryViews.Add objSheet.Views.item(viewIndex)
+
+        End If
+
+    Next viewIndex
+
+    ' A ZONE do template antigo vem travada (cadeado) e o CATIA
+    ' nao apaga view travada: destrava antes de apagar.
+    On Error Resume Next
+
+    For viewIndex = 1 To auxiliaryViews.count
+        auxiliaryViews.item(viewIndex).LockStatus = False
+        Err.Clear
+    Next viewIndex
+
+    On Error GoTo 0
+
+    DeleteObjects sel, auxiliaryViews
+
+End Sub
+
+Private Function IsTemplateAuxiliaryView( _
+    ByVal objView As drawingView) As Boolean
+
+    Dim viewName As String
+
+    viewName = UCase$(Trim$(objView.name))
+
+    IsTemplateAuxiliaryView = _
+        viewName = "ZONE" Or _
+        Left$(viewName, 5) = "ZONE[" Or _
+        Left$(viewName, 12) = "ZONES_A1_SHT"
+
+    If IsTemplateAuxiliaryView Then Exit Function
+
+    ' Vistas de zona com o formato no nome: ZONE A0, ZONE A0[3],
+    ' ZONES_A0_SHT1, ZONES_A0_SHT1[2]. O nome precisa ser exato, para
+    ' nao apagar views do usuario com ZONE no nome. Sem isso, a grade
+    ' antiga do A0 ficava embaixo da nova.
+    Dim bracketPosition As Long
+    Dim restOfName As String
+    Dim sheetMark As Long
+
+    If Right$(viewName, 1) = "]" Then
+        bracketPosition = InStrRev(viewName, "[")
+        If bracketPosition > 1 Then
+            If IsAllDigits(Mid$(viewName, bracketPosition + 1, Len(viewName) - bracketPosition - 1)) Then
+                viewName = Left$(viewName, bracketPosition - 1)
+            End If
+        End If
+    End If
+
+    If Left$(viewName, 5) = "ZONE " Then
+
+        IsTemplateAuxiliaryView = IsZoneFormatName(Trim$(Mid$(viewName, 6)))
+
+    ElseIf Left$(viewName, 6) = "ZONES_" Then
+
+        restOfName = Mid$(viewName, 7)
+        sheetMark = InStr(1, restOfName, "_SHT", vbBinaryCompare)
+
+        If sheetMark > 1 Then
+            If IsZoneFormatName(Left$(restOfName, sheetMark - 1)) Then
+                restOfName = Mid$(restOfName, sheetMark + 4)
+                IsTemplateAuxiliaryView = (Len(restOfName) = 0 Or IsAllDigits(restOfName))
+            End If
+        End If
+
+    End If
+
+End Function
+
+Private Function IsZoneFormatName( _
+    ByVal formatName As String) As Boolean
+
+    Select Case formatName
+        Case "3A0", "A0", "A1", "A2", "A3", "E3"
+            IsZoneFormatName = True
+    End Select
+
+End Function
+
+' ============================================================
+' NUMERO DA COLUNA NA FOLHA
+'
+' A folha entra na dezena, como na zona: coluna 9 e 9 na folha 1,
+' 29 na folha 2 e 39 na folha 3.
+' ============================================================
+Private Function ColumnNumberForSheet( _
+    ByVal columnNumber As Long, _
+    ByVal sheetNumber As Long) As Long
+
+    If sheetNumber <= 1 Then
+        ColumnNumberForSheet = columnNumber
+    Else
+        ColumnNumberForSheet = sheetNumber * 10 + columnNumber
+    End If
+
+End Function
+
+' ============================================================
+' LE OS NUMEROS DAS COLUNAS NA MARGEM DO TEMPLATE
+'
+' So vale o numero que aparece em cima e embaixo na mesma coluna:
+' assim um numero solto da legenda, que tambem fica perto da
+' borda de baixo, nunca e trocado. Cada item: Array(x, y, coluna).
+' ============================================================
+Private Function ReadMarginColumns( _
+    ByVal templateSheet As drawingSheet, _
+    ByVal templateBackground As drawingView, _
+    ByVal warnings As Collection) As Collection
+
+    Const MARGIN_RATIO As Double = 0.12
+    Const MARGIN_MIN As Double = 15#
+    Const MARGIN_MAX As Double = 80#
+    Const MARGIN_MIN_COLUMNS As Long = 3
+    Const MARGIN_PAIR_X As Double = 2#
+
+    Dim found As New Collection
+    Dim topX() As Double, topY() As Double, topValue() As Long, topUsed() As Boolean
+    Dim bottomX() As Double, bottomY() As Double, bottomValue() As Long
+    Dim topCount As Long, bottomCount As Long
+    Dim paperWidth As Double, paperHeight As Double, band As Double
+    Dim objText As Object
+    Dim textValue As String
+    Dim itemIndex As Long, otherIndex As Long
+    Dim x As Double, y As Double
+    Dim distinctValues As Object
+    Dim bottomAdded As Boolean
+
+    Set ReadMarginColumns = found
+
+    On Error GoTo ReadFailed
+
+    paperWidth = templateSheet.GetPaperWidth
+    paperHeight = templateSheet.GetPaperHeight
+
+    If paperWidth > 0 And paperHeight > 0 Then
+
+        band = paperHeight * MARGIN_RATIO
+        If band < MARGIN_MIN Then band = MARGIN_MIN
+        If band > MARGIN_MAX Then band = MARGIN_MAX
+
+        For itemIndex = 1 To templateBackground.Texts.count
+
+            Set objText = templateBackground.Texts.item(itemIndex)
+            textValue = Trim$(CStr(objText.Text))
+
+            ' So os numeros de 1 ou 2 digitos precisam da posicao.
+            If Len(textValue) > 0 And Len(textValue) <= 2 And IsAllDigits(textValue) Then
+                If CLng(textValue) > 0 Then
+
+                    x = objText.x
+                    y = objText.y
+
+                    If y >= paperHeight - band And y <= paperHeight Then
+                        topCount = topCount + 1
+                        ReDim Preserve topX(1 To topCount)
+                        ReDim Preserve topY(1 To topCount)
+                        ReDim Preserve topValue(1 To topCount)
+                        ReDim Preserve topUsed(1 To topCount)
+                        topX(topCount) = x: topY(topCount) = y: topValue(topCount) = CLng(textValue)
+                    ElseIf y >= 0 And y <= band Then
+                        bottomCount = bottomCount + 1
+                        ReDim Preserve bottomX(1 To bottomCount)
+                        ReDim Preserve bottomY(1 To bottomCount)
+                        ReDim Preserve bottomValue(1 To bottomCount)
+                        bottomX(bottomCount) = x: bottomY(bottomCount) = y: bottomValue(bottomCount) = CLng(textValue)
+                    End If
+
+                End If
+            End If
+
+        Next itemIndex
+
+        Set distinctValues = CreateObject("Scripting.Dictionary")
+
+        For itemIndex = 1 To bottomCount
+
+            bottomAdded = False
+
+            For otherIndex = 1 To topCount
+
+                If topValue(otherIndex) = bottomValue(itemIndex) And _
+                   Abs(topX(otherIndex) - bottomX(itemIndex)) <= MARGIN_PAIR_X Then
+
+                    If Not bottomAdded Then
+                        found.Add Array(bottomX(itemIndex), bottomY(itemIndex), bottomValue(itemIndex))
+                        bottomAdded = True
+                    End If
+
+                    If Not topUsed(otherIndex) Then
+                        found.Add Array(topX(otherIndex), topY(otherIndex), topValue(otherIndex))
+                        topUsed(otherIndex) = True
+                    End If
+
+                    If Not distinctValues.Exists(bottomValue(itemIndex)) Then
+                        distinctValues.Add bottomValue(itemIndex), True
+                    End If
+
+                End If
+
+            Next otherIndex
+
+        Next itemIndex
+
+        If distinctValues.count < MARGIN_MIN_COLUMNS Then
+            Set found = New Collection
+        End If
+
+    End If
+
+    GoTo ReadDone
+
+ReadFailed:
+    Err.Clear
+    Set found = New Collection
+
+ReadDone:
+    On Error GoTo 0
+
+    If found.count = 0 Then
+        warnings.Add _
+            "Numeracao da margem nao encontrada no template: as " & _
+            "margens ficaram sem a dezena da folha."
+    End If
+
+    Set ReadMarginColumns = found
+
+End Function
+
+' ============================================================
+' TROCA OS NUMEROS DA MARGEM NAS FOLHAS 2 EM DIANTE
+' ============================================================
+Private Sub ApplyMarginNumbers( _
+    ByVal targetBackground As drawingView, _
+    ByRef positionIndex As Object, _
+    ByVal marginColumns As Collection, _
+    ByVal sheetNumber As Long, _
+    ByVal sheetName As String, _
+    ByVal warnings As Collection)
+
+    Dim marginItem As Variant
+    Dim positionKey As String
+    Dim failedCount As Long
+    Dim written As Boolean
+
+    If marginColumns.count = 0 Then Exit Sub
+
+    If positionIndex Is Nothing Then
+        Set positionIndex = BuildTextIndex(targetBackground, True)
+    End If
+
+    For Each marginItem In marginColumns
+
+        positionKey = TextPositionKey(CDbl(marginItem(0)), CDbl(marginItem(1)))
+        written = False
+
+        If positionIndex.Exists(positionKey) Then
+            written = WriteTextKeepingLine( _
+                positionIndex(positionKey), _
+                CStr(ColumnNumberForSheet(CLng(marginItem(2)), sheetNumber)))
+        End If
+
+        If Not written Then failedCount = failedCount + 1
+
+    Next marginItem
+
+    If failedCount > 0 Then
+        warnings.Add _
+            "Folha " & CStr(sheetNumber) & " (" & sheetName & "): " & _
+            CStr(failedCount) & " numero(s) da margem nao foram atualizados."
+    End If
+
+End Sub
+
+' ============================================================
+' TROCA OS ROTULOS DA GRADE DE ZONAS NAS FOLHAS 2 EM DIANTE
+'
+' F6 vira F26 na folha 2, E005 vira E025.
+' ============================================================
+Private Sub ApplyGridNumbers( _
+    ByVal pastedView As drawingView, _
+    ByVal sheetNumber As Long, _
+    ByVal warnings As Collection)
+
+    Dim wasLocked As Boolean
+    Dim itemIndex As Long
+    Dim objText As Object
+    Dim newLabel As String
+
+    On Error GoTo GridFailed
+
+    wasLocked = CBool(pastedView.LockStatus)
+    If wasLocked Then pastedView.LockStatus = False
+
+    For itemIndex = 1 To pastedView.Texts.count
+
+        Set objText = pastedView.Texts.item(itemIndex)
+        newLabel = ZoneLabelForSheet(CStr(objText.Text), sheetNumber)
+
+        If Len(newLabel) > 0 Then
+            WriteTextKeepingLine objText, newLabel
+        End If
+
+    Next itemIndex
+
+    If wasLocked Then pastedView.LockStatus = True
+
+    On Error GoTo 0
+    Exit Sub
+
+GridFailed:
+    Err.Clear
+    On Error GoTo 0
+
+    warnings.Add _
+        "Folha " & CStr(sheetNumber) & ": nao foi possivel numerar " & _
+        "a grade " & pastedView.name & "."
+
+End Sub
+
+' "" se o texto nao for um rotulo de zona (letra de A a F e ate 3 digitos).
+Private Function ZoneLabelForSheet( _
+    ByVal textValue As String, _
+    ByVal sheetNumber As Long) As String
+
+    Dim label As String
+    Dim digits As String
+    Dim newNumber As String
+
+    label = UCase$(Trim$(textValue))
+
+    If Len(label) < 2 Or Len(label) > 4 Then Exit Function
+    If Left$(label, 1) < "A" Or Left$(label, 1) > "F" Then Exit Function
+
+    digits = Mid$(label, 2)
+
+    If Not IsAllDigits(digits) Then Exit Function
+    If CLng(digits) <= 0 Then Exit Function
+
+    newNumber = CStr(ColumnNumberForSheet(CLng(digits), sheetNumber))
+
+    If Len(newNumber) < Len(digits) Then
+        newNumber = String$(Len(digits) - Len(newNumber), "0") & newNumber
+    End If
+
+    ZoneLabelForSheet = Left$(label, 1) & newNumber
+
+End Function
+
+' Troca o texto. Se ele tem largura fixa, ajusta para o numero
+' maior nao cair para a linha de baixo.
+Private Function WriteTextKeepingLine( _
+    ByVal objText As Object, _
+    ByVal newText As String) As Boolean
+
+    Dim oldWidth As Double
+    Dim naturalWidth As Double
+
+    On Error Resume Next
+
+    oldWidth = -1
+    oldWidth = CDbl(objText.WrappingWidth)
+    If Err.number <> 0 Then oldWidth = -1
+    Err.Clear
+
+    objText.Text = newText
+
+    If Err.number <> 0 Then
+        Err.Clear
+        On Error GoTo 0
+        Exit Function
+    End If
+
+    If oldWidth > 0 Then
+        ' Largura 0 faz o CATIA ajustar a caixa ao texto.
+        objText.WrappingWidth = 0
+        naturalWidth = CDbl(objText.WrappingWidth)
+        If Err.number = 0 Then
+            If oldWidth > naturalWidth Then objText.WrappingWidth = oldWidth
+        End If
+        Err.Clear
+    End If
+
+    WriteTextKeepingLine = (CStr(objText.Text) = newText)
+
+    Err.Clear
+    On Error GoTo 0
+
+End Function
+
+' ============================================================
+' ATUALIZA O PARAMETRO COM O TOTAL DE FOLHAS
+' ============================================================
+Private Sub UpdateSheetCount( _
+    ByVal objDoc As drawingDocument, _
+    ByVal sheetCount As Long, _
+    ByVal warnings As Collection)
+
+    On Error Resume Next
+
+    objDoc.Parameters.item( _
+        SHEET_COUNT_PARAMETER).ValuateFromString _
+        CStr(sheetCount)
+
+    If Err.number <> 0 Then
+
+        warnings.Add _
+            "Parametro " & SHEET_COUNT_PARAMETER & _
+            " nao encontrado ou nao editavel."
+
+    End If
+
+    Err.Clear
+    On Error GoTo 0
+
+End Sub
+
+' ============================================================
+' DEVOLVE TODAS AS FOLHAS AS VIEWS DE TRABALHO
+'
+' Colar no Background deixa cada folha em modo de edicao do
+' Background. Cada folha e ativada com a Main View ativa, da
+' ultima para a primeira, para a folha 1 terminar ativa.
+' ============================================================
+Private Sub ActivateWorkingViews( _
+    ByVal drawingSheetsList As Collection)
+
+    Dim sheetIndex As Long
+    Dim objSheet As drawingSheet
+
+    On Error Resume Next
+
+    For sheetIndex = drawingSheetsList.count To 1 Step -1
+
+        Set objSheet = drawingSheetsList.item(sheetIndex)
+
+        objSheet.Activate
+        objSheet.Views.item(1).Activate
+
+        Err.Clear
+
+    Next sheetIndex
+
+    Err.Clear
+    On Error GoTo 0
+
+End Sub
+
+' ============================================================
+' LISTA AS FOLHAS DE DESENHO (IGNORA DETAIL SHEETS)
+' ============================================================
+Private Function GetDrawingSheets( _
+    ByVal objSheets As drawingSheets) As Collection
+
+    Dim result As Collection
+    Dim sheetIndex As Long
+    Dim isDetailSheet As Boolean
+
+    Set result = New Collection
+
+    For sheetIndex = 1 To objSheets.count
+
+        isDetailSheet = False
+
+        On Error Resume Next
+        isDetailSheet = objSheets.item(sheetIndex).IsDetail
+        Err.Clear
+        On Error GoTo 0
+
+        If Not isDetailSheet Then
+            result.Add objSheets.item(sheetIndex)
+        End If
+
+    Next sheetIndex
+
+    Set GetDrawingSheets = result
+
+End Function
+
+' ============================================================
+' SEPARA AS FOLHAS DE UM DETERMINADO FORMATO
+' ============================================================
+Private Function FilterSheetsByFormat( _
+    ByVal drawingSheetsList As Collection, _
+    ByRef sheetFormats() As String, _
+    ByVal sFormat As String) As Collection
+
+    Dim result As Collection
+    Dim sheetIndex As Long
+
+    Set result = New Collection
+
+    For sheetIndex = 1 To drawingSheetsList.count
+
+        If StrComp( _
+            sheetFormats(sheetIndex), _
+            sFormat, _
+            vbTextCompare) = 0 Then
+
+            result.Add drawingSheetsList.item(sheetIndex)
+
+        End If
+
+    Next sheetIndex
+
+    Set FilterSheetsByFormat = result
+
+End Function
+
+' ============================================================
+' LOCALIZA A BACKGROUND VIEW
+'
+' NA API DO CATIA V5, Views.Item(1) E SEMPRE A MAIN VIEW E
+' Views.Item(2) E SEMPRE A BACKGROUND VIEW, EM QUALQUER IDIOMA.
+' ============================================================
+Private Function GetBackgroundView( _
+    ByVal objSheet As drawingSheet) As drawingView
+
+    Set GetBackgroundView = objSheet.Views.item(2)
+
+End Function
+
+' ============================================================
+' MAPEIA QUAL TEXTO DO BACKGROUND USA QUAL PARAMETRO
+'
+' A API nao informa a qual parametro um texto esta ligado. Por
+' isso cada parametro de texto ou inteiro do template recebe um
+' marcador unico, cada texto do Background e lido uma vez e os
+' marcadores que aparecem indicam o parametro e a posicao dele
+' no texto. Os valores originais sao devolvidos em seguida e o
+' template nunca e salvo.
+'
+' Resultado: dicionario nome do texto -> Array(texto com um
+' caractere reserva no lugar de cada parametro, caractere
+' reserva, Array com os nomes dos parametros da esquerda para
+' a direita).
+' ============================================================
+Private Function MapTemplateTextLinks( _
+    ByVal templateParameters As Parameters, _
+    ByVal templateBackground As drawingView) As Object
+
+    Dim links As Object
+    Dim objParameter As Object
+    Dim objText As Object
+
+    Dim parameterCount As Long
+    Dim parameterIndex As Long
+    Dim textIndex As Long
+
+    Dim originalValues() As String
+    Dim markers() As String
+    Dim parameterNames() As String
+    Dim anyMarked As Boolean
+
+    Set links = CreateObject("Scripting.Dictionary")
+    links.CompareMode = vbTextCompare
+
+    Set MapTemplateTextLinks = links
+
+    On Error Resume Next
+
+    parameterCount = templateParameters.count
+
+    If parameterCount = 0 Then
+        Err.Clear
+        On Error GoTo 0
+        Exit Function
+    End If
+
+    ReDim originalValues(1 To parameterCount)
+    ReDim markers(1 To parameterCount)
+    ReDim parameterNames(1 To parameterCount)
+
+    anyMarked = False
+
+    For parameterIndex = 1 To parameterCount
+
+        Set objParameter = templateParameters.item(parameterIndex)
+
+        parameterNames(parameterIndex) = _
+            ShortParameterName(objParameter.name)
+
+        originalValues(parameterIndex) = objParameter.ValueAsString
+
+        ' Parametro de texto: marcador "#E1P<n>#".
+        markers(parameterIndex) = "#E1P" & CStr(parameterIndex) & "#"
+
+        Err.Clear
+        objParameter.ValuateFromString markers(parameterIndex)
+
+        If Err.number <> 0 Or _
+           objParameter.ValueAsString <> markers(parameterIndex) Then
+
+            ' Parametro inteiro: marcador numerico de 6 digitos.
+            Err.Clear
+            markers(parameterIndex) = CStr(734000 + parameterIndex)
+            objParameter.ValuateFromString markers(parameterIndex)
+
+            If Err.number <> 0 Or _
+               objParameter.ValueAsString <> markers(parameterIndex) Then
+                markers(parameterIndex) = ""
+            End If
+
+        End If
+
+        If Len(markers(parameterIndex)) > 0 Then anyMarked = True
+
+        Err.Clear
+
+    Next parameterIndex
+
+    ' Uma leitura de cada texto do Background.
+    If anyMarked Then
+
+        For textIndex = 1 To templateBackground.Texts.count
+
+            Set objText = templateBackground.Texts.item(textIndex)
+
+            AddTextLink _
+                links, _
+                objText, _
+                Trim$(CStr(objText.name)), _
+                CStr(objText.Text), _
+                markers, _
+                parameterNames
+
+            Err.Clear
+
+        Next textIndex
+
+    End If
+
+    ' Devolve os valores originais do template.
+    For parameterIndex = 1 To parameterCount
+
+        Set objParameter = templateParameters.item(parameterIndex)
+
+        If objParameter.ValueAsString <> originalValues(parameterIndex) Then
+            objParameter.ValuateFromString originalValues(parameterIndex)
+        End If
+
+        Err.Clear
+
+    Next parameterIndex
+
+    Err.Clear
+    On Error GoTo 0
+
+End Function
+
+' ============================================================
+' REGISTRA OS PARAMETROS ENCONTRADOS EM UM TEXTO DO TEMPLATE
+' ============================================================
+Private Sub AddTextLink( _
+    ByVal links As Object, _
+    ByVal objText As Object, _
+    ByVal textName As String, _
+    ByVal textValue As String, _
+    ByRef markers() As String, _
+    ByRef parameterNames() As String)
+
+    Dim positions() As Long
+    Dim lengths() As Long
+    Dim foundNames() As String
+    Dim foundCount As Long
+
+    Dim parameterIndex As Long
+    Dim position As Long
+    Dim i As Long
+    Dim j As Long
+
+    Dim swapLong As Long
+    Dim swapString As String
+
+    Dim sentinel As String
+    Dim sentinelText As String
+    Dim sentinelCandidate As Variant
+    Dim orderedNames() As String
+    Dim orderedCount As Long
+    Dim cursor As Long
+
+    Dim linkKey As String
+    Dim keySuffix As Long
+
+    foundCount = 0
+
+    For parameterIndex = LBound(markers) To UBound(markers)
+
+        If Len(markers(parameterIndex)) > 0 Then
+
+            position = InStr(1, textValue, markers(parameterIndex), vbBinaryCompare)
+
+            Do While position > 0
+
+                foundCount = foundCount + 1
+
+                ReDim Preserve positions(1 To foundCount)
+                ReDim Preserve lengths(1 To foundCount)
+                ReDim Preserve foundNames(1 To foundCount)
+
+                positions(foundCount) = position
+                lengths(foundCount) = Len(markers(parameterIndex))
+                foundNames(foundCount) = parameterNames(parameterIndex)
+
+                position = InStr( _
+                    position + Len(markers(parameterIndex)), _
+                    textValue, _
+                    markers(parameterIndex), _
+                    vbBinaryCompare)
+
+            Loop
+
+        End If
+
+    Next parameterIndex
+
+    If foundCount = 0 Then Exit Sub
+
+    ' Ordena da esquerda para a direita.
+    For i = 1 To foundCount - 1
+        For j = i + 1 To foundCount
+            If positions(j) < positions(i) Then
+                swapLong = positions(i): positions(i) = positions(j): positions(j) = swapLong
+                swapLong = lengths(i): lengths(i) = lengths(j): lengths(j) = swapLong
+                swapString = foundNames(i): foundNames(i) = foundNames(j): foundNames(j) = swapString
+            End If
+        Next j
+    Next i
+
+    ' Caractere reserva que nao aparece no texto.
+    sentinel = ""
+
+    For Each sentinelCandidate In Array("|", "~", "^", "`")
+        If InStr(1, textValue, CStr(sentinelCandidate), vbBinaryCompare) = 0 Then
+            sentinel = CStr(sentinelCandidate)
+            Exit For
+        End If
+    Next sentinelCandidate
+
+    If Len(sentinel) = 0 Then Exit Sub
+
+    ' Monta o texto com o caractere reserva no lugar de cada
+    ' parametro.
+    ReDim orderedNames(0 To foundCount - 1)
+
+    sentinelText = ""
+    cursor = 1
+    orderedCount = 0
+
+    For i = 1 To foundCount
+
+        If positions(i) >= cursor Then
+
+            sentinelText = sentinelText & _
+                Mid$(textValue, cursor, positions(i) - cursor) & _
+                sentinel
+
+            orderedNames(orderedCount) = foundNames(i)
+            orderedCount = orderedCount + 1
+
+            cursor = positions(i) + lengths(i)
+
+        End If
+
+    Next i
+
+    sentinelText = sentinelText & Mid$(textValue, cursor)
+
+    ReDim Preserve orderedNames(0 To orderedCount - 1)
+
+    ' Chave unica mesmo se dois textos tiverem o mesmo nome.
+    linkKey = textName
+    keySuffix = 1
+
+    Do While links.Exists(linkKey)
+        keySuffix = keySuffix + 1
+        linkKey = textName & "#" & CStr(keySuffix)
+    Loop
+
+    ' Array(texto com reserva, reserva, parametros, x, y, nome)
+    links.Add linkKey, Array( _
+        sentinelText, _
+        sentinel, _
+        orderedNames, _
+        CDbl(objText.x), _
+        CDbl(objText.y), _
+        textName)
+
+End Sub
+
+' ============================================================
+' REFAZ OS VINCULOS DOS TEXTOS COLADOS COM OS PARAMETROS DO
+' PROPRIO DESENHO
+'
+' Cada texto mapeado recebe o texto com o caractere reserva e
+' cada reserva e trocada pelo parametro de mesmo nome, da
+' direita para a esquerda (InsertVariable posicao, 1). Se o
+' desenho nao tiver o parametro, o texto fica como veio do
+' template e a macro avisa no final.
+'
+' O texto colado e localizado pela POSICAO, que a colagem
+' preserva. O nome so e usado como atalho quando a posicao
+' confere: na colagem o CATIA renomeia textos cujo nome ja
+' existe na folha, e por nome a folha 1 ficava sem vinculos.
+' ============================================================
+Private Sub ApplyTextLinks( _
+    ByVal targetParameters As Parameters, _
+    ByVal parameterCache As Object, _
+    ByVal targetView As drawingView, _
+    ByVal links As Object, _
+    ByVal skipKey As String, _
+    ByRef nameIndex As Object, _
+    ByRef positionIndex As Object, _
+    ByVal warnings As Collection)
+
+    Dim objText As Object
+    Dim textKey As Variant
+    Dim linkSpec As Variant
+    Dim linkNames As Variant
+    Dim linkParameters() As Object
+
+    Dim linkIndex As Long
+    Dim position As Long
+    Dim allFound As Boolean
+
+    Dim sentinelText As String
+    Dim sentinel As String
+
+    If links Is Nothing Then Exit Sub
+    If links.count = 0 Then Exit Sub
+
+    On Error Resume Next
+
+    For Each textKey In links.Keys
+
+        linkSpec = links(textKey)
+        sentinelText = linkSpec(0)
+        sentinel = linkSpec(1)
+        linkNames = linkSpec(2)
+
+        Set objText = Nothing
+
+        If StrComp(CStr(textKey), skipKey, vbTextCompare) <> 0 Then
+
+            Set objText = _
+                LocatePastedText( _
+                    targetView, _
+                    nameIndex, _
+                    positionIndex, _
+                    CStr(linkSpec(5)), _
+                    CDbl(linkSpec(3)), _
+                    CDbl(linkSpec(4)))
+
+        End If
+
+        If Not objText Is Nothing Then
+
+            ReDim linkParameters(LBound(linkNames) To UBound(linkNames))
+            allFound = True
+
+            For linkIndex = LBound(linkNames) To UBound(linkNames)
+
+                Set linkParameters(linkIndex) = _
+                    ResolveParameter( _
+                        targetParameters, _
+                        parameterCache, _
+                        CStr(linkNames(linkIndex)), _
+                        warnings)
+
+                If linkParameters(linkIndex) Is Nothing Then allFound = False
+
+            Next linkIndex
+
+            If allFound Then
+
+                objText.Text = sentinelText
+
+                position = InStrRev(sentinelText, sentinel)
+                linkIndex = UBound(linkNames)
+
+                Do While position > 0 And linkIndex >= LBound(linkNames)
+
+                    objText.InsertVariable position, 1, linkParameters(linkIndex)
+
+                    linkIndex = linkIndex - 1
+
+                    If position = 1 Then Exit Do
+
+                    position = InStrRev(sentinelText, sentinel, position - 1)
+
+                Loop
+
+            End If
+
+        End If
+
+        Err.Clear
+
+    Next textKey
+
+    Err.Clear
+    On Error GoTo 0
+
+End Sub
+
+' ============================================================
+' LOCALIZA UM TEXTO COLADO
+'
+' 1. Pelo nome, se a posicao tambem conferir (caso normal).
+' 2. Senao, pela posicao (indice montado uma unica vez).
+' Os indices sao montados sob demanda e reaproveitados.
+' ============================================================
+Private Function LocatePastedText( _
+    ByVal targetView As drawingView, _
+    ByRef nameIndex As Object, _
+    ByRef positionIndex As Object, _
+    ByVal textName As String, _
+    ByVal textX As Double, _
+    ByVal textY As Double) As Object
+
+    Dim candidateText As Object
+    Dim positionKey As String
+
+    Set LocatePastedText = Nothing
+
+    On Error Resume Next
+
+    If nameIndex Is Nothing Then
+        Set nameIndex = BuildTextIndex(targetView, False)
+    End If
+
+    If nameIndex.Exists(textName) Then
+
+        Set candidateText = nameIndex(textName)
+
+        If Abs(candidateText.x - textX) <= POSITION_TOLERANCE And _
+           Abs(candidateText.y - textY) <= POSITION_TOLERANCE Then
+
+            Set LocatePastedText = candidateText
+            Err.Clear
+            On Error GoTo 0
+            Exit Function
+
+        End If
+
+    End If
+
+    If positionIndex Is Nothing Then
+        Set positionIndex = BuildTextIndex(targetView, True)
+    End If
+
+    positionKey = TextPositionKey(textX, textY)
+
+    If positionIndex.Exists(positionKey) Then
+        Set LocatePastedText = positionIndex(positionKey)
+    End If
+
+    Err.Clear
+    On Error GoTo 0
+
+End Function
+
+' ============================================================
+' INDICE DOS TEXTOS DE UMA VIEW (UMA PASSADA)
+'
+' byPosition = False: nome -> texto
+' byPosition = True : "x|y" -> texto
+' ============================================================
+Private Function BuildTextIndex( _
+    ByVal objView As drawingView, _
+    ByVal byPosition As Boolean) As Object
+
+    Dim textIndex As Object
+    Dim objText As Object
+    Dim itemIndex As Long
+    Dim itemKey As String
+
+    Set textIndex = CreateObject("Scripting.Dictionary")
+    textIndex.CompareMode = vbTextCompare
+
+    On Error Resume Next
+
+    For itemIndex = 1 To objView.Texts.count
+
+        Set objText = objView.Texts.item(itemIndex)
+
+        If byPosition Then
+            itemKey = TextPositionKey(objText.x, objText.y)
+        Else
+            itemKey = Trim$(CStr(objText.name))
+        End If
+
+        If Not textIndex.Exists(itemKey) Then
+            textIndex.Add itemKey, objText
+        End If
+
+        Err.Clear
+
+    Next itemIndex
+
+    On Error GoTo 0
+
+    Set BuildTextIndex = textIndex
+
+End Function
+
+Private Function TextPositionKey( _
+    ByVal x As Double, _
+    ByVal y As Double) As String
+
+    TextPositionKey = _
+        CStr(Round(x, 2)) & "|" & CStr(Round(y, 2))
+
+End Function
+
+' ============================================================
+' CHAVE DO TEXTO LIGADO A UM PARAMETRO (EX.: No_of_Sheets)
+' ============================================================
+Private Function FindLinkKeyForParameter( _
+    ByVal links As Object, _
+    ByVal parameterName As String) As String
+
+    Dim textKey As Variant
+    Dim linkNames As Variant
+    Dim linkIndex As Long
+
+    FindLinkKeyForParameter = ""
+
+    If links Is Nothing Then Exit Function
+
+    For Each textKey In links.Keys
+
+        linkNames = links(textKey)(2)
+
+        For linkIndex = LBound(linkNames) To UBound(linkNames)
+
+            If StrComp(CStr(linkNames(linkIndex)), parameterName, vbTextCompare) = 0 Then
+                FindLinkKeyForParameter = CStr(textKey)
+                Exit Function
+            End If
+
+        Next linkIndex
+
+    Next textKey
+
+End Function
+
+' ============================================================
+' TEXTOS "1 /" SEPARADOS DO CAMPO SHEET/OF NO TEMPLATE
+'
+' Se o texto ligado a No_of_Sheets ja contem a barra (ex.:
+' "1 / " + No_of_Sheets), o campo e um texto so e nao ha nada
+' a localizar. Senao, procura a esquerda, na mesma linha,
+' textos formados so por "1", "/" e espacos. Devolve as
+' posicoes (Array(x, y)) para remove-los nas folhas 2+.
+' ============================================================
+Private Function FindSheetFieldPrefixes( _
+    ByVal templateBackground As drawingView, _
+    ByVal countSpec As Variant) As Collection
+
+    Dim prefixes As Collection
+    Dim objText As Object
+    Dim itemIndex As Long
+    Dim literalText As String
+    Dim candidateValue As String
+    Dim countX As Double
+    Dim countY As Double
+    Dim candidateX As Double
+    Dim candidateY As Double
+
+    Set prefixes = New Collection
+    Set FindSheetFieldPrefixes = prefixes
+
+    literalText = Replace(CStr(countSpec(0)), CStr(countSpec(1)), "")
+
+    If InStr(1, literalText, "/", vbBinaryCompare) > 0 Then Exit Function
+
+    countX = CDbl(countSpec(3))
+    countY = CDbl(countSpec(4))
+
+    On Error Resume Next
+
+    For itemIndex = 1 To templateBackground.Texts.count
+
+        Set objText = templateBackground.Texts.item(itemIndex)
+        candidateValue = Replace(Trim$(CStr(objText.Text)), " ", "")
+
+        If Len(candidateValue) > 0 And _
+           Len(Replace(Replace(candidateValue, "1", ""), "/", "")) = 0 Then
+
+            candidateX = objText.x
+            candidateY = objText.y
+
+            If Abs(candidateY - countY) <= 10# And _
+               candidateX < countX And _
+               countX - candidateX <= 40# Then
+
+                prefixes.Add Array(candidateX, candidateY)
+
+            End If
+
+        End If
+
+        Err.Clear
+
+    Next itemIndex
+
+    On Error GoTo 0
+
+End Function
+
+' ============================================================
+' CAMPO SHEET/OF DE UM TEMPLATE QUE NAO O LIGA A No_of_Sheets
+'
+' O campo e um texto so com X (XX, X/XX, 1/XX). Vale o que esta
+' embaixo do rotulo SHEET/OF, o mais perto. Sem rotulo no
+' Background, vale o XX mais a direita no canto da legenda.
+' O texto entra em links como se fosse ligado a No_of_Sheets e
+' a funcao devolve a chave dele ("" se nao achar).
+' ============================================================
+Private Function FindSheetFieldWithoutLink( _
+    ByVal templateSheet As drawingSheet, _
+    ByVal templateBackground As drawingView, _
+    ByVal links As Object) As String
+
+    Dim objText As Object
+    Dim itemIndex As Long
+    Dim otherIndex As Long
+    Dim textCount As Long
+    Dim rawValue As String
+    Dim cleanValue As String
+
+    Dim values() As String
+    Dim names() As String
+    Dim xs() As Double
+    Dim ys() As Double
+    Dim isLabel() As Boolean
+    Dim isCandidate() As Boolean
+    Dim readCount As Long
+    Dim hasLabel As Boolean
+
+    Dim bestIndex As Long
+    Dim bestDistance As Double
+    Dim distance As Double
+    Dim paperWidth As Double
+
+    Dim textKey As Variant
+    Dim removeKeys As Collection
+    Dim fieldPositionKey As String
+    Dim countNames(0 To 0) As String
+    Dim fieldSpec As Variant
+    Dim fieldText As String
+    Dim linkKey As String
+    Dim keySuffix As Long
+
+    FindSheetFieldWithoutLink = ""
+
+    On Error Resume Next
+
+    textCount = templateBackground.Texts.count
+    paperWidth = templateSheet.GetPaperWidth
+
+    If Err.number <> 0 Or textCount = 0 Then
+        Err.Clear
+        On Error GoTo 0
+        Exit Function
+    End If
+
+    ReDim values(1 To textCount)
+    ReDim names(1 To textCount)
+    ReDim xs(1 To textCount)
+    ReDim ys(1 To textCount)
+    ReDim isLabel(1 To textCount)
+    ReDim isCandidate(1 To textCount)
+
+    readCount = 0
+    hasLabel = False
+
+    For itemIndex = 1 To textCount
+
+        Set objText = templateBackground.Texts.item(itemIndex)
+        rawValue = CStr(objText.Text)
+
+        ' Rotulo e reserva sao curtos: so esses precisam da posicao.
+        If Err.number = 0 And Len(Trim$(rawValue)) > 0 And Len(Trim$(rawValue)) <= 12 Then
+
+            cleanValue = LettersDigitsAndSlash(rawValue)
+
+            readCount = readCount + 1
+            values(readCount) = rawValue
+            names(readCount) = Trim$(CStr(objText.name))
+            xs(readCount) = objText.x
+            ys(readCount) = objText.y
+
+            isLabel(readCount) = _
+                (cleanValue = "SHEET/OF" Or cleanValue = "SHEETOF" Or _
+                 cleanValue = "SHT/OF" Or cleanValue = "SHTOF")
+
+            isCandidate(readCount) = IsSheetPlaceholder(cleanValue)
+
+            If isLabel(readCount) Then hasLabel = True
+
+            If Err.number <> 0 Then readCount = readCount - 1
+
+        End If
+
+        Err.Clear
+
+    Next itemIndex
+
+    On Error GoTo 0
+
+    bestIndex = 0
+    bestDistance = 0
+
+    If hasLabel Then
+
+        For itemIndex = 1 To readCount
+
+            If isLabel(itemIndex) Then
+
+                For otherIndex = 1 To readCount
+
+                    If isCandidate(otherIndex) Then
+
+                        If Abs(xs(otherIndex) - xs(itemIndex)) <= 30# And _
+                           ys(itemIndex) - ys(otherIndex) > 0 And _
+                           ys(itemIndex) - ys(otherIndex) <= 25# Then
+
+                            distance = _
+                                Abs(xs(otherIndex) - xs(itemIndex)) + _
+                                (ys(itemIndex) - ys(otherIndex))
+
+                            If bestIndex = 0 Or distance < bestDistance Then
+                                bestIndex = otherIndex
+                                bestDistance = distance
+                            End If
+
+                        End If
+
+                    End If
+
+                Next otherIndex
+
+            End If
+
+        Next itemIndex
+
+    Else
+
+        For itemIndex = 1 To readCount
+
+            If isCandidate(itemIndex) Then
+
+                If xs(itemIndex) >= paperWidth - 260# And ys(itemIndex) <= 90# Then
+
+                    If bestIndex = 0 Then
+                        bestIndex = itemIndex
+                    ElseIf xs(itemIndex) > xs(bestIndex) Then
+                        bestIndex = itemIndex
+                    End If
+
+                End If
+
+            End If
+
+        Next itemIndex
+
+    End If
+
+    If bestIndex = 0 Then Exit Function
+
+    ' Se o XX estava ligado a um parametro de outro nome, esse
+    ' vinculo sai: o campo passa a ser o da folha.
+    fieldPositionKey = TextPositionKey(xs(bestIndex), ys(bestIndex))
+    Set removeKeys = New Collection
+
+    For Each textKey In links.Keys
+
+        If TextPositionKey( _
+            CDbl(links(textKey)(3)), _
+            CDbl(links(textKey)(4))) = fieldPositionKey Then
+
+            removeKeys.Add CStr(textKey)
+
+        End If
+
+    Next textKey
+
+    For itemIndex = 1 To removeKeys.count
+        links.Remove removeKeys(itemIndex)
+    Next itemIndex
+
+    countNames(0) = SHEET_COUNT_PARAMETER
+
+    ' Array(texto com reserva, reserva, parametros, x, y, nome)
+    fieldSpec = Array( _
+        "|", _
+        "|", _
+        countNames, _
+        xs(bestIndex), _
+        ys(bestIndex), _
+        names(bestIndex))
+
+    ' Sem um "1 /" separado ao lado, o proprio campo mostra 1/<total>.
+    If FindSheetFieldPrefixes(templateBackground, fieldSpec).count = 0 Then
+        fieldText = "1/|"
+    Else
+        fieldText = "|"
+    End If
+
+    linkKey = names(bestIndex)
+    keySuffix = 1
+
+    Do While links.Exists(linkKey)
+        keySuffix = keySuffix + 1
+        linkKey = names(bestIndex) & "#" & CStr(keySuffix)
+    Loop
+
+    links.Add linkKey, Array( _
+        fieldText, _
+        "|", _
+        countNames, _
+        xs(bestIndex), _
+        ys(bestIndex), _
+        names(bestIndex))
+
+    FindSheetFieldWithoutLink = linkKey
+
+End Function
+
+' So letras maiusculas, digitos e a barra: "SHEET / OF" vira "SHEET/OF".
+Private Function LettersDigitsAndSlash( _
+    ByVal value As String) As String
+
+    Dim charIndex As Long
+    Dim ch As String
+    Dim result As String
+
+    result = ""
+    value = UCase$(value)
+
+    For charIndex = 1 To Len(value)
+
+        ch = Mid$(value, charIndex, 1)
+
+        If (ch >= "A" And ch <= "Z") Or (ch >= "0" And ch <= "9") Or ch = "/" Then
+            result = result & ch
+        End If
+
+    Next charIndex
+
+    LettersDigitsAndSlash = result
+
+End Function
+
+' Reserva do numero da folha: XX, X/XX ou 1/XX (ate 3 X no total).
+Private Function IsSheetPlaceholder( _
+    ByVal cleanValue As String) As Boolean
+
+    Dim slashPosition As Long
+    Dim leftPart As String
+    Dim rightPart As String
+    Dim charIndex As Long
+    Dim ch As String
+
+    IsSheetPlaceholder = False
+
+    slashPosition = InStr(1, cleanValue, "/", vbBinaryCompare)
+
+    If slashPosition > 0 Then
+        leftPart = Left$(cleanValue, slashPosition - 1)
+        rightPart = Mid$(cleanValue, slashPosition + 1)
+        If Len(leftPart) < 1 Or Len(leftPart) > 2 Then Exit Function
+    Else
+        leftPart = ""
+        rightPart = cleanValue
+    End If
+
+    If Len(rightPart) < 1 Or Len(rightPart) > 3 Then Exit Function
+
+    For charIndex = 1 To Len(leftPart)
+        ch = Mid$(leftPart, charIndex, 1)
+        If ch <> "1" And ch <> "X" Then Exit Function
+    Next charIndex
+
+    For charIndex = 1 To Len(rightPart)
+        If Mid$(rightPart, charIndex, 1) <> "X" Then Exit Function
+    Next charIndex
+
+    IsSheetPlaceholder = True
+
+End Function
+
+' ============================================================
+' NUMERO DA FOLHA NAS FOLHAS 2 EM DIANTE
+'
+' O texto ligado a No_of_Sheets e recriado como texto simples
+' com o numero da folha (sem vinculo, para nenhum Update voltar
+' a mostrar o total) e os textos "1 /" separados sao apagados.
+' Folha 1 continua 1/<total>.
+' ============================================================
+Private Sub ApplySheetNumber( _
+    ByVal sel As Selection, _
+    ByVal targetView As drawingView, _
+    ByVal mainView As drawingView, _
+    ByVal countSpec As Variant, _
+    ByVal prefixes As Collection, _
+    ByVal sheetNumber As Long, _
+    ByVal sheetName As String, _
+    ByRef nameIndex As Object, _
+    ByRef positionIndex As Object, _
+    ByVal warnings As Collection)
+
+    Dim countText As Object
+    Dim prefixText As Object
+    Dim prefixIndex As Long
+    Dim prefixKey As String
+
+    Set countText = _
+        LocatePastedText( _
+            targetView, _
+            nameIndex, _
+            positionIndex, _
+            CStr(countSpec(5)), _
+            CDbl(countSpec(3)), _
+            CDbl(countSpec(4)))
+
+    If countText Is Nothing Then
+
+        warnings.Add _
+            "Folha " & CStr(sheetNumber) & " (" & sheetName & _
+            "): campo SHEET/OF nao encontrado, numero nao atualizado."
+
+        Exit Sub
+
+    End If
+
+    For prefixIndex = 1 To prefixes.count
+
+        Set prefixText = Nothing
+
+        On Error Resume Next
+
+        If positionIndex Is Nothing Then
+            Set positionIndex = BuildTextIndex(targetView, True)
+        End If
+
+        prefixKey = _
+            TextPositionKey( _
+                CDbl(prefixes(prefixIndex)(0)), _
+                CDbl(prefixes(prefixIndex)(1)))
+
+        If positionIndex.Exists(prefixKey) Then
+            Set prefixText = positionIndex(prefixKey)
+        End If
+
+        If Not prefixText Is Nothing Then
+            sel.Clear
+            sel.Add prefixText
+            sel.Delete
+            sel.Clear
+        End If
+
+        Err.Clear
+        On Error GoTo 0
+
+    Next prefixIndex
+
+    On Error Resume Next
+
+    If HasWorkingSheetNumber( _
+        mainView, _
+        CDbl(countSpec(3)), _
+        CDbl(countSpec(4))) Then
+
+        ' O desenho ja tem o numero da folha na Main View (Text.1,
+        ' ao lado do campo SHEET/OF). Fica so ele: o "/<total>"
+        ' do Background e apagado nas folhas 2 em diante.
+        sel.Clear
+        sel.Add countText
+        sel.Delete
+        sel.Clear
+
+        If Err.number <> 0 Then
+
+            warnings.Add _
+                "Folha " & CStr(sheetNumber) & " (" & sheetName & _
+                "): nao foi possivel apagar o total do campo SHEET/OF."
+
+        End If
+
+    Else
+
+        ' Sem numero na Main View: o numero e gravado no proprio
+        ' texto colado no Background (que ja chega sem vinculo).
+        countText.Text = CStr(sheetNumber)
+
+        If Err.number <> 0 Or CStr(countText.Text) <> CStr(sheetNumber) Then
+
+            warnings.Add _
+                "Folha " & CStr(sheetNumber) & " (" & sheetName & _
+                "): nao foi possivel gravar o numero da folha."
+
+        End If
+
+    End If
+
+    Err.Clear
+    On Error GoTo 0
+
+End Sub
+
+' ============================================================
+' A MAIN VIEW TEM O NUMERO DA FOLHA AO LADO DO SHEET/OF?
+'
+' Procura na Main View (view de trabalho da folha) um texto so
+' com digitos, na mesma linha e a ate 40 mm do campo SHEET/OF
+' do Background. Coordenadas convertidas para a folha.
+' ============================================================
+Private Function HasWorkingSheetNumber( _
+    ByVal mainView As drawingView, _
+    ByVal fieldX As Double, _
+    ByVal fieldY As Double) As Boolean
+
+    Dim objText As Object
+    Dim textIndex As Long
+    Dim textValue As String
+    Dim viewScale As Double
+    Dim sheetX As Double
+    Dim sheetY As Double
+
+    HasWorkingSheetNumber = False
+
+    If mainView Is Nothing Then Exit Function
+
+    On Error Resume Next
+
+    viewScale = mainView.Scale
+    If viewScale <= 0 Then viewScale = 1
+
+    For textIndex = 1 To mainView.Texts.count
+
+        Set objText = mainView.Texts.item(textIndex)
+        textValue = Trim$(CStr(objText.Text))
+
+        If Len(textValue) > 0 And Len(textValue) <= 3 And _
+           IsAllDigits(textValue) Then
+
+            sheetX = mainView.x + objText.x * viewScale
+            sheetY = mainView.y + objText.y * viewScale
+
+            If Abs(sheetY - fieldY) <= 15# And _
+               Abs(sheetX - fieldX) <= 40# Then
+
+                HasWorkingSheetNumber = True
+                Exit For
+
+            End If
+
+        End If
+
+        Err.Clear
+
+    Next textIndex
+
+    Err.Clear
+    On Error GoTo 0
+
+End Function
+
+' ============================================================
+' APAGA O NUMERO DA FOLHA DA MAIN VIEW (Text.1) NA FOLHA 1
+'
+' So apaga se o Text.1 tiver apenas digitos, para nao apagar
+' uma nota do desenho que por acaso tenha esse nome.
+' ============================================================
+Private Sub DeleteWorkingSheetNumber( _
+    ByVal sel As Selection, _
+    ByVal mainView As drawingView)
+
+    Dim numberText As Object
+
+    On Error Resume Next
+
+    Set numberText = _
+        FindDrawingTextByName(mainView, WORKING_SHEET_NUMBER_TEXT)
+
+    If Not numberText Is Nothing Then
+
+        If IsAllDigits(Trim$(CStr(numberText.Text))) Then
+            sel.Clear
+            sel.Add numberText
+            sel.Delete
+            sel.Clear
+        End If
+
+    End If
+
+    Err.Clear
+    On Error GoTo 0
+
+End Sub
+
+Private Function IsAllDigits( _
+    ByVal value As String) As Boolean
+
+    Dim charIndex As Long
+    Dim ch As String
+
+    IsAllDigits = False
+
+    If Len(value) = 0 Then Exit Function
+
+    For charIndex = 1 To Len(value)
+        ch = Mid$(value, charIndex, 1)
+        If ch < "0" Or ch > "9" Then Exit Function
+    Next charIndex
+
+    IsAllDigits = True
+
+End Function
+
+' ============================================================
+' POSICAO DA FOLHA ENTRE AS FOLHAS DE DESENHO (1, 2, 3...)
+' ============================================================
+Private Function SheetPosition( _
+    ByVal allSheets As Collection, _
+    ByVal sheetName As String) As Long
+
+    Dim sheetIndex As Long
+
+    SheetPosition = 0
+
+    For sheetIndex = 1 To allSheets.count
+
+        If StrComp(allSheets.item(sheetIndex).name, sheetName, vbTextCompare) = 0 Then
+            SheetPosition = sheetIndex
+            Exit Function
+        End If
+
+    Next sheetIndex
+
+End Function
+
+' ============================================================
+' PARAMETRO DO DESENHO PELO NOME CURTO (COM CACHE)
+'
+' Avisa uma unica vez quando o desenho nao tem o parametro.
+' ============================================================
+Private Function ResolveParameter( _
+    ByVal targetParameters As Parameters, _
+    ByVal parameterCache As Object, _
+    ByVal parameterName As String, _
+    ByVal warnings As Collection) As Object
+
+    Dim objParameter As Object
+
+    If parameterCache.Exists(parameterName) Then
+        Set ResolveParameter = parameterCache(parameterName)
+        Exit Function
+    End If
+
+    Set objParameter = Nothing
+
+    On Error Resume Next
+    Set objParameter = targetParameters.item(parameterName)
+    Err.Clear
+    On Error GoTo 0
+
+    If objParameter Is Nothing Then
+
+        warnings.Add _
+            "Parametro " & parameterName & " nao existe no desenho: " & _
+            "o campo da legenda ficou com o valor do template."
+
+    End If
+
+    parameterCache.Add parameterName, objParameter
+
+    Set ResolveParameter = objParameter
+
+End Function
+
+' ============================================================
+' NOME DO PARAMETRO SEM O CAMINHO (EX.: "Drawing\Drawing_No")
+' ============================================================
+Private Function ShortParameterName( _
+    ByVal fullName As String) As String
+
+    If InStr(1, fullName, "\", vbBinaryCompare) > 0 Then
+        ShortParameterName = Mid$(fullName, InStrRev(fullName, "\") + 1)
+    Else
+        ShortParameterName = fullName
+    End If
+
+End Function
+
+' ============================================================
+' SELECIONA TODO O CONTEUDO 2D DE UMA VIEW
+'
+' A busca com escopo ",sel" fica restrita a view colocada na
+' selecao. Os dittos (componentes 2D) nao aparecem na busca e
+' entram pela colecao Components, que tem poucos itens.
+' Devolve quantos elementos ficaram selecionados.
+' ============================================================
+Private Function SelectViewContents( _
+    ByVal sel As Selection, _
+    ByVal objView As drawingView) As Long
+
+    Dim searches As Variant
+    Dim searchIndex As Long
+    Dim searched As Boolean
+    Dim componentIndex As Long
+    Dim componentCount As Long
+
+    searches = Array( _
+        BACKGROUND_SEARCH_FULL, _
+        BACKGROUND_SEARCH_MEDIUM, _
+        BACKGROUND_SEARCH_BASIC)
+
+    searched = False
+
+    On Error Resume Next
+
+    For searchIndex = LBound(searches) To UBound(searches)
+
+        Err.Clear
+
+        sel.Clear
+        sel.Add objView
+        sel.Search CStr(searches(searchIndex))
+
+        If Err.number = 0 Then
+            searched = True
+            Exit For
+        End If
+
+    Next searchIndex
+
+    Err.Clear
+    On Error GoTo 0
+
+    If Not searched Then
+
+        sel.Clear
+
+        Err.Raise _
+            vbObjectError + 1205, _
+            "SelectViewContents", _
+            "A busca do conteudo da view " & objView.name & _
+            " falhou nesta versao do CATIA."
+
+    End If
+
+    On Error Resume Next
+
+    componentCount = objView.Components.count
+
+    For componentIndex = 1 To componentCount
+        sel.Add objView.Components.item(componentIndex)
+    Next componentIndex
+
+    Err.Clear
+    On Error GoTo 0
+
+    SelectViewContents = sel.count
+
+End Function
+
+' ============================================================
+' MENSAGEM DE PROGRESSO NA BARRA DE STATUS DO CATIA
+' ============================================================
+Private Sub SetStatus( _
+    ByVal message As String)
+
+    On Error Resume Next
+
+    CATIA.StatusBar = message
+    DoEvents
+
+    Err.Clear
+    On Error GoTo 0
+
+End Sub
+
+' ============================================================
+' SELECIONA UMA LISTA DE OBJETOS
+' ============================================================
+Private Function SelectObjects( _
+    ByVal sel As Selection, _
+    ByVal objects As Collection) As Long
+
+    Dim itemIndex As Long
+
+    sel.Clear
+
+    For itemIndex = 1 To objects.count
+
+        On Error Resume Next
+        sel.Add objects.item(itemIndex)
+        Err.Clear
+        On Error GoTo 0
+
+    Next itemIndex
+
+    SelectObjects = sel.count
+
+End Function
+
+' ============================================================
+' APAGA UMA LISTA DE OBJETOS EM UMA UNICA OPERACAO
+'
+' SE ALGUM ELEMENTO IMPEDIR O DELETE EM LOTE, APAGA UM A UM
+' PARA QUE O RESTANTE DO CONTEUDO ANTIGO NAO FIQUE NA FOLHA.
+' ============================================================
+Private Sub DeleteObjects( _
+    ByVal sel As Selection, _
+    ByVal objects As Collection)
+
+    Dim itemIndex As Long
+
+    If objects.count = 0 Then
+        Exit Sub
+    End If
+
+    If SelectObjects(sel, objects) = 0 Then
+        Exit Sub
+    End If
+
+    On Error Resume Next
+
+    sel.Delete
+
+    If Err.number <> 0 Then
+
+        Err.Clear
+
+        For itemIndex = 1 To objects.count
+
+            sel.Clear
+            sel.Add objects.item(itemIndex)
+
+            If sel.count > 0 Then
+                sel.Delete
+            End If
+
+            Err.Clear
+
+        Next itemIndex
+
+    End If
+
+    sel.Clear
+
+    Err.Clear
+    On Error GoTo 0
+
+    DoEvents
+
+End Sub
+
+' ============================================================
+' COLA O CONTEUDO DA AREA DE TRANSFERENCIA NO DESTINO
+' ============================================================
+Private Sub PasteInto( _
+    ByVal sel As Selection, _
+    ByVal destination As Object)
+
+    sel.Clear
+    sel.Add destination
+    sel.Paste
+    sel.Clear
+
+    DoEvents
+
+End Sub
+
+' ============================================================
+' LOCALIZA UM DRAWINGTEXT PELO NOME
+'
+' PERCORRE TODOS OS TEXTOS DA VIEW E COMPARA O NOME.
+'
+' ESTA ABORDAGEM E MAIS SEGURA DO QUE DEPENDER SOMENTE DE:
+'
+'     objView.Texts.item("Text.68")
+'
+' POIS EVITA PROBLEMAS DE ACESSO POR NOME EM DIFERENTES
+' VERSOES OU CONFIGURACOES DO CATIA V5.
+' ============================================================
+Private Function FindDrawingTextByName( _
+    ByVal objView As drawingView, _
+    ByVal textName As String) As Object
+
+    On Error GoTo SafeExit
+
+    Dim objTexts As Object
+    Dim candidateText As Object
+
+    Dim textIndex As Long
+    Dim candidateName As String
+
+    Set FindDrawingTextByName = Nothing
+
+    If objView Is Nothing Then
+        Exit Function
+    End If
+
+    Set objTexts = Nothing
+
+    On Error Resume Next
+
+    Set objTexts = objView.Texts
+
+    Err.Clear
+    On Error GoTo SafeExit
+
+    If objTexts Is Nothing Then
+        Exit Function
+    End If
+
+    For textIndex = 1 To objTexts.count
+
+        Set candidateText = Nothing
+        candidateName = ""
+
+        On Error Resume Next
+
+        Set candidateText = _
+            objTexts.item(textIndex)
+
+        If Not candidateText Is Nothing Then
+
+            candidateName = _
+                Trim$(CStr(candidateText.name))
+
+        End If
+
+        Err.Clear
+        On Error GoTo SafeExit
+
+        If StrComp( _
+            candidateName, _
+            Trim$(textName), _
+            vbTextCompare) = 0 Then
+
+            Set FindDrawingTextByName = _
+                candidateText
+
+            Exit Function
+
+        End If
+
+    Next textIndex
+
+    Exit Function
+
+SafeExit:
+
+    Set FindDrawingTextByName = Nothing
+    Err.Clear
+
+End Function
+
+' ============================================================
+' IDENTIFICA O FORMATO NO BACKGROUND
+'
+' PRIORIDADE:
+'
+' 1. DrawingText chamado Text.68.
+' 2. Qualquer DrawingText cujo conteudo completo seja
+'    exatamente um formato aceito.
+' ============================================================
+Private Function GetFormatFromBackground( _
+    ByVal objSheet As drawingSheet) As String
+
+    On Error GoTo SafeExit
+
+    Dim objBackgroundView As drawingView
+    Dim objTexts As Object
+    Dim objText As Object
+
+    Dim i As Long
+
+    Dim objectValue As String
+
+    GetFormatFromBackground = ""
+
+    If objSheet Is Nothing Then
+        Exit Function
+    End If
+
+    Set objBackgroundView = GetBackgroundView(objSheet)
+
+    ' ========================================================
+    ' PRIMEIRA PASSAGEM:
+    ' PROCURA ESPECIFICAMENTE TEXT.68
+    ' ========================================================
+    Set objText = _
+        FindDrawingTextByName( _
+            objBackgroundView, _
+            FORMAT_TEXT_NAME)
+
+    If Not objText Is Nothing Then
+
+        objectValue = ""
+
+        On Error Resume Next
+
+        objectValue = CStr(objText.Text)
+
+        Err.Clear
+        On Error GoTo SafeExit
+
+        objectValue = _
+            NormalizeTemplateFormat(objectValue)
+
+        If IsValidTemplateFormat(objectValue) Then
+
+            GetFormatFromBackground = objectValue
+            Exit Function
+
+        End If
+
+    End If
+
+    ' ========================================================
+    ' SEGUNDA PASSAGEM:
+    ' PROCURA QUALQUER TEXTO COM CONTEUDO EXATO VALIDO
+    ' ========================================================
+    Set objTexts = Nothing
+
+    On Error Resume Next
+
+    Set objTexts = objBackgroundView.Texts
+
+    Err.Clear
+    On Error GoTo SafeExit
+
+    If objTexts Is Nothing Then
+        Exit Function
+    End If
+
+    For i = 1 To objTexts.count
+
+        Set objText = Nothing
+        objectValue = ""
+
+        On Error Resume Next
+
+        Set objText = objTexts.item(i)
+
+        If Not objText Is Nothing Then
+            objectValue = CStr(objText.Text)
+        End If
+
+        Err.Clear
+        On Error GoTo SafeExit
+
+        objectValue = _
+            NormalizeTemplateFormat(objectValue)
+
+        If IsValidTemplateFormat(objectValue) Then
+
+            GetFormatFromBackground = objectValue
+            Exit Function
+
+        End If
+
+    Next i
+
+    Exit Function
+
+SafeExit:
+
+    GetFormatFromBackground = ""
+    Err.Clear
+
+End Function
+
+' ============================================================
+' NORMALIZA O CONTEUDO DO DRAWINGTEXT
+'
+' O conteudo precisa resultar exatamente em um dos formatos.
+' A funcao nao procura o formato dentro de frases.
+' ============================================================
+Private Function NormalizeTemplateFormat( _
+    ByVal rawValue As String) As String
+
+    Dim normalizedValue As String
+
+    normalizedValue = UCase$(Trim$(rawValue))
+
+    normalizedValue = _
+        Replace(normalizedValue, vbCrLf, "")
+
+    normalizedValue = _
+        Replace(normalizedValue, vbCr, "")
+
+    normalizedValue = _
+        Replace(normalizedValue, vbLf, "")
+
+    normalizedValue = _
+        Replace(normalizedValue, vbTab, "")
+
+    normalizedValue = _
+        Replace(normalizedValue, Chr$(160), "")
+
+    normalizedValue = _
+        Trim$(normalizedValue)
+
+    NormalizeTemplateFormat = normalizedValue
+
+End Function
+
+' ============================================================
+' VALIDA OS FORMATOS DISPONIVEIS
+' ============================================================
+Private Function IsValidTemplateFormat( _
+    ByVal sFormat As String) As Boolean
+
+    Select Case NormalizeTemplateFormat(sFormat)
+
+        Case "3A0", "A0", "A1", "A2", "A3", "E3"
+
+            IsValidTemplateFormat = True
+
+        Case Else
+
+            IsValidTemplateFormat = False
+
+    End Select
+
+End Function
+
+' ============================================================
+' LOCALIZA O TEMPLATE PELO FORMATO
+' ============================================================
+Private Function FindTemplateByFormat( _
+    ByVal sFolder As String, _
+    ByVal sFormat As String) As String
+
+    Dim sFile As String
+    Dim sPattern As String
+    Dim nameIndex As Long
+
+    FindTemplateByFormat = ""
+
+    If Right$(sFolder, 1) <> "\" Then
+        sFolder = sFolder & "\"
+    End If
+
+    sFormat = NormalizeTemplateFormat(sFormat)
+
+    ' Nome do arquivo, do mais novo para o mais antigo. O "_" depois do
+    ' formato impede que o A0 case com o 3A0. Em 11/11/2026 a pasta da rede
+    ' passou a ter E1_DRW_TEMPLATE_A0_R00.CATDrawing.
+    For nameIndex = 1 To 2
+
+        If nameIndex = 1 Then
+            sPattern = "E1_DRW_TEMPLATE_" & sFormat & "_"
+        Else
+            sPattern = _
+                "E1_DRAWING TEMPLATE_SHEET " & _
+                sFormat & _
+                "_CATIAV5R32"
+        End If
+
+        sFile = Dir$(sFolder & "*.CATDrawing")
+
+        Do While Len(sFile) > 0
+
+            If StrComp( _
+                Left$(sFile, Len(sPattern)), _
+                sPattern, _
+                vbTextCompare) = 0 Then
+
+                FindTemplateByFormat = _
+                    sFolder & sFile
+
+                Exit Function
+
+            End If
+
+            sFile = Dir$()
+
+        Loop
+
+    Next nameIndex
+
+End Function
+
+' ============================================================
+' RESUMO DA CONVERSAO PARA A MENSAGEM FINAL
+' ============================================================
+Private Function BuildSheetSummary( _
+    ByVal drawingSheetsList As Collection, _
+    ByRef sheetFormats() As String) As String
+
+    Dim summary As String
+    Dim sheetIndex As Long
+
+    summary = ""
+
+    For sheetIndex = 1 To drawingSheetsList.count
+
+        summary = summary & _
+            drawingSheetsList.item(sheetIndex).name & _
+            ": " & sheetFormats(sheetIndex) & vbCrLf
+
+    Next sheetIndex
+
+    BuildSheetSummary = summary
+
+End Function
+
+Private Function BuildWarningSummary( _
+    ByVal warnings As Collection) As String
+
+    Dim summary As String
+    Dim warningIndex As Long
+
+    summary = ""
+
+    If warnings Is Nothing Then
+        Exit Function
+    End If
+
+    If warnings.count = 0 Then
+        Exit Function
+    End If
+
+    summary = vbCrLf & "Avisos:" & vbCrLf
+
+    For warningIndex = 1 To warnings.count
+        summary = summary & "- " & warnings.item(warningIndex) & vbCrLf
+    Next warningIndex
+
+    BuildWarningSummary = summary
+
+End Function

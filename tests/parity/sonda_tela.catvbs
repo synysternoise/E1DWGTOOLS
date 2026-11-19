@@ -1,0 +1,45 @@
+' Apoio dos testes de paridade: le o estado da tela e apaga o item selecionado.
+Function Estado()
+    Dim doc, vp, o(1), nome, sel
+    Set doc = CATIA.ActiveDocument
+    Set sel = doc.Selection
+    Set vp = CATIA.ActiveWindow.ActiveViewer.Viewpoint2D
+    vp.GetOrigin o
+    nome = ""
+    If sel.Count > 0 Then nome = sel.Item(1).Value.Name
+    Estado = doc.Sheets.ActiveSheet.Name & Chr(31) & Replace(CStr(o(0)), ",", ".") & Chr(31) & _
+        Replace(CStr(o(1)), ",", ".") & Chr(31) & Replace(CStr(vp.Zoom), ",", ".") & Chr(31) & sel.Count & Chr(31) & nome
+End Function
+
+Function ApagarSelecao()
+    CATIA.ActiveDocument.Selection.Delete
+    ApagarSelecao = "OK"
+End Function
+
+' A conta de polegadas do Font Check feita dentro do CATIA, para comparar o Round.
+Function GradeRound(inicio, fim, empate)
+    Dim k, b(), mm
+    ReDim b(fim - inicio)
+    For k = inicio To fim
+        If empate Then mm = 25.4 * (k + 0.5) / 10000 Else mm = k / 10000
+        b(k - inicio) = Replace(CStr(Round(mm / 25.4, 4)), ",", ".")
+    Next
+    GradeRound = Join(b, " ")
+End Function
+
+Function ItemTeste()
+    Set ItemTeste = CATIA.ActiveDocument.Sheets.Item(1).Views.Item(3).Texts.Item(1)
+End Function
+
+Function PintarBranco()
+    Dim sel: Set sel = CATIA.ActiveDocument.Selection
+    sel.Clear: sel.Add ItemTeste(): sel.VisProperties.SetRealColor 255, 255, 255, 0: sel.Clear
+    PintarBranco = "OK"
+End Function
+
+Function LerCor()
+    Dim sel, r, g, b
+    Set sel = CATIA.ActiveDocument.Selection
+    sel.Clear: sel.Add ItemTeste(): sel.VisProperties.GetRealColor r, g, b: sel.Clear
+    LerCor = r & "," & g & "," & b
+End Function

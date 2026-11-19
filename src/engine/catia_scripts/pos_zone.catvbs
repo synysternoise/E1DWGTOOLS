@@ -1,0 +1,391 @@
+' Position and Zone: leitura do desenho, dentro do CATIA (porte de vba/poszone.txt, V3.5.3).
+' So o MoverTexto altera o desenho, quando a pessoa pede. As regras ficam em src/engine/pos_zone.py.
+' Protocolo da resposta: ver src/engine/catia_bridge.py.
+
+Const CALLOUT_TEXT_PROPERTY_BORDER = 12
+Const CAT_VIEW_BACKGROUND = 0
+Const BRACKET_MAX_GEOMETRIA = 200000
+
+Function Campo(s)
+    Campo = Replace(Replace(CStr(s), Chr(30), " "), Chr(31), " ")
+End Function
+
+Function Registro(a)
+    Registro = Chr(30) & Join(a, Chr(31))
+End Function
+
+Function Falha()
+    Falha = "ERR" & Chr(31) & Err.Number & Chr(31) & Campo(Err.Description)
+    Err.Clear
+End Function
+
+Function AcharDocumento(docCheio)
+    Dim d
+    For Each d In CATIA.Documents
+        If d.FullName = docCheio Then
+            Set AcharDocumento = d
+            Exit Function
+        End If
+    Next
+    Err.Raise 1003, , "Desenho fechado."
+End Function
+
+' Registro: "0" sem desenho ativo, ou "1", nome completo, nome e numero de folhas.
+Function LerDesenho()
+    On Error Resume Next
+    Dim r
+    r = LerDesenho_()
+    If Err.Number <> 0 Then LerDesenho = Falha() Else LerDesenho = r
+End Function
+
+Function LerDesenho_()
+    Dim doc
+    LerDesenho_ = "OK" & Registro(Array("0"))
+    If CATIA.Documents.Count = 0 Then Exit Function
+    Set doc = CATIA.ActiveDocument
+    If TypeName(doc) <> "DrawingDocument" Then Exit Function
+    LerDesenho_ = "OK" & Registro(Array("1", Campo(doc.FullName), Campo(doc.Name), doc.Sheets.Count))
+End Function
+
+Function Tela(ligada)
+    On Error Resume Next
+    CATIA.RefreshDisplay = ligada
+    Err.Clear
+    Tela = "OK"
+End Function
+
+' ---------------------------------------------------------------------
+' Uma folha. Registros:
+'   F, nome, e detalhe (0/1), largura, altura ("" se nao leu)
+'   V, indice, nome, e background (0/1), x, y, escala, angulo, posicao lida (0/1)
+'   T, indice da vista, indice do texto, conteudo, x, y, fonte, ancora, frame global lido (0/1),
+'      frame global, sublinhado (0/1), frame interno lido (0/1), frame interno, nome do texto,
+'      posicao lida (0/1)
+' ---------------------------------------------------------------------
+Function LerFolha(docCheio, iFolha)
+    On Error Resume Next
+    Dim r
+    r = LerFolha_(docCheio, iFolha)
+    If Err.Number <> 0 Then LerFolha = Falha() Else LerFolha = r
+End Function
+
+Function LerFolha_(docCheio, iFolha)
+    Dim doc, sh, i, v, buf(), n, vx, vy, posOk
+    Set doc = AcharDocumento(docCheio)
+    Set sh = doc.Sheets.Item(iFolha)
+    ReDim buf(1023)
+    n = 0
+    Anota buf, n, Registro(Array("F", Campo(sh.Name), EhDetalhe(sh), LerLargura(sh), LerAltura(sh)))
+    For i = 1 To sh.Views.Count
+        Set v = sh.Views.Item(i)
+        LerPosicao v, vx, vy, posOk
+        Anota buf, n, Registro(Array("V", i, Campo(v.Name), ViewEhFundo(v), vx, vy, EscalaSegura(v), AnguloSeguro(v), posOk))
+        LerTextos v, i, buf, n
+    Next
+    ReDim Preserve buf(n - 1)
+    LerFolha_ = "OK" & Join(buf, "")
+End Function
+
+Sub Anota(buf, n, s)
+    If n > UBound(buf) Then ReDim Preserve buf(2 * n)
+    buf(n) = s
+    n = n + 1
+End Sub
+
+Function ViewEhFundo(v)
+    If v.ViewType = CAT_VIEW_BACKGROUND Then ViewEhFundo = 1 Else ViewEhFundo = 0
+End Function
+
+Function EhDetalhe(sh)
+    On Error Resume Next
+    Dim x
+    x = False
+    x = sh.IsDetail
+    If x Then EhDetalhe = 1 Else EhDetalhe = 0
+    Err.Clear
+End Function
+
+Function LerLargura(sh)
+    On Error Resume Next
+    LerLargura = ""
+    LerLargura = CDbl(sh.GetPaperWidth)
+    Err.Clear
+End Function
+
+Function LerAltura(sh)
+    On Error Resume Next
+    LerAltura = ""
+    LerAltura = CDbl(sh.GetPaperHeight)
+    Err.Clear
+End Function
+
+' O CATIA pode recusar a posicao de uma vista ("The method x failed"). Uma vista assim nao
+' pode parar a leitura das outras: volta 0, 0 e posOk = 0.
+Sub LerPosicao(v, x, y, posOk)
+    On Error Resume Next
+    x = 0
+    y = 0
+    posOk = 0
+    x = CDbl(v.x)
+    y = CDbl(v.y)
+    If Err.Number = 0 Then
+        posOk = 1
+    Else
+        x = 0
+        y = 0
+    End If
+    Err.Clear
+End Sub
+
+Function EscalaSegura(v)
+    Dim sc
+    On Error Resume Next
+    sc = 0
+    sc = CDbl(v.Scale2)
+    If Err.Number <> 0 Or sc <= 0 Then
+        Err.Clear
+        sc = CDbl(v.Scale)
+    End If
+    Err.Clear
+    If sc <= 0 Then sc = 1
+    EscalaSegura = sc
+End Function
+
+Function AnguloSeguro(v)
+    On Error Resume Next
+    AnguloSeguro = 0
+    AnguloSeguro = CDbl(v.Angle)
+    Err.Clear
+End Function
+
+Sub LerTextos(v, iv, buf, n)
+    Dim oTexts, total, j, t, conteudo
+    total = 0
+    TextosDaVista v, oTexts, total
+    For j = 1 To total
+        LerUmTexto oTexts, iv, j, buf, n
+    Next
+End Sub
+
+Sub TextosDaVista(v, oTexts, total)
+    On Error Resume Next
+    Set oTexts = v.Texts
+    total = oTexts.Count
+    Err.Clear
+End Sub
+
+' Cada leitura e protegida: um texto ruim nao para os outros.
+Sub LerUmTexto(oTexts, iv, j, buf, n)
+    Dim t, s, x, y, posT, fonte, ancora, gr, gf, sub_, ir, inf
+    On Error Resume Next
+    Set t = Nothing
+    Set t = oTexts.Item(j)
+    If t Is Nothing Then
+        Err.Clear
+        Exit Sub
+    End If
+    s = ""
+    s = CStr(t.Text)
+    Err.Clear
+    ' Posicao que o CATIA recusar nao pode virar 0, 0: o callout cairia na zona do canto.
+    x = 0: y = 0: posT = 1
+    x = CDbl(t.x)
+    y = CDbl(t.y)
+    If Err.Number <> 0 Then
+        posT = 0: x = 0: y = 0
+    End If
+    Err.Clear
+    fonte = 0
+    fonte = CDbl(t.GetFontSize(0, 0))
+    ancora = 0
+    ancora = CLng(t.AnchorPosition)
+    Err.Clear
+    gr = 0: gf = 0
+    LerFrameGlobal t, gr, gf
+    sub_ = Sublinhado(t)
+    ir = 0: inf = 0
+    LerFrameInterno t, s, ir, inf
+    Anota buf, n, Registro(Array("T", iv, j, Campo(s), x, y, fonte, ancora, gr, gf, sub_, ir, inf, Campo(t.Name), posT))
+    Err.Clear
+End Sub
+
+Sub LerFrameGlobal(t, gr, gf)
+    Dim v
+    On Error Resume Next
+    v = t.FrameType
+    If Err.Number = 0 And IsNumeric(v) Then
+        gf = CLng(v)
+        gr = 1
+    End If
+    Err.Clear
+End Sub
+
+Function Sublinhado(t)
+    Dim p
+    On Error Resume Next
+    Sublinhado = 0
+    Set p = Nothing
+    Set p = t.TextProperties
+    If Not p Is Nothing Then
+        If CLng(p.Underline) = 1 Then Sublinhado = 1
+    End If
+    Err.Clear
+End Function
+
+' O frame interno e o do trecho da primeira linha que e so numero. Sem essa linha, nao le.
+Sub LerFrameInterno(t, raw, ir, inf)
+    Dim alvo, primeiro, v
+    alvo = PrimeiraLinhaDeNumero(raw)
+    If Len(alvo) = 0 Then Exit Sub
+    primeiro = InStr(1, raw, alvo, vbBinaryCompare) - 1
+    If primeiro < 0 Then primeiro = 0
+    On Error Resume Next
+    v = t.GetParameterOnSubString(CALLOUT_TEXT_PROPERTY_BORDER, primeiro, Len(alvo))
+    If Err.Number = 0 And IsNumeric(v) Then
+        inf = CLng(v)
+        ir = 1
+    End If
+    Err.Clear
+End Sub
+
+Function PrimeiraLinhaDeNumero(ByVal s)
+    Dim p, i, linha
+    PrimeiraLinhaDeNumero = ""
+    s = Replace(s, vbCrLf, vbLf)
+    s = Replace(s, vbCr, vbLf)
+    s = Replace(s, vbTab, " ")
+    s = Replace(s, Chr(160), " ")
+    p = Split(s, vbLf)
+    For i = 0 To UBound(p)
+        linha = Trim(p(i))
+        If SoDigitos(linha) Then
+            PrimeiraLinhaDeNumero = linha
+            Exit Function
+        End If
+    Next
+End Function
+
+Function SoDigitos(s)
+    Dim i, ch
+    SoDigitos = False
+    If Len(s) = 0 Then Exit Function
+    For i = 1 To Len(s)
+        ch = Mid(s, i, 1)
+        If ch < "0" Or ch > "9" Then Exit Function
+    Next
+    SoDigitos = True
+End Function
+
+' ---------------------------------------------------------------------
+' Linhas 2D de uma vista, para achar as chaves de quantidade. So e lida quando aparece o
+' primeiro texto de quantidade solto da vista. For Each, porque GeometricElements.Item(j)
+' refaz a busca a cada chamada (16 000 linhas = 8 min no V5R20; For Each le 50 000 em 6 s).
+' Registros: L, x1, y1, x2, y2 em coordenadas da vista.
+' ---------------------------------------------------------------------
+Function LerLinhas(docCheio, iFolha, iVista)
+    On Error Resume Next
+    Dim r
+    r = LerLinhas_(docCheio, iFolha, iVista)
+    If Err.Number <> 0 Then LerLinhas = Falha() Else LerLinhas = r
+End Function
+
+Function LerLinhas_(docCheio, iFolha, iVista)
+    Dim doc, v, ge, total, buf(), n
+    Set doc = AcharDocumento(docCheio)
+    Set v = doc.Sheets.Item(iFolha).Views.Item(iVista)
+    total = 0
+    Geometria v, ge, total
+    ReDim buf(1023)
+    n = 0
+    If total > 0 And total <= BRACKET_MAX_GEOMETRIA Then PercorrerGeometria ge, total, buf, n
+    If n > 0 Then
+        ReDim Preserve buf(n - 1)
+        LerLinhas_ = "OK" & Join(buf, "")
+    Else
+        LerLinhas_ = "OK"
+    End If
+End Function
+
+Sub Geometria(v, ge, total)
+    On Error Resume Next
+    Set ge = v.GeometricElements
+    total = ge.Count
+    Err.Clear
+End Sub
+
+Sub PercorrerGeometria(ge, total, buf, n)
+    Dim g, pts(3)
+    On Error Resume Next
+    For Each g In ge
+        If TypeName(g) = "Line2D" And n < total Then
+            Err.Clear
+            g.GetEndPoints pts
+            If Err.Number = 0 Then Anota buf, n, Registro(Array("L", pts(0), pts(1), pts(2), pts(3)))
+        End If
+    Next
+    Err.Clear
+End Sub
+
+' ---------------------------------------------------------------------
+' Move um texto. x e y em coordenadas da vista. Registro: x e y lidos de volta.
+' ---------------------------------------------------------------------
+Function MoverTexto(docCheio, nomeFolha, iVista, nomeVista, iTexto, nomeTexto, x, y)
+    On Error Resume Next
+    Dim r
+    r = MoverTexto_(docCheio, nomeFolha, iVista, nomeVista, iTexto, nomeTexto, x, y)
+    If Err.Number <> 0 Then MoverTexto = Falha() Else MoverTexto = r
+End Function
+
+Function MoverTexto_(docCheio, nomeFolha, iVista, nomeVista, iTexto, nomeTexto, x, y)
+    Dim doc, sh, v, t
+    Set doc = AcharDocumento(docCheio)
+    Set sh = doc.Sheets.Item(nomeFolha)
+    Set v = sh.Views.Item(iVista)
+    If v.Name <> nomeVista Then Err.Raise 1004, , "A vista mudou. Mapeie de novo."
+    If v.LockStatus Then Err.Raise 1005, , "A vista " & nomeVista & " esta travada. Destrave para mover."
+    Set t = v.Texts.Item(iTexto)
+    If t.Name <> nomeTexto Then Err.Raise 1004, , "O texto mudou. Mapeie de novo."
+    t.x = x
+    t.y = y
+    AtualizarTela
+    MoverTexto_ = "OK" & Registro(Array(t.x, t.y))
+End Function
+
+Sub AtualizarTela()
+    On Error Resume Next
+    CATIA.ActiveWindow.ActiveViewer.Update
+    Err.Clear
+End Sub
+
+' Deixa a primeira folha ativa, numa vista de trabalho.
+Function RestaurarVistas(docCheio)
+    On Error Resume Next
+    Dim doc, s, v, i, nome
+    Set doc = AcharDocumento(docCheio)
+    If doc.Sheets.Count > 0 Then
+        Set s = doc.Sheets.Item(1)
+        s.Activate
+        Err.Clear
+        For i = 1 To s.Views.Count
+            Set v = s.Views.Item(i)
+            If Not VistaIgnorada(v) Then
+                Err.Clear
+                v.Activate
+                If Err.Number = 0 Then Exit For
+                Err.Clear
+            End If
+        Next
+    End If
+    CATIA.ActiveWindow.ActiveViewer.Update
+    Err.Clear
+    RestaurarVistas = "OK"
+End Function
+
+Function VistaIgnorada(v)
+    Dim s
+    VistaIgnorada = True
+    If v.ViewType = CAT_VIEW_BACKGROUND Then Exit Function
+    s = UCase(Trim(v.Name))
+    If s = "ZONE" Or Left(s, 5) = "ZONE[" Or Left(s, 5) = "ZONE " Or Left(s, 5) = "ZONE_" Or Left(s, 6) = "ZONES_" Then Exit Function
+    VistaIgnorada = False
+End Function

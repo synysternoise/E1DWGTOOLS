@@ -1,0 +1,806 @@
+' Fix Flags: parte que roda dentro do CATIA (porte de vba_referencia/fixflags).
+' Protocolo da resposta: ver src/engine/catia_bridge.py.
+'
+' CONVERSAO:   NL006 -> NL0006   AB123 -> AB0123   NL0006 permanece NL0006
+'
+' DIFERENCAS DECIDIDAS EM RELACAO A MACRO (ver MIGRACAO.md):
+'   - Flag que ja esta correta nao e tocada: nem texto, nem frame, nem cor.
+'   - As letras sao contadas a partir de 1, como no CATIA.
+'   - Tirar um espaco externo de um codigo com 4 numeros conta como correcao.
+'
+' TIPOS:       7, 8, 9 = Right, Left e Both Flag variavel
+'              57, 58, 59 = Right, Left e Both Flag fixa com cadeado
+'
+' O "On Error GoTo" do VBA nao existe em VBScript. Aqui a mesma ideia e feita em duas
+' partes: a rotina de fora tem On Error Resume Next e a de dentro nao tem nada. Um erro
+' na de dentro a interrompe na hora e volta para a de fora, como no salto do VBA.
+
+Const FIX_FRAME_NONE = 0
+Const FIX_FRAME_RIGHT_FLAG = 7
+Const FIX_FRAME_LEFT_FLAG = 8
+Const FIX_FRAME_BOTH_FLAG = 9
+Const FIX_FRAME_RIGHT_FLAG_LOCKED = 57
+Const FIX_FRAME_LEFT_FLAG_LOCKED = 58
+Const FIX_FRAME_BOTH_FLAG_LOCKED = 59
+
+Const FIX_PROPERTY_COLOR = 10
+Const FIX_PROPERTY_BORDER = 12
+
+Const FIX_ORIGEM_NENHUMA = 0
+Const FIX_ORIGEM_OBJETO = 1
+Const FIX_ORIGEM_TEXT_EDITOR = 2
+
+Const FIX_COLOR_GREEN = 11555071
+Const FIX_COLOR_RED = -16776961
+
+Dim fixTotalTextos, fixTotalFlags
+Dim fixTotalFlagsObjetoInteiro, fixTotalFlagsTextEditor, fixTotalFlagsComCadeado
+Dim fixTotalCorrigidas, fixTotalJaCorretas, fixTotalIgnoradas
+Dim fixTotalFalhasValidacao, fixTotalRestauradas, fixTotalErros
+
+' Estado do texto em processamento, usado para restaurar depois de um erro.
+Dim mTextoOriginal, mFrameOriginal, mOrigemFlag, mAlterouTexto, mLarguraQuebra
+Dim mRegex
+
+' ---------------------------------------------------------------------
+' Resposta
+' ---------------------------------------------------------------------
+Function Campo(s)
+    Campo = Replace(Replace(CStr(s), Chr(30), " "), Chr(31), " ")
+End Function
+
+Function Registro(a)
+    Registro = Chr(30) & Join(a, Chr(31))
+End Function
+
+Function Falha()
+    Falha = "ERR" & Chr(31) & Err.Number & Chr(31) & Campo(Err.Description)
+    Err.Clear
+End Function
+
+' ---------------------------------------------------------------------
+' Situacao do documento ativo. Registro: "0" nenhum documento, "1" nao e desenho,
+' "2", nome completo e numero de folhas.
+' ---------------------------------------------------------------------
+Function LerDesenho()
+    On Error Resume Next
+    Dim r
+    r = LerDesenho_()
+    If Err.Number <> 0 Then LerDesenho = Falha() Else LerDesenho = r
+End Function
+
+Function LerDesenho_()
+    Dim doc
+    If CATIA.Documents.Count = 0 Then
+        LerDesenho_ = "OK" & Registro(Array("0"))
+        Exit Function
+    End If
+    Set doc = CATIA.ActiveDocument
+    If TypeName(doc) <> "DrawingDocument" Then
+        LerDesenho_ = "OK" & Registro(Array("1"))
+        Exit Function
+    End If
+    LerDesenho_ = "OK" & Registro(Array("2", Campo(doc.FullName), doc.Sheets.Count))
+End Function
+
+Function AcharDocumento(docCheio)
+    Dim d
+    Set AcharDocumento = Nothing
+    For Each d In CATIA.Documents
+        If d.FullName = docCheio Then
+            Set AcharDocumento = d
+            Exit Function
+        End If
+    Next
+End Function
+
+' ---------------------------------------------------------------------
+' Corrige uma folha. Primeiro registro: "N", nome da folha e os contadores.
+' Depois: um registro "F" por flag. Se o trabalho for interrompido por um erro, o
+' que ja foi feito volta do mesmo jeito, seguido de um registro "ABORT".
+' Resultado da flag: C corrigida, J ja correta, R falhou e foi restaurada,
+' N falhou e nao foi restaurada, E erro.
+' ---------------------------------------------------------------------
+Function CorrigirFolha(docCheio, iFolha)
+    On Error Resume Next
+    Dim nomeFolha, buf(), n, fim
+    ResetarContadoresFix
+    ReDim buf(255)
+    n = 0
+    nomeFolha = ""
+    fim = ""
+    CorrigirFolha_ docCheio, iFolha, nomeFolha, buf, n
+    If Err.Number <> 0 Then fim = Registro(Array("ABORT", Err.Number, Campo(Err.Description)))
+    Err.Clear
+    If n > 0 Then ReDim Preserve buf(n - 1) Else ReDim buf(0)
+    CorrigirFolha = "OK" & Registro(Array("N", nomeFolha, LerContadoresFix())) & Join(buf, "") & fim
+End Function
+
+Sub CorrigirFolha_(docCheio, iFolha, nomeFolha, buf, n)
+    Dim doc, sh, views, v, txts, t, iv, it
+    Set doc = AcharDocumento(docCheio)
+    If doc Is Nothing Then Err.Raise 1003, , "Desenho fechado."
+    Set sh = doc.Sheets.Item(iFolha)
+    nomeFolha = Campo(sh.Name)
+    Set views = sh.Views
+    For iv = 1 To views.Count
+        Set v = views.Item(iv)
+        If LerTextosDaVista(v, txts) Then
+            For it = 1 To txts.Count
+                Set t = txts.Item(it)
+                fixTotalTextos = fixTotalTextos + 1
+                ProcessarERegistrar t, v, iv, it, buf, n
+            Next
+        End If
+    Next
+End Sub
+
+Function LerTextosDaVista(v, txts)
+    On Error Resume Next
+    LerTextosDaVista = False
+    Set txts = Nothing
+    Err.Clear
+    Set txts = v.Texts
+    If Err.Number <> 0 Then
+        fixTotalErros = fixTotalErros + 1
+        Err.Clear
+    ElseIf txts Is Nothing Then
+        fixTotalErros = fixTotalErros + 1
+    Else
+        LerTextosDaVista = True
+    End If
+    Err.Clear
+End Function
+
+' Processa o texto e anota o que aconteceu. Texto ignorado nao gera registro.
+Sub ProcessarERegistrar(t, v, iv, it, buf, n)
+    Dim flags, corr, ja, falhas, rest, erros, res
+    flags = fixTotalFlags: corr = fixTotalCorrigidas: ja = fixTotalJaCorretas
+    falhas = fixTotalFalhasValidacao: rest = fixTotalRestauradas: erros = fixTotalErros
+
+    ProcessarFlagSegura t
+
+    res = ""
+    If fixTotalCorrigidas > corr Then
+        res = "C"
+    ElseIf fixTotalJaCorretas > ja Then
+        res = "J"
+    ElseIf fixTotalErros > erros Then
+        res = "E"
+    ElseIf fixTotalFalhasValidacao > falhas Then
+        If fixTotalRestauradas > rest Then res = "R" Else res = "N"
+    End If
+    If res = "" Then Exit Sub
+
+    If n > UBound(buf) Then ReDim Preserve buf(2 * n)
+    buf(n) = Registro(Array("F", iv, it, Campo(LerSeguro(t, "Name")), Campo(LerSeguro(v, "Name")), _
+        Campo(mTextoOriginal), Campo(LerSeguro(t, "Text")), mFrameOriginal, mOrigemFlag, res))
+    n = n + 1
+End Sub
+
+Function LerSeguro(o, propriedade)
+    On Error Resume Next
+    LerSeguro = ""
+    If propriedade = "Name" Then LerSeguro = CStr(o.Name) Else LerSeguro = CStr(o.Text)
+    Err.Clear
+End Function
+
+' ---------------------------------------------------------------------
+' Fim do trabalho: limpa a selecao e, se terminou normalmente, atualiza o desenho.
+' ---------------------------------------------------------------------
+Function Finalizar(docCheio, atualizar)
+    On Error Resume Next
+    Dim doc
+    Set doc = AcharDocumento(docCheio)
+    If Not doc Is Nothing Then
+        doc.Selection.Clear
+        If atualizar Then doc.Update
+    End If
+    Err.Clear
+    Finalizar = "OK"
+End Function
+
+' ---------------------------------------------------------------------
+' Processar um DrawingText
+' ---------------------------------------------------------------------
+Sub ProcessarFlagSegura(drawingText)
+    Dim restaurou
+    On Error Resume Next
+    mAlterouTexto = False
+    mLarguraQuebra = -1
+    mTextoOriginal = ""
+    mFrameOriginal = FIX_FRAME_NONE
+    mOrigemFlag = FIX_ORIGEM_NENHUMA
+    Err.Clear
+
+    ProcessarFlagSegura_ drawingText
+
+    If Err.Number <> 0 Then
+        Err.Clear
+        fixTotalErros = fixTotalErros + 1
+        If mAlterouTexto Then
+            restaurou = RestaurarEstadoOriginal(drawingText, mTextoOriginal, mOrigemFlag, mFrameOriginal)
+            If restaurou = True Then fixTotalRestauradas = fixTotalRestauradas + 1
+        End If
+    End If
+    Err.Clear
+End Sub
+
+Sub ProcessarFlagSegura_(drawingText)
+    Dim textoCodigo, textoCorrigido, textoRelido, prefixo, parteNumerica, quatroNumeros
+
+    mTextoOriginal = CStr(drawingText.Text)
+
+    ' Remove espacos, tabs, CR, LF e NBSP externos.
+    textoCodigo = RemoverCaracteresExternos(mTextoOriginal)
+    If Len(textoCodigo) = 0 Then
+        fixTotalIgnoradas = fixTotalIgnoradas + 1
+        Exit Sub
+    End If
+
+    prefixo = ""
+    parteNumerica = ""
+    If Not SepararCodigoSeguro(textoCodigo, prefixo, parteNumerica) Then
+        fixTotalIgnoradas = fixTotalIgnoradas + 1
+        Exit Sub
+    End If
+
+    ' Detecta a flag antes da alteracao.
+    mFrameOriginal = FIX_FRAME_NONE
+    mOrigemFlag = FIX_ORIGEM_NENHUMA
+    If Not DetectarFlagOriginal(drawingText, Len(mTextoOriginal), mFrameOriginal, mOrigemFlag) Then
+        fixTotalIgnoradas = fixTotalIgnoradas + 1
+        Exit Sub
+    End If
+
+    fixTotalFlags = fixTotalFlags + 1
+    If mOrigemFlag = FIX_ORIGEM_OBJETO Then
+        fixTotalFlagsObjetoInteiro = fixTotalFlagsObjetoInteiro + 1
+    ElseIf mOrigemFlag = FIX_ORIGEM_TEXT_EDITOR Then
+        fixTotalFlagsTextEditor = fixTotalFlagsTextEditor + 1
+    End If
+    If EhFrameDeFlagComCadeado(mFrameOriginal) Then
+        fixTotalFlagsComCadeado = fixTotalFlagsComCadeado + 1
+    End If
+
+    ' Com quatro numeros, so grava se houver espaco externo a tirar. Com tres, sempre grava.
+    quatroNumeros = (Len(parteNumerica) = 4)
+    If quatroNumeros Then
+        textoCorrigido = prefixo & parteNumerica
+    Else
+        textoCorrigido = prefixo & "0" & parteNumerica
+    End If
+
+    ' Flag ja correta fica exatamente como esta.
+    If quatroNumeros And StrComp(mTextoOriginal, textoCorrigido, vbBinaryCompare) = 0 Then
+        fixTotalJaCorretas = fixTotalJaCorretas + 1
+        Exit Sub
+    End If
+
+    mLarguraQuebra = LerLarguraDaQuebra(drawingText)
+    drawingText.Text = textoCorrigido
+    mAlterouTexto = True
+    AtualizarPropriedadesTexto drawingText
+    AjustarLarguraDaQuebra drawingText, mLarguraQuebra
+
+    If Not PreservarFlagOriginal(drawingText, mOrigemFlag, mFrameOriginal, Len(textoCorrigido)) Then
+        FalhaERestaurar drawingText, mTextoOriginal, mOrigemFlag, mFrameOriginal
+        Exit Sub
+    End If
+
+    If Not AplicarCorTextoInteiro(drawingText, FIX_COLOR_GREEN) Then
+        FalhaERestaurar drawingText, mTextoOriginal, mOrigemFlag, mFrameOriginal
+        Exit Sub
+    End If
+
+    AtualizarPropriedadesTexto drawingText
+
+    textoRelido = CStr(drawingText.Text)
+    If StrComp(textoRelido, textoCorrigido, vbBinaryCompare) <> 0 Then
+        FalhaERestaurar drawingText, mTextoOriginal, mOrigemFlag, mFrameOriginal
+        Exit Sub
+    End If
+    If Not ValidarFlagFinal(drawingText, mOrigemFlag, mFrameOriginal, Len(textoRelido)) Then
+        FalhaERestaurar drawingText, mTextoOriginal, mOrigemFlag, mFrameOriginal
+        Exit Sub
+    End If
+    If Not ValidarCorTextoInteiro(drawingText, Len(textoRelido), FIX_COLOR_GREEN) Then
+        FalhaERestaurar drawingText, mTextoOriginal, mOrigemFlag, mFrameOriginal
+        Exit Sub
+    End If
+
+    fixTotalCorrigidas = fixTotalCorrigidas + 1
+End Sub
+
+Sub FalhaERestaurar(drawingText, textoOriginal, origemFlag, frameOriginal)
+    Dim restaurou
+    fixTotalFalhasValidacao = fixTotalFalhasValidacao + 1
+    restaurou = RestaurarEstadoOriginal(drawingText, textoOriginal, origemFlag, frameOriginal)
+    If restaurou Then
+        fixTotalRestauradas = fixTotalRestauradas + 1
+    Else
+        AplicarCorTextoInteiro drawingText, FIX_COLOR_RED
+    End If
+End Sub
+
+' ---------------------------------------------------------------------
+' Detectar a flag. Ordem: DrawingText.FrameType, TextProperties.FrameType,
+' catBorder no texto inteiro, catBorder caractere por caractere.
+' ---------------------------------------------------------------------
+Function DetectarFlagOriginal(drawingText, tamanhoTexto, frameEncontrado, origemFlag)
+    Dim valor, indice
+    DetectarFlagOriginal = False
+    frameEncontrado = FIX_FRAME_NONE
+    origemFlag = FIX_ORIGEM_NENHUMA
+
+    valor = LerFrameDoDrawingText(drawingText)
+    If EhFrameDeFlagFix(valor) Then
+        frameEncontrado = valor
+        origemFlag = FIX_ORIGEM_OBJETO
+        DetectarFlagOriginal = True
+        Exit Function
+    End If
+
+    valor = LerFrameDasTextProperties(drawingText)
+    If EhFrameDeFlagFix(valor) Then
+        frameEncontrado = valor
+        origemFlag = FIX_ORIGEM_OBJETO
+        DetectarFlagOriginal = True
+        Exit Function
+    End If
+
+    If tamanhoTexto <= 0 Then Exit Function
+
+    valor = LerBordaTrechoFix(drawingText, 0, 0)
+    If EhFrameDeFlagFix(valor) Then
+        frameEncontrado = valor
+        origemFlag = FIX_ORIGEM_TEXT_EDITOR
+        DetectarFlagOriginal = True
+        Exit Function
+    End If
+
+    valor = LerBordaTrechoFix(drawingText, 0, tamanhoTexto)
+    If EhFrameDeFlagFix(valor) Then
+        frameEncontrado = valor
+        origemFlag = FIX_ORIGEM_TEXT_EDITOR
+        DetectarFlagOriginal = True
+        Exit Function
+    End If
+
+    For indice = 1 To tamanhoTexto
+        valor = LerBordaTrechoFix(drawingText, indice, 1)
+        If EhFrameDeFlagFix(valor) Then
+            frameEncontrado = valor
+            origemFlag = FIX_ORIGEM_TEXT_EDITOR
+            DetectarFlagOriginal = True
+            Exit Function
+        End If
+    Next
+End Function
+
+Function PreservarFlagOriginal(drawingText, origemFlag, frameOriginal, tamanhoTexto)
+    If origemFlag = FIX_ORIGEM_OBJETO Then
+        PreservarFlagOriginal = PreservarFrameDoObjeto(drawingText, frameOriginal)
+    ElseIf origemFlag = FIX_ORIGEM_TEXT_EDITOR Then
+        PreservarFlagOriginal = AplicarFrameNoTextoInteiro(drawingText, frameOriginal, tamanhoTexto)
+    Else
+        PreservarFlagOriginal = False
+    End If
+End Function
+
+' Mantem o valor exato, inclusive 57, 58 ou 59.
+Function PreservarFrameDoObjeto(drawingText, frameOriginal)
+    Dim frameAtual, tp, sucesso
+    sucesso = False
+
+    If Not EhFrameDeFlagFix(frameOriginal) Then
+        PreservarFrameDoObjeto = False
+        Exit Function
+    End If
+
+    frameAtual = LerFrameDoDrawingText(drawingText)
+    If frameAtual = frameOriginal Then
+        PreservarFrameDoObjeto = True
+        Exit Function
+    End If
+
+    frameAtual = LerFrameDasTextProperties(drawingText)
+    If frameAtual = frameOriginal Then
+        PreservarFrameDoObjeto = True
+        Exit Function
+    End If
+
+    GravarFrameDoObjeto drawingText, frameOriginal, sucesso
+
+    AtualizarPropriedadesTexto drawingText
+
+    frameAtual = LerFrameDoDrawingText(drawingText)
+    If frameAtual = frameOriginal Then sucesso = True
+    If Not sucesso Then
+        frameAtual = LerFrameDasTextProperties(drawingText)
+        If frameAtual = frameOriginal Then sucesso = True
+    End If
+
+    PreservarFrameDoObjeto = sucesso
+End Function
+
+Sub GravarFrameDoObjeto(drawingText, frameOriginal, sucesso)
+    Dim tp
+    On Error Resume Next
+    Err.Clear
+    drawingText.FrameType = frameOriginal
+    If Err.Number = 0 Then sucesso = True
+    Err.Clear
+    Set tp = Nothing
+    Set tp = drawingText.TextProperties
+    If Not tp Is Nothing Then
+        Err.Clear
+        tp.FrameType = frameOriginal
+        If Err.Number = 0 Then sucesso = True
+        Err.Clear
+        tp.Update
+    End If
+    Err.Clear
+End Sub
+
+' Somente para flags realmente aplicadas pelo Text Editor.
+Function AplicarFrameNoTextoInteiro(drawingText, frameOriginal, tamanhoTexto)
+    Dim r
+    On Error Resume Next
+    r = False
+    r = AplicarFrameNoTextoInteiro_(drawingText, frameOriginal, tamanhoTexto)
+    If Err.Number <> 0 Then r = False
+    Err.Clear
+    AplicarFrameNoTextoInteiro = r
+End Function
+
+Function AplicarFrameNoTextoInteiro_(drawingText, frameOriginal, tamanhoTexto)
+    AplicarFrameNoTextoInteiro_ = False
+    If tamanhoTexto <= 0 Then Exit Function
+    If Not EhFrameDeFlagFix(frameOriginal) Then Exit Function
+    drawingText.SetParameterOnSubString FIX_PROPERTY_BORDER, 1, tamanhoTexto, frameOriginal
+    AtualizarPropriedadesTexto drawingText
+    AplicarFrameNoTextoInteiro_ = True
+End Function
+
+Function ValidarFlagFinal(drawingText, origemFlag, frameEsperado, tamanhoTexto)
+    If origemFlag = FIX_ORIGEM_OBJETO Then
+        ValidarFlagFinal = ValidarFrameDoObjeto(drawingText, frameEsperado)
+    ElseIf origemFlag = FIX_ORIGEM_TEXT_EDITOR Then
+        ValidarFlagFinal = ValidarFrameNoTextoInteiro(drawingText, frameEsperado, tamanhoTexto)
+    Else
+        ValidarFlagFinal = False
+    End If
+End Function
+
+Function ValidarFrameDoObjeto(drawingText, frameEsperado)
+    Dim a, b
+    a = LerFrameDoDrawingText(drawingText)
+    b = LerFrameDasTextProperties(drawingText)
+    ValidarFrameDoObjeto = (a = frameEsperado) Or (b = frameEsperado)
+End Function
+
+Function ValidarFrameNoTextoInteiro(drawingText, frameEsperado, tamanhoTexto)
+    Dim indice
+    ValidarFrameNoTextoInteiro = False
+    If tamanhoTexto <= 0 Then Exit Function
+    For indice = 1 To tamanhoTexto
+        If LerBordaTrechoFix(drawingText, indice, 1) <> frameEsperado Then Exit Function
+    Next
+    ValidarFrameNoTextoInteiro = True
+End Function
+
+' Dois mecanismos, para o zero inserido tambem ficar verde.
+' O resultado aparece so na tela do E1 Tools: a flag nao e mais pintada no desenho.
+Function AplicarCorTextoInteiro(drawingText, corCodificada)
+    AplicarCorTextoInteiro = True
+End Function
+
+
+Function ValidarCorTextoInteiro(drawingText, tamanhoTexto, corEsperada)
+    ValidarCorTextoInteiro = True
+End Function
+
+' ---------------------------------------------------------------------
+' Largura da quebra. Um texto com largura fixa nao deixa o codigo crescer: o ultimo numero
+' caia para a linha de baixo e a flag ficava partida em duas.
+' ---------------------------------------------------------------------
+Function LerLarguraDaQuebra(drawingText)
+    Dim x
+    On Error Resume Next
+    LerLarguraDaQuebra = -1
+    x = CDbl(drawingText.WrappingWidth)
+    If Err.Number = 0 Then LerLarguraDaQuebra = x
+    Err.Clear
+End Function
+
+' Largura 0 faz o CATIA ajustar a caixa ao texto. Se a antiga era maior, ela volta.
+Sub AjustarLarguraDaQuebra(drawingText, larguraAntes)
+    Dim natural
+    If larguraAntes <= 0 Then Exit Sub
+    On Error Resume Next
+    drawingText.WrappingWidth = 0
+    natural = LerLarguraDaQuebra(drawingText)
+    If natural > 0 And larguraAntes > natural Then drawingText.WrappingWidth = larguraAntes
+    Err.Clear
+End Sub
+
+Sub RestaurarLarguraDaQuebra(drawingText)
+    If mLarguraQuebra <= 0 Then Exit Sub
+    On Error Resume Next
+    drawingText.WrappingWidth = mLarguraQuebra
+    Err.Clear
+End Sub
+
+Function RestaurarEstadoOriginal(drawingText, textoOriginal, origemFlag, frameOriginal)
+    Dim r
+    On Error Resume Next
+    r = False
+    r = RestaurarEstadoOriginal_(drawingText, textoOriginal, origemFlag, frameOriginal)
+    If Err.Number <> 0 Then r = False
+    Err.Clear
+    RestaurarEstadoOriginal = r
+End Function
+
+Function RestaurarEstadoOriginal_(drawingText, textoOriginal, origemFlag, frameOriginal)
+    Dim restaurouFrame
+    drawingText.Text = textoOriginal
+    AtualizarPropriedadesTexto drawingText
+    RestaurarLarguraDaQuebra drawingText
+    restaurouFrame = PreservarFlagOriginal(drawingText, origemFlag, frameOriginal, Len(textoOriginal))
+    AplicarCorTextoInteiro drawingText, FIX_COLOR_RED
+    AtualizarPropriedadesTexto drawingText
+    RestaurarEstadoOriginal_ = restaurouFrame
+End Function
+
+' ---------------------------------------------------------------------
+' Leituras: devolvem -1 se nao conseguirem ler.
+' ---------------------------------------------------------------------
+Function LerFrameDoDrawingText(drawingText)
+    Dim x
+    On Error Resume Next
+    LerFrameDoDrawingText = -1
+    x = CLng(drawingText.FrameType)
+    If Err.Number = 0 Then LerFrameDoDrawingText = x
+    Err.Clear
+End Function
+
+Function LerFrameDasTextProperties(drawingText)
+    Dim tp, x
+    On Error Resume Next
+    LerFrameDasTextProperties = -1
+    Set tp = Nothing
+    Set tp = drawingText.TextProperties
+    If Err.Number = 0 Then
+        If Not tp Is Nothing Then
+            x = CLng(tp.FrameType)
+            If Err.Number = 0 Then LerFrameDasTextProperties = x
+        End If
+    End If
+    Err.Clear
+End Function
+
+Function LerBordaTrechoFix(drawingText, inicio, quantidade)
+    Dim x
+    On Error Resume Next
+    LerBordaTrechoFix = -1
+    x = CLng(drawingText.GetParameterOnSubString(FIX_PROPERTY_BORDER, inicio, quantidade))
+    If Err.Number = 0 Then LerBordaTrechoFix = x
+    Err.Clear
+End Function
+
+Function LerCorTrechoFix(drawingText, inicio, quantidade)
+    Dim x
+    On Error Resume Next
+    LerCorTrechoFix = -1
+    x = CLng(drawingText.GetParameterOnSubString(FIX_PROPERTY_COLOR, inicio, quantidade))
+    If Err.Number = 0 Then LerCorTrechoFix = x
+    Err.Clear
+End Function
+
+Sub AtualizarPropriedadesTexto(drawingText)
+    Dim tp
+    On Error Resume Next
+    Err.Clear
+    Set tp = Nothing
+    Set tp = drawingText.TextProperties
+    If Not tp Is Nothing Then tp.Update
+    Err.Clear
+End Sub
+
+' ---------------------------------------------------------------------
+' Regras
+' ---------------------------------------------------------------------
+Function EhFrameDeFlagFix(valor)
+    Select Case valor
+        Case FIX_FRAME_RIGHT_FLAG, FIX_FRAME_LEFT_FLAG, FIX_FRAME_BOTH_FLAG, _
+             FIX_FRAME_RIGHT_FLAG_LOCKED, FIX_FRAME_LEFT_FLAG_LOCKED, FIX_FRAME_BOTH_FLAG_LOCKED
+            EhFrameDeFlagFix = True
+        Case Else
+            EhFrameDeFlagFix = False
+    End Select
+End Function
+
+Function EhFrameDeFlagComCadeado(valor)
+    Select Case valor
+        Case FIX_FRAME_RIGHT_FLAG_LOCKED, FIX_FRAME_LEFT_FLAG_LOCKED, FIX_FRAME_BOTH_FLAG_LOCKED
+            EhFrameDeFlagComCadeado = True
+        Case Else
+            EhFrameDeFlagComCadeado = False
+    End Select
+End Function
+
+' Remove somente tab, LF, CR, espaco e NBSP antes e depois do codigo.
+Function RemoverCaracteresExternos(textoOriginal)
+    Dim primeiro, ultimo
+    primeiro = 1
+    ultimo = Len(textoOriginal)
+    Do While primeiro <= ultimo
+        If Not EhCaractereExternoVazio(Mid(textoOriginal, primeiro, 1)) Then Exit Do
+        primeiro = primeiro + 1
+    Loop
+    Do While ultimo >= primeiro
+        If Not EhCaractereExternoVazio(Mid(textoOriginal, ultimo, 1)) Then Exit Do
+        ultimo = ultimo - 1
+    Loop
+    If ultimo < primeiro Then
+        RemoverCaracteresExternos = ""
+    Else
+        RemoverCaracteresExternos = Mid(textoOriginal, primeiro, ultimo - primeiro + 1)
+    End If
+End Function
+
+Function EhCaractereExternoVazio(caractere)
+    If Len(caractere) = 0 Then
+        EhCaractereExternoVazio = True
+        Exit Function
+    End If
+    Select Case AscW(caractere)
+        Case 9, 10, 13, 32, 160
+            EhCaractereExternoVazio = True
+        Case Else
+            EhCaractereExternoVazio = False
+    End Select
+End Function
+
+' Aceita somente letras + 3 ou 4 numeros.
+Function SepararCodigoSeguro(texto, prefixo, parteNumerica)
+    Dim r
+    On Error Resume Next
+    prefixo = ""
+    parteNumerica = ""
+    r = False
+    r = SepararCodigoSeguro_(texto, prefixo, parteNumerica)
+    If Err.Number <> 0 Then
+        prefixo = ""
+        parteNumerica = ""
+        r = False
+    End If
+    Err.Clear
+    SepararCodigoSeguro = r
+End Function
+
+Function SepararCodigoSeguro_(texto, prefixo, parteNumerica)
+    Dim m
+    SepararCodigoSeguro_ = False
+    If IsEmpty(mRegex) Then
+        Set mRegex = CreateObject("VBScript.RegExp")
+        mRegex.Global = False
+        mRegex.IgnoreCase = True
+        mRegex.Pattern = "^([A-Z]+)([0-9]{3,4})$"
+    End If
+    If Not mRegex.Test(texto) Then Exit Function
+    Set m = mRegex.Execute(texto).Item(0)
+    prefixo = CStr(m.SubMatches.Item(0))
+    parteNumerica = CStr(m.SubMatches.Item(1))
+    SepararCodigoSeguro_ = True
+End Function
+
+Sub ResetarContadoresFix()
+    fixTotalTextos = 0
+    fixTotalFlags = 0
+    fixTotalFlagsObjetoInteiro = 0
+    fixTotalFlagsTextEditor = 0
+    fixTotalFlagsComCadeado = 0
+    fixTotalCorrigidas = 0
+    fixTotalJaCorretas = 0
+    fixTotalIgnoradas = 0
+    fixTotalFalhasValidacao = 0
+    fixTotalRestauradas = 0
+    fixTotalErros = 0
+End Sub
+
+Function LerContadoresFix()
+    LerContadoresFix = Join(Array(fixTotalTextos, fixTotalFlags, fixTotalFlagsObjetoInteiro, _
+        fixTotalFlagsTextEditor, fixTotalFlagsComCadeado, fixTotalCorrigidas, fixTotalJaCorretas, _
+        fixTotalIgnoradas, fixTotalFalhasValidacao, fixTotalRestauradas, fixTotalErros), Chr(31))
+End Function
+
+' ---------------------------------------------------------------------
+' Check de Flags: as mesmas regras do fix, sem gravar nada no desenho.
+' Primeiro registro: "N", nome da folha, textos, flags, no objeto, Text Editor, com cadeado,
+' corretas, para corrigir, ignorados, erros. Depois: "F", vista, texto, nome do texto, nome da
+' vista, texto lido, como deveria ser, frame, origem, J correta ou P para corrigir.
+' ---------------------------------------------------------------------
+Function ConferirFolha(docCheio, iFolha)
+    On Error Resume Next
+    Dim nomeFolha, buf(), n, fim
+    ResetarContadoresFix
+    ReDim buf(255)
+    n = 0
+    nomeFolha = ""
+    fim = ""
+    ConferirFolha_ docCheio, iFolha, nomeFolha, buf, n
+    If Err.Number <> 0 Then fim = Registro(Array("ABORT", Err.Number, Campo(Err.Description)))
+    Err.Clear
+    If n > 0 Then ReDim Preserve buf(n - 1) Else ReDim buf(0)
+    ConferirFolha = "OK" & Registro(Array("N", nomeFolha, fixTotalTextos, fixTotalFlags, fixTotalFlagsObjetoInteiro, _
+        fixTotalFlagsTextEditor, fixTotalFlagsComCadeado, fixTotalJaCorretas, fixTotalCorrigidas, fixTotalIgnoradas, fixTotalErros)) & Join(buf, "") & fim
+End Function
+
+Sub ConferirFolha_(docCheio, iFolha, nomeFolha, buf, n)
+    Dim doc, sh, views, v, txts, t, iv, it
+    Set doc = AcharDocumento(docCheio)
+    If doc Is Nothing Then Err.Raise 1003, , "Desenho fechado."
+    Set sh = doc.Sheets.Item(iFolha)
+    nomeFolha = Campo(sh.Name)
+    Set views = sh.Views
+    For iv = 1 To views.Count
+        Set v = views.Item(iv)
+        If LerTextosDaVista(v, txts) Then
+            For it = 1 To txts.Count
+                Set t = txts.Item(it)
+                fixTotalTextos = fixTotalTextos + 1
+                ConferirTexto t, v, iv, it, buf, n
+            Next
+        End If
+    Next
+End Sub
+
+' Aqui fixTotalCorrigidas conta as flags para corrigir. Nada e gravado.
+Sub ConferirTexto(t, v, iv, it, buf, n)
+    On Error Resume Next
+    Err.Clear
+    ConferirTexto_ t, v, iv, it, buf, n
+    If Err.Number <> 0 Then fixTotalErros = fixTotalErros + 1
+    Err.Clear
+End Sub
+
+Sub ConferirTexto_(t, v, iv, it, buf, n)
+    Dim original, codigo, prefixo, numeros, frame, origem, certo, correta
+    original = CStr(t.Text)
+    codigo = RemoverCaracteresExternos(original)
+    If Len(codigo) = 0 Then
+        fixTotalIgnoradas = fixTotalIgnoradas + 1
+        Exit Sub
+    End If
+    prefixo = ""
+    numeros = ""
+    If Not SepararCodigoSeguro(codigo, prefixo, numeros) Then
+        fixTotalIgnoradas = fixTotalIgnoradas + 1
+        Exit Sub
+    End If
+    frame = FIX_FRAME_NONE
+    origem = FIX_ORIGEM_NENHUMA
+    If Not DetectarFlagOriginal(t, Len(original), frame, origem) Then
+        fixTotalIgnoradas = fixTotalIgnoradas + 1
+        Exit Sub
+    End If
+    fixTotalFlags = fixTotalFlags + 1
+    If origem = FIX_ORIGEM_OBJETO Then
+        fixTotalFlagsObjetoInteiro = fixTotalFlagsObjetoInteiro + 1
+    Else
+        fixTotalFlagsTextEditor = fixTotalFlagsTextEditor + 1
+    End If
+    If EhFrameDeFlagComCadeado(frame) Then fixTotalFlagsComCadeado = fixTotalFlagsComCadeado + 1
+    If Len(numeros) = 4 Then certo = prefixo & numeros Else certo = prefixo & "0" & numeros
+    correta = (StrComp(original, certo, vbBinaryCompare) = 0)
+    If correta Then fixTotalJaCorretas = fixTotalJaCorretas + 1 Else fixTotalCorrigidas = fixTotalCorrigidas + 1
+    If n > UBound(buf) Then ReDim Preserve buf(2 * n)
+    buf(n) = Registro(Array("F", iv, it, Campo(LerSeguro(t, "Name")), Campo(LerSeguro(v, "Name")), Campo(original), Campo(certo), frame, origem, IIf_(correta, "J", "P")))
+    n = n + 1
+End Sub
+
+Function IIf_(c, a, b)
+    If c Then IIf_ = a Else IIf_ = b
+End Function

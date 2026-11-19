@@ -1,0 +1,147 @@
+Option Explicit
+
+' ============================================================
+' NAVEGADOR DO FONT SIZE CHECK
+'
+' Lista os textos e cotas fora do padrão da última análise e
+' leva até cada um: troca de folha, dá zoom e seleciona.
+' Os controles são criados por código, então no editor basta
+' um UserForm vazio chamado frmFontNav com este código.
+' ============================================================
+
+Private WithEvents lstErros As MSForms.ListBox
+Private WithEvents btnAnterior As MSForms.CommandButton
+Private WithEvents btnProximo As MSForms.CommandButton
+Private WithEvents btnFechar As MSForms.CommandButton
+
+Private lblResumo As MSForms.Label
+Private lblPosicao As MSForms.Label
+Private lblDetalhe As MSForms.Label
+
+Private mTotal As Long
+Private mAtual As Long
+
+' ============================================================
+' MONTAGEM DA JANELA
+' ============================================================
+Private Sub UserForm_Initialize()
+
+    Dim i As Long
+    Dim lbl As MSForms.Label
+
+    mTotal = FontNavCount()
+
+    Me.Caption = "E1 - Font Size Check"
+    Me.BackColor = RGB(0, 114, 206)
+    Me.Width = 480
+    Me.Height = 360
+
+    Set lbl = NovoLabel("lblTitulo", 12, 8, 444, 22, 13, True, fmTextAlignCenter)
+    lbl.Caption = "FONT SIZE CHECK"
+
+    Set lblResumo = NovoLabel("lblResumo", 12, 32, 444, 28, 9, False, fmTextAlignCenter)
+    lblResumo.Caption = FontNavResumo()
+
+    ' Títulos das colunas, alinhados com ColumnWidths da lista.
+    NovoLabel("lblColFolha", 19, 64, 60, 14, 8, True, fmTextAlignLeft).Caption = "FOLHA"
+    NovoLabel("lblColVista", 79, 64, 100, 14, 8, True, fmTextAlignLeft).Caption = "VISTA"
+    NovoLabel("lblColTexto", 179, 64, 214, 14, 8, True, fmTextAlignLeft).Caption = "TEXTO / COTA"
+    NovoLabel("lblColTam", 393, 64, 60, 14, 8, True, fmTextAlignLeft).Caption = "TAMANHO"
+
+    Set lstErros = Me.Controls.Add("Forms.ListBox.1", "lstErros")
+    With lstErros
+        .Left = 12: .Top = 80: .Width = 444: .Height = 136
+        .ColumnCount = 4
+        .ColumnWidths = "60 pt;100 pt;214 pt;50 pt"
+        .Font.Name = "Segoe UI": .Font.Size = 9
+        .SpecialEffect = fmSpecialEffectFlat
+        For i = 1 To mTotal
+            .AddItem FontNavInfo(i, 0)
+            .List(i - 1, 1) = FontNavInfo(i, 1)
+            .List(i - 1, 2) = FontNavInfo(i, 2)
+            .List(i - 1, 3) = FontNavInfo(i, 3)
+        Next i
+    End With
+
+    Set lblDetalhe = NovoLabel("lblDetalhe", 12, 222, 444, 18, 9, False, fmTextAlignCenter)
+
+    Set btnAnterior = NovoBotao("btnAnterior", ChrW(9664) & "  ANTERIOR", 12, 248, 130, 32)
+    Set lblPosicao = NovoLabel("lblPosicao", 150, 254, 168, 22, 12, True, fmTextAlignCenter)
+    Set btnProximo = NovoBotao("btnProximo", "PRÓXIMO  " & ChrW(9654), 326, 248, 130, 32)
+    Set btnFechar = NovoBotao("btnFechar", "FECHAR", 175, 292, 118, 26)
+
+    ' Já leva até o primeiro item.
+    If mTotal > 0 Then lstErros.ListIndex = 0
+
+End Sub
+
+Private Function NovoLabel(ByVal nome As String, ByVal x As Single, ByVal y As Single, _
+    ByVal w As Single, ByVal h As Single, ByVal tamanho As Single, ByVal negrito As Boolean, _
+    ByVal alinhamento As fmTextAlign) As MSForms.Label
+
+    Set NovoLabel = Me.Controls.Add("Forms.Label.1", nome)
+    With NovoLabel
+        .Left = x: .Top = y: .Width = w: .Height = h
+        .BackStyle = fmBackStyleTransparent
+        .ForeColor = RGB(255, 255, 255)
+        .Font.Name = "Segoe UI": .Font.Size = tamanho: .Font.Bold = negrito
+        .TextAlign = alinhamento
+        .WordWrap = True
+    End With
+
+End Function
+
+Private Function NovoBotao(ByVal nome As String, ByVal texto As String, ByVal x As Single, _
+    ByVal y As Single, ByVal w As Single, ByVal h As Single) As MSForms.CommandButton
+
+    Set NovoBotao = Me.Controls.Add("Forms.CommandButton.1", nome)
+    With NovoBotao
+        .Left = x: .Top = y: .Width = w: .Height = h
+        .Caption = texto
+        .BackColor = RGB(16, 33, 112)
+        .ForeColor = RGB(255, 255, 255)
+        .Font.Name = "Segoe UI": .Font.Size = 9: .Font.Bold = True
+        .TakeFocusOnClick = False
+    End With
+
+End Function
+
+' ============================================================
+' NAVEGACAO
+' ============================================================
+Private Sub lstErros_Click()
+
+    If lstErros.ListIndex < 0 Then Exit Sub
+
+    mAtual = lstErros.ListIndex + 1
+    lblPosicao.Caption = mAtual & " de " & mTotal
+
+    If FontNavIr(mAtual) Then
+        lblDetalhe.Caption = "Tamanho " & FontNavInfo(mAtual, 3) & _
+            "   |   Padrão " & FontNavInfo(mAtual, 4)
+    Else
+        lblDetalhe.Caption = "Item não encontrado: foi apagado ou o desenho foi fechado."
+    End If
+
+End Sub
+
+' Do último volta para o primeiro e vice-versa.
+Private Sub btnProximo_Click()
+    If mTotal = 0 Then Exit Sub
+    If mAtual >= mTotal Then IrPara 0 Else IrPara mAtual
+End Sub
+
+Private Sub btnAnterior_Click()
+    If mTotal = 0 Then Exit Sub
+    If mAtual <= 1 Then IrPara mTotal - 1 Else IrPara mAtual - 2
+End Sub
+
+' Mudar o ListIndex dispara lstErros_Click; com um item só ele não muda, então
+' a navegação é chamada direto.
+Private Sub IrPara(ByVal indice As Long)
+    If lstErros.ListIndex = indice Then lstErros_Click Else lstErros.ListIndex = indice
+End Sub
+
+Private Sub btnFechar_Click()
+    Unload Me
+End Sub

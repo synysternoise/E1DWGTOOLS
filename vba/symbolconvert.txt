@@ -1,0 +1,122 @@
+Sub CATMain11()
+
+    ' ===== IDs dos símbolos =====
+    Dim idTransparentCircle As Integer: idTransparentCircle = 18   ' Transparent Circle
+    Dim idOutlinedCircle As Integer: idOutlinedCircle = 19         ' Outlined Circle
+    Dim idFilledCircle As Integer: idFilledCircle = 20             ' Filled Circle
+
+    Dim idOutlinedArrow As Integer: idOutlinedArrow = 16           ' Outlined Arrow
+    Dim idFilledArrow As Integer: idFilledArrow = 17               ' Filled Arrow
+
+    Dim idWave As Integer: idWave = 31                             ' Wave
+
+    Dim objDoc As drawingDocument
+    Set objDoc = CATIA.ActiveDocument
+
+    If TypeName(objDoc) <> "DrawingDocument" Then
+        MsgBox "O documento ativo não é um Drawing.", vbExclamation, "Erro"
+        Exit Sub
+    End If
+
+    Dim objSheets As drawingSheets
+    Set objSheets = objDoc.Sheets
+
+    Dim s As Long, v As Long, t As Long, L As Long
+    Dim changesCount As Long
+    changesCount = 0
+
+    For s = 1 To objSheets.count
+
+        Dim objViews As drawingViews
+        Set objViews = objSheets.item(s).Views
+
+        For v = 1 To objViews.count
+
+            Dim objTexts As drawingTexts
+            Set objTexts = objViews.item(v).Texts
+
+            For t = 1 To objTexts.count
+
+                Dim objLeaders As DrawingLeaders
+                Set objLeaders = objTexts.item(t).leaders
+
+                For L = 1 To objLeaders.count
+
+                    Dim objLeader As DrawingLeader
+                    Set objLeader = objLeaders.item(L)
+
+                    Select Case objLeader.HeadSymbol
+
+                        ' Transparent Circle -> Filled Circle
+                        ' Outlined Circle -> Filled Circle
+                        ' Wave -> Filled Circle
+                        Case idTransparentCircle, idOutlinedCircle, idWave
+                            objLeader.HeadSymbol = idFilledCircle
+                            changesCount = changesCount + 1
+
+                        ' Outlined Arrow -> Filled Arrow
+                        Case idOutlinedArrow
+                            objLeader.HeadSymbol = idFilledArrow
+                            changesCount = changesCount + 1
+
+                    End Select
+
+                Next L
+            Next t
+        Next v
+    Next s
+
+    If changesCount > 0 Then
+        MsgBox changesCount & " símbolo(s) convertido(s) com sucesso.", _
+               vbInformation, "Update Completed"
+    Else
+        MsgBox "Nenhum símbolo passível de conversão foi encontrado.", _
+               vbExclamation, "Update"
+    End If
+
+End Sub
+
+
+Sub DescobrirID()
+
+    Dim objSel As Selection
+    Set objSel = CATIA.ActiveDocument.Selection
+
+    If objSel.count = 0 Then
+        MsgBox "Selecione um texto com leader antes de rodar a macro.", _
+               vbExclamation, "Nenhum Elemento Selecionado"
+        Exit Sub
+    End If
+
+    Dim objObj As selectedElement
+    Set objObj = objSel.item(1)
+
+    If TypeName(objObj.value) = "DrawingText" Then
+
+        Dim objText As drawingText
+        Set objText = objObj.value
+
+        If objText.leaders.count > 0 Then
+
+            Dim currentID As Integer
+            currentID = objText.leaders.item(1).HeadSymbol
+
+            MsgBox "O ID do símbolo do Leader selecionado é: " & currentID, _
+                   vbInformation, "Identificador Encontrado"
+
+        Else
+
+            MsgBox "O texto selecionado não possui nenhum Leader.", _
+                   vbExclamation, "Erro de Estrutura"
+
+        End If
+
+    Else
+
+        MsgBox "Por favor, selecione um DrawingText." & vbCrLf & _
+               "Tipo selecionado: " & TypeName(objObj.value), _
+               vbCritical, "Tipo Inválido"
+
+    End If
+
+End Sub

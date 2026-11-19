@@ -1,0 +1,367 @@
+' Monta um template A1 parecido com o real (E1_DRW_TEMPLATE_A1_R00) e desenhos no formato antigo,
+' para reproduzir em casa o "1 XX" e o vinculo com o template relatados em 18/11/2026.
+'
+' O campo SHEET/OF do template real mostra "1/XX", mas nao se sabe como ele e montado. Cada
+' variante fica numa pasta propria (o Update acha o template pelo nome dentro da pasta):
+'   templates_v1  "1/XX" num texto so, sem vinculo
+'   templates_v2  "1/" + No_of_Sheets num texto so (No_of_Sheets = "XX" no template)
+'   templates_v3  "1/" num texto e "XX" ligado a No_of_Sheets em outro texto
+' Variantes da legenda (campo SHEET/OF como no v1), para ver o que fica ligado ao template:
+'   templates_v4  Drawing_No e Drawing_Title em dittos (componentes 2D de uma detail sheet)
+'   templates_v5  Drawing_No e Drawing_Title em celulas de tabelas
+'   templates_v6  texto ligado a um parametro com unidade (Thickness) e a um com lista de valores (Material_Code)
+'   templates_v7  valor "1/XX" na mesma linha do rotulo SHEET/OF
+'
+' Uso: Montar(pasta). Fecha todos os documentos abertos.
+
+Dim mLog
+
+Sub Nota(s)
+    mLog = mLog & " [" & s & "]"
+End Sub
+
+Sub Salvar(doc, caminho)
+    Dim fso: Set fso = CreateObject("Scripting.FileSystemObject")
+    If fso.FileExists(caminho) Then fso.DeleteFile caminho
+    doc.SaveAs caminho
+    doc.Close
+End Sub
+
+Sub CriarPasta(caminho)
+    Dim fso: Set fso = CreateObject("Scripting.FileSystemObject")
+    If Not fso.FolderExists(caminho) Then fso.CreateFolder caminho
+End Sub
+
+Function Txt(vista, valor, x, y, tamanho)
+    Dim t
+    Set t = vista.Texts.Add(valor, x, y)
+    t.SetFontSize 0, 0, tamanho
+    Set Txt = t
+End Function
+
+Function Ligado(vista, antes, p, depois, x, y, tamanho)
+    ' Texto "antes" + parametro + "depois", como o Attribute Link do CATIA.
+    Dim t
+    Set t = vista.Texts.Add(antes & "|" & depois, x, y)
+    t.SetFontSize 0, 0, tamanho
+    t.InsertVariable Len(antes) + 1, 1, p
+    Set Ligado = t
+End Function
+
+Sub Retangulo(g, x1, y1, x2, y2)
+    g.CreateLine x1, y1, x2, y1
+    g.CreateLine x2, y1, x2, y2
+    g.CreateLine x2, y2, x1, y2
+    g.CreateLine x1, y2, x1, y1
+End Sub
+
+' Papel A1 deitado: 841 x 594. Moldura interna de 20 a 821 (x) e de 20 a 574 (y).
+Const L = 841
+Const H = 594
+Const X0 = 20
+Const X1 = 821
+Const Y0 = 20
+Const Y1 = 574
+Const COLS = 6
+Const LINHAS = 4
+
+Function ParamsTemplate(doc)
+    Dim d, nomes, i
+    Set d = CreateObject("Scripting.Dictionary")
+    nomes = Array("Drawing_Title", "Drawing_No", "CN_REVISION", "No_of_Sheets", "Scale", "Drawing_Code", _
+        "Prepared", "Prepared_Date", "Checked", "Checked_Date", "Stress", "Stress_Date", "Flammability", _
+        "Flammability_Date", "Planning", "Planning_Date", "Purchasing", "Purchasing_Date", "Production", _
+        "Production_Date", "Quality", "Quality_Date", "Program_MGMT", "Program_MGMT_Date")
+    For i = 0 To UBound(nomes)
+        Select Case nomes(i)
+            Case "No_of_Sheets": d.Add nomes(i), doc.Parameters.CreateString(nomes(i), "XX")
+            Case "Scale": d.Add nomes(i), doc.Parameters.CreateString(nomes(i), "X:X")
+            Case Else: d.Add nomes(i), doc.Parameters.CreateString(nomes(i), "XXX")
+        End Select
+    Next
+    d.Add "Thickness", doc.Parameters.CreateDimension("Thickness", "LENGTH", 0)
+    d.Add "Material_Code", doc.Parameters.CreateString("Material_Code", "XXX")
+    On Error Resume Next
+    d("Material_Code").SetEnumerateValues Array("XXX", "AL", "ST")
+    If Err.Number <> 0 Then Nota "lista de valores ERRO " & Hex(Err.Number) & " " & Err.Description
+    Err.Clear
+    On Error GoTo 0
+    Set ParamsTemplate = d
+End Function
+
+Sub Margem(bg, formato)
+    Dim g, k, r, cx, cy
+    Set g = bg.Factory2D
+    Retangulo g, 10, 10, L - 10, H - 10
+    Retangulo g, X0, Y0, X1, Y1
+    For k = 1 To COLS
+        cx = X1 - (k - 0.5) * (X1 - X0) / COLS
+        Txt bg, CStr(k), cx, Y1 + 5, 3.5
+        Txt bg, CStr(k), cx, 13, 3.5
+        If k < COLS Then
+            g.CreateLine X1 - k * (X1 - X0) / COLS, 10, X1 - k * (X1 - X0) / COLS, Y0
+            g.CreateLine X1 - k * (X1 - X0) / COLS, Y1, X1 - k * (X1 - X0) / COLS, H - 10
+        End If
+    Next
+    For r = 1 To LINHAS
+        cy = Y0 + (r - 0.5) * (Y1 - Y0) / LINHAS
+        Txt bg, Chr(64 + r), 14, cy, 3.5
+        Txt bg, Chr(64 + r), X1 + 5, cy, 3.5
+    Next
+    Dim t
+    Set t = Txt(bg, formato, X1 + 3, 13, 3.5)
+    t.Name = "Text.68"
+End Sub
+
+' Legenda do template novo: canto de baixo a direita, de x 641 a 821 e de y 20 a 92.
+Sub LegendaNova(bg, p, variante, dittos)
+    Dim g, t, tb, c
+    Set g = bg.Factory2D
+    Retangulo g, 641, 20, 821, 85
+    g.CreateLine 641, 28, 821, 28
+    g.CreateLine 641, 45, 821, 45
+    g.CreateLine 711, 62, 821, 62
+    g.CreateLine 641, 77, 821, 77
+    g.CreateLine 711, 28, 711, 85
+    Txt bg, "BEFORE USING THIS DRAWING, PLEASE CHECK", 650, 92, 3.5
+    Txt bg, "THE CURRENT REVISION AT THE WEB SYSTEM", 650, 88, 3.5
+    Txt bg, "DRAFTSMAN", 643, 82, 1.8
+    Ligado bg, "", p("Prepared"), "", 660, 82, 2.5
+    Txt bg, "EMBRAER", 750, 80, 5
+    Txt bg, "SEE APPROVAL SHEET FOR APPROVAL AUTHORITY", 643, 72, 1.8
+    Txt bg, "REGISTRATION, PER PROCEDURE PT-2-0241", 643, 68, 1.8
+    Txt bg, "THIS DRAWING CANNOT BE USED, PUBLISHED, NOR COMMUNICATED", 713, 72, 1.5
+    Txt bg, "DRAWING TITLE", 755, 59, 1.8
+    Select Case variante
+        Case 4
+            bg.Components.Add dittos(0), 750, 52
+        Case 5
+            Set tb = bg.Tables.Add(650, 60, 2, 1, 6, 55)
+            tb.SetCellString 1, 1, "TITLE (TABELA)"
+            Set c = tb.GetCellObject(2, 1)
+            c.Text = "|"
+            c.InsertVariable 1, 1, p("Drawing_Title")
+            Set tb = bg.Tables.Add(650, 110, 2, 1, 6, 55)
+            tb.SetCellString 1, 1, "NUMBER (TABELA)"
+            Set c = tb.GetCellObject(2, 1)
+            c.Text = "|"
+            c.InsertVariable 1, 1, p("Drawing_No")
+        Case Else
+            Ligado bg, "", p("Drawing_Title"), "", 750, 52, 5
+    End Select
+    If variante = 6 Then
+        Ligado bg, "ESP ", p("Thickness"), "", 650, 50, 2.5
+        Ligado bg, "MAT ", p("Material_Code"), "", 680, 50, 2.5
+    End If
+    Txt bg, "GDT R128-ESYS", 643, 42, 1.8
+    Txt bg, "FOR DRAWING INTERPRETATION SEE DSM", 680, 40, 1.8
+    g.CreateLine 726, 28, 726, 45
+    g.CreateLine 801, 28, 801, 45
+    Txt bg, "SCALE", 714, 42, 1.8
+    Ligado bg, "", p("Scale"), "", 714, 34, 3.5
+    Txt bg, "DRAWING NUMBER", 750, 42, 1.8
+    If variante = 4 Then
+        bg.Components.Add dittos(1), 740, 34
+    ElseIf variante <> 5 Then
+        Ligado bg, "", p("Drawing_No"), "", 740, 34, 5
+    End If
+    If variante = 7 Then
+        Txt bg, "SHEET / OF", 790, 34, 1.8
+    Else
+        Set t = Txt(bg, "SHEET / OF", 803, 42, 1.8)
+    End If
+    Select Case variante
+        Case 1, 4, 5, 6
+            Txt bg, "1/XX", 805, 34, 3.5
+        Case 7
+            Txt bg, "1/XX", 808, 34, 3.5
+        Case 2
+            Ligado bg, "1/", p("No_of_Sheets"), "", 805, 34, 3.5
+        Case 3
+            Txt bg, "1/", 804, 34, 3.5
+            Ligado bg, "", p("No_of_Sheets"), "", 810, 34, 3.5
+    End Select
+    Txt bg, "REV", 643, 23, 1.8
+End Sub
+
+Sub Grade(vista, formato)
+    Dim g, k, r
+    Set g = vista.Factory2D
+    For k = 1 To COLS - 1
+        g.CreateLine X1 - k * (X1 - X0) / COLS, Y0, X1 - k * (X1 - X0) / COLS, Y1
+    Next
+    For r = 1 To LINHAS - 1
+        g.CreateLine X0, Y0 + r * (Y1 - Y0) / LINHAS, X1, Y0 + r * (Y1 - Y0) / LINHAS
+    Next
+    For r = 1 To LINHAS
+        For k = 1 To COLS
+            Txt vista, Chr(64 + r) & Right("00" & k, 3), X1 - (k - 0.5) * (X1 - X0) / COLS, Y0 + (r - 0.5) * (Y1 - Y0) / LINHAS, 10
+        Next
+    Next
+End Sub
+
+Function Dittos(doc, p)
+    ' Detail sheet com dois componentes: titulo e numero do desenho, ligados aos parametros.
+    Dim det, vt, vn
+    Set det = doc.Sheets.AddDetail("LEGENDA")
+    det.Activate
+    Set vt = det.Views.Add("DITTO_TITLE")
+    vt.Activate
+    Ligado vt, "", p("Drawing_Title"), "", 0, 0, 5
+    Set vn = det.Views.Add("DITTO_NUMBER")
+    vn.Activate
+    Ligado vn, "", p("Drawing_No"), "", 0, 0, 5
+    Dittos = Array(vt, vn)
+End Function
+
+Sub TemplateA1(pasta, variante)
+    Dim doc, sh, bg, p, v, n, dt
+    Set doc = CATIA.Documents.Add("Drawing")
+    Set p = ParamsTemplate(doc)
+    If variante = 4 Then dt = Dittos(doc, p)
+    For n = 1 To 15
+        If n = 1 Then
+            Set sh = doc.Sheets.Item(1)
+        Else
+            Set sh = doc.Sheets.Add("Sheet." & n)
+        End If
+        sh.PaperSize = 3
+        sh.Orientation = 1
+        sh.Activate
+        Set bg = sh.Views.Item(2)
+        bg.Activate
+        Margem bg, "A1"
+        LegendaNova bg, p, variante, dt
+        Set v = sh.Views.Add("ZONES_A1_SHT" & n)
+        v.x = 0: v.y = 0
+        v.Activate
+        Grade v, "A1"
+        sh.Views.Item(1).Activate
+    Next
+    doc.Sheets.Item(1).Activate
+    Salvar doc, pasta & "\E1_DRW_TEMPLATE_A1_R00.CATDrawing"
+End Sub
+
+' ---------------------------------------------------------------------------------------------
+' Desenho no formato antigo, como o 171-52382-001
+' ---------------------------------------------------------------------------------------------
+Function ParamsDesenho(doc, folhas)
+    Dim d, pares, i
+    Set d = CreateObject("Scripting.Dictionary")
+    pares = Array("Drawing_Title", "PANEL-BACK", "Drawing_No", "171-52382-001", "CN_REVISION", "A.03", _
+        "No_of_Sheets", CStr(folhas), "Scale", "1:2", "Drawing_Code", "PL", "Prepared", "ROBSON RIBEIRO", _
+        "Prepared_Date", "2026/05/20", "Checked", "FELIPE GONCALVES", "Checked_Date", "2026/05/21", _
+        "Stress", "PAULO SERPA", "Stress_Date", "2026/05/22", "Flammability", "JENNIFER", _
+        "Flammability_Date", "2026/05/22", "Planning", "", "Planning_Date", "", "Purchasing", "", _
+        "Purchasing_Date", "", "Production", "KARLA CASTRO", "Production_Date", "2026/05/23", _
+        "Quality", "", "Quality_Date", "", "Program_MGMT", "", "Program_MGMT_Date", "")
+    For i = 0 To UBound(pares) Step 2
+        d.Add pares(i), doc.Parameters.CreateString(pares(i), pares(i + 1))
+    Next
+    d.Add "Thickness", doc.Parameters.CreateDimension("Thickness", "LENGTH", 3)
+    d.Add "Material_Code", doc.Parameters.CreateString("Material_Code", "AL")
+    Set ParamsDesenho = d
+End Function
+
+Sub FolhaAntiga(doc, sh, p, numero)
+    Dim bg, g, v, t
+    sh.PaperSize = 3
+    sh.Orientation = 1
+    sh.Activate
+    Set bg = sh.Views.Item(2)
+    bg.Activate
+    Set g = bg.Factory2D
+    Retangulo g, 10, 10, L - 10, H - 10
+    Retangulo g, 600, 10, 831, 110
+    Txt bg, "FORMATO ANTIGO", 610, 100, 3.5
+    Set t = Txt(bg, "A1", 820, 14, 3.5)
+    t.Name = "Text.68"
+    Ligado bg, "", p("Drawing_Title"), "", 700, 60, 5
+    Ligado bg, "", p("Drawing_No"), "", 700, 30, 5
+    Txt bg, "SHEET", 800, 40, 1.8
+    Ligado bg, "/ ", p("No_of_Sheets"), "", 812, 30, 3.5
+    ' Grade antiga
+    Set v = sh.Views.Add("ZONE")
+    v.x = 0: v.y = 0
+    v.Activate
+    Txt v, "Z999", 100, 100, 10
+    v.LockStatus = True
+    ' Main View: o numero da folha ao lado do SHEET/OF, como nos desenhos E1.
+    Set v = sh.Views.Item(1)
+    v.Activate
+    Set t = Txt(v, CStr(numero), 805, 30, 3.5)
+    t.Name = "Text.1"
+    ' Uma vista de trabalho
+    Set v = sh.Views.Add("Front view")
+    v.x = 300: v.y = 300: v.Scale = 0.5
+    v.Activate
+    v.Factory2D.CreateLine 0, 0, 100, 100
+    Txt v, "NOTA DA VISTA", 10, 10, 3.5
+End Sub
+
+Sub Desenho(pasta, nome, folhas)
+    Dim doc, sh, p, n
+    Set doc = CATIA.Documents.Add("Drawing")
+    Set p = ParamsDesenho(doc, folhas)
+    For n = 1 To folhas
+        If n = 1 Then
+            Set sh = doc.Sheets.Item(1)
+        Else
+            Set sh = doc.Sheets.Add("Sheet." & n)
+        End If
+        FolhaAntiga doc, sh, p, n
+    Next
+    doc.Sheets.Item(1).Activate
+    Salvar doc, pasta & "\" & nome & ".CATDrawing"
+End Sub
+
+' O CATIA desta maquina informa se um texto tem vinculo (NbLink)? A rede de seguranca depende disso.
+Function SondarNbLink()
+    Dim doc, sh, bg, p, t, s
+    Set doc = CATIA.Documents.Add("Drawing")
+    Set sh = doc.Sheets.Item(1)
+    sh.Activate
+    Set bg = sh.Views.Item(2)
+    bg.Activate
+    Set p = doc.Parameters.CreateString("Sonda", "ABC")
+    Set t = Ligado(bg, "", p, "", 100, 100, 3.5)
+    On Error Resume Next
+    s = "ligado NbLink=" & CStr(t.NbLink)
+    If Err.Number <> 0 Then s = "ligado NbLink ERRO " & Hex(Err.Number) & " " & Err.Description
+    Err.Clear
+    Set t = Txt(bg, "SEM VINCULO", 100, 50, 3.5)
+    s = s & "; sem vinculo NbLink=" & CStr(t.NbLink)
+    If Err.Number <> 0 Then s = s & "; sem vinculo NbLink ERRO " & Hex(Err.Number)
+    Err.Clear
+    On Error GoTo 0
+    doc.Close
+    SondarNbLink = s
+End Function
+
+Function Montar(pasta)
+    On Error Resume Next
+    mLog = ""
+    Montar_ pasta
+    If Err.Number <> 0 Then
+        Montar = "ERRO " & Hex(Err.Number) & ": " & Err.Description & mLog
+    Else
+        Montar = "OK" & mLog
+    End If
+End Function
+
+Sub Montar_(pasta)
+    Dim v
+    CATIA.DisplayFileAlerts = False
+    Do While CATIA.Documents.Count > 0: CATIA.Documents.Item(1).Close: Loop
+    CriarPasta pasta
+    Nota SondarNbLink()
+    For v = 1 To 7
+        CriarPasta pasta & "\templates_v" & v
+        TemplateA1 pasta & "\templates_v" & v, v
+        Nota "template v" & v
+    Next
+    Desenho pasta, "TESTE_A1_1FOLHA", 1
+    Desenho pasta, "TESTE_A1_3FOLHAS", 3
+    Nota "desenhos"
+    CATIA.DisplayFileAlerts = True
+End Sub
