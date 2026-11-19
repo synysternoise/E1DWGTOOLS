@@ -101,6 +101,16 @@ python tests\parity\rodar_paridade_poszone.py
 As telas têm testes com cliques reais: `testar_tela_font.py`, `testar_tela_flags.py` e
 `testar_tela_ferramentas.py`, que usam as pastas criadas pelos testes de paridade.
 
+Update Template com legendas parecidas com a do A1 real (18/11/2026):
+- `montar_template_real.catvbs` (função `Montar(pasta)`, pelo `ExecuteScript` do CATIA) monta 7 variantes
+  do template A1 e dois desenhos no formato antigo. As variantes têm SHEET/OF montado de três jeitos,
+  legenda em dittos ou em tabela, um parâmetro com unidade e o "1/XX" na mesma linha do rótulo;
+- `testar_template_real.py <pasta> [v1 ... v7]` converte cada desenho e mostra o SHEET/OF, se os campos
+  seguem os parâmetros do desenho e se o template continua carregado (sinal de vínculo com ele);
+- `sonda_template_real.py A1` lê o template real da rede, sem alterar, e grava em
+  `%APPDATA%\E1DWGTools\sonda_template_A1.txt` os parâmetros, as views (dittos e tabelas), os textos do
+  Background e o que a conversão lê deles.
+
 ## Check de Template
 
 Só lê. Não ativa folha, não seleciona e não escreve no desenho. `tests/parity/testar_check_template.py`
