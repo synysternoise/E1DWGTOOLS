@@ -241,6 +241,14 @@ class FlagCheckReport:
     stopped: bool = False
 
 
+def flags_sem_nota(items: List[FlagItem], notas) -> List[FlagItem]:
+    """Flags cujo codigo nao esta na aba DWG_NOTES do Part List. Compara o codigo ja no padrao."""
+    from engine.part_list import codigo_da_nota
+
+    codigos = {codigo_da_nota(c) for c in notas}
+    return [i for i in items if codigo_da_nota(i.after) not in codigos]
+
+
 def check_flags(
     bridge: CatiaBridge,
     progress: Optional[Callable[[int, int], None]] = None,

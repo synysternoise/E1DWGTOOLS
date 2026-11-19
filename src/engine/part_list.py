@@ -10,10 +10,14 @@ from __future__ import annotations
 import getpass
 import json
 import os
+import re
 from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Optional, Tuple
 
 ABAS_SAP = ("COMPONENT", "PSA")
+ABA_NOTAS = "DWG_NOTES"
+CABECALHO_NOTAS = "NOTECODE"  # "Note Code", sem espacos e em maiusculas
+RE_CODIGO_NOTA = re.compile(r"^([A-Z]+)(\d{3,4})$")
 PRIMEIRA_LINHA_SAP = 5
 COL_PN, COL_POSICAO, COL_ZONA, COL_PROGRAMA, COL_SN_INICIAL, COL_SN_FINAL, COL_QUANTIDADE = 2, 13, 14, 15, 18, 19, 20
 MAX_ARQUIVOS = 2
@@ -106,6 +110,8 @@ class PartList:
     arquivos: List[str]
     registros: List[RegistroSAP]
     linhas_lidas: int
+    # Codigos da aba DWG_NOTES (NI0362, NL0001...). None: nenhum arquivo tem a aba.
+    notas: Optional[List[str]] = None
 
     @property
     def resumo(self) -> str:
@@ -132,6 +138,45 @@ def somar_linha(
     return True
 
 
+def codigo_da_nota(texto) -> str:
+    """Codigo como a flag correta: sem espacos, em maiusculas e com 4 numeros (NL006 vira NL0006)."""
+    if texto is None or _eh_erro(texto):
+        return ""
+    codigo = re.sub(r"\s+", "", _cstr(texto)).upper()
+    achado = RE_CODIGO_NOTA.match(codigo)
+    if achado and len(achado.group(2)) == 3:
+        codigo = achado.group(1) + "0" + achado.group(2)
+    return codigo
+
+
+def codigos_das_notas(valores) -> Optional[List[str]]:
+    """Codigos da coluna "Note Code" da aba DWG_NOTES, na ordem e sem repetir.
+
+    O SAP corta a descricao longa em varias linhas com o mesmo codigo: o codigo entra uma vez so.
+    valores e o UsedRange.Value2 da aba. None se o cabecalho "Note Code" nao for encontrado.
+    """
+    linhas = [tuple(l) if isinstance(l, (tuple, list)) else (l,) for l in (valores or ())]
+    for i, linha in enumerate(linhas):
+        for j, celula in enumerate(linha):
+            if isinstance(celula, str) and re.sub(r"\s+", "", celula).upper() == CABECALHO_NOTAS:
+                vistos: List[str] = []
+                for depois in linhas[i + 1:]:
+                    codigo = codigo_da_nota(depois[j]) if j < len(depois) else ""
+                    if codigo and codigo not in vistos:
+                        vistos.append(codigo)
+                return vistos
+    return None
+
+
+def _ler_notas(wb) -> Optional[List[str]]:
+    try:
+        ws = wb.Worksheets(ABA_NOTAS)
+    except Exception:  # noqa: BLE001 - arquivo sem a aba: o Check de Flags so nao compara
+        return None
+    valores = ws.UsedRange.Value2
+    return codigos_das_notas(valores if isinstance(valores, (tuple, list)) else ((valores,),))
+
+
 def _chave_ordem(r: RegistroSAP) -> Tuple[int, float, str]:
     # Como a ordenacao do Excel com xlSortTextAsNumbers: numeros primeiro, depois os textos.
     texto = _trim(r.posicao)
@@ -141,7 +186,7 @@ def _chave_ordem(r: RegistroSAP) -> Tuple[int, float, str]:
         return 1, 0.0, texto.lower()
 
 
-def _ler_arquivo(xl, caminho: str, dados: Dict[str, RegistroSAP], ordem: List[str]) -> int:
+def _ler_arquivo(xl, caminho: str, dados: Dict[str, RegistroSAP], ordem: List[str], notas: Optional[list] = None) -> int:
     nome = os.path.basename(caminho)
     wb = xl.Workbooks.Open(Filename=caminho, UpdateLinks=False, ReadOnly=True, AddToMru=False)
     try:
@@ -173,6 +218,8 @@ def _ler_arquivo(xl, caminho: str, dados: Dict[str, RegistroSAP], ordem: List[st
             efetividade = "|".join((mostrado(COL_PROGRAMA), mostrado(COL_SN_INICIAL), mostrado(COL_SN_FINAL)))
             if somar_linha(dados, ordem, pn, posicao, mostrado(COL_ZONA), linha[COL_QUANTIDADE - 1], efetividade):
                 lidas += 1
+        if notas is not None:
+            notas.append(_ler_notas(wb))
         return lidas
     finally:
         wb.Close(False)
@@ -186,6 +233,7 @@ def ler_part_list(caminhos: List[str]) -> PartList:
         raise PartListError(f"Selecione no máximo dois arquivos de Part List.\r\n\r\nQuantidade selecionada: {len(caminhos)}")
     dados: Dict[str, RegistroSAP] = {}
     ordem: List[str] = []
+    notas_por_arquivo: list = []
     lidas = 0
     xl = win32com.client.DispatchEx("Excel.Application")
     try:
@@ -193,11 +241,15 @@ def ler_part_list(caminhos: List[str]) -> PartList:
         xl.DisplayAlerts = False
         xl.ScreenUpdating = False
         for caminho in caminhos:
-            lidas += _ler_arquivo(xl, caminho, dados, ordem)
+            lidas += _ler_arquivo(xl, caminho, dados, ordem, notas_por_arquivo)
     finally:
         xl.Quit()
     registros = sorted((dados[c] for c in ordem), key=_chave_ordem)
-    return PartList(list(caminhos), registros, lidas)
+    notas = None
+    for lista in notas_por_arquivo:  # com dois arquivos, vale a uniao
+        if lista is not None:
+            notas = (notas or []) + [c for c in lista if c not in (notas or [])]
+    return PartList(list(caminhos), registros, lidas, notas)
 
 
 # ---------------------------------------------------------------------

@@ -501,6 +501,7 @@ class HubWindow(QWidget):
         self.flagcheck_page.go_requested.connect(self._on_flagcheck_go)
         self.flagcheck_page.latest_nav.connect(wk.mark_latest_tool_nav, Qt.DirectConnection)
         self.flagcheck_page.corrigir_requested.connect(self._ir_para_fix_flags)
+        self.flagcheck_page.partlist_requested.connect(self._pedir_part_list)
         self.templatecheck_page.go_requested.connect(self._on_templatecheck_go)
         self.templatecheck_page.latest_nav.connect(wk.mark_latest_tool_nav, Qt.DirectConnection)
         self.fontfix_page.go_requested.connect(self._on_fontfix_go)
@@ -629,7 +630,7 @@ class HubWindow(QWidget):
 
     @Slot(list)
     def _pedir_part_list(self, caminhos: list) -> None:
-        for pos in (self.poszone_page, self.poszonefix_page):
+        for pos in (self.poszone_page, self.poszonefix_page, self.flagcheck_page):
             pos.lendo_part_list(True)
         self.request_partlist.emit(caminhos)
 
@@ -639,16 +640,18 @@ class HubWindow(QWidget):
 
     @Slot(object)
     def _on_part_list(self, parte) -> None:
-        for pos in (self.poszone_page, self.poszonefix_page):
+        for pos in (self.poszone_page, self.poszonefix_page, self.flagcheck_page):
             pos.definir_part_list(parte)
         self.geral_page.definir_part_list(parte is not None)
         self._atualizar_visao_pos()
 
     @Slot(str)
     def _on_part_list_falhou(self, mensagem: str) -> None:
-        for pos in (self.poszone_page, self.poszonefix_page):
+        for pos in (self.poszone_page, self.poszonefix_page, self.flagcheck_page):
             pos.lendo_part_list(False)
-        self.poszone_page.on_warn(mensagem, "Erro na importação")
+        # O aviso aparece na tela de onde a importacao foi pedida.
+        pagina = self.flagcheck_page if self._pages.currentWidget() is self.flagcheck_page else self.poszone_page
+        pagina.on_warn(mensagem, "Erro na importação")
 
     @Slot()
     def _on_pos_alterado(self) -> None:
@@ -712,6 +715,7 @@ class HubWindow(QWidget):
         self._atualizar_contagens()
 
     def _atualizar_contagens(self) -> None:
+        self.geral_page.definir_flags_sem_nota(self.flagcheck_page.sem_nota())
         font, pos = self.geral_page.pendencias_font(), self.geral_page.pendencias_pos()
         flags = self.geral_page.pendencias_flags()
         template = self.geral_page.pendencias_template()

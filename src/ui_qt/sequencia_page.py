@@ -420,6 +420,7 @@ class CheckGeralPage(QWidget):
         self._font = None
         self._pos = None
         self._flags = None
+        self._flags_sem_nota = 0
         self._template = None
         self._connected = False
         self._has_drawing = False
@@ -494,8 +495,14 @@ class CheckGeralPage(QWidget):
             self._template = report
             self._atualizar()
 
+    def definir_flags_sem_nota(self, n: int) -> None:
+        """Flags sem nota na DWG_NOTES do Part List, contadas na tela do Check de Flags."""
+        if n != self._flags_sem_nota:
+            self._flags_sem_nota = n
+            self._atualizar()
+
     def pendencias_flags(self) -> int:
-        return self._flags.erradas if self._flags else 0
+        return (self._flags.erradas + self._flags_sem_nota) if self._flags else 0
 
     def pendencias_template(self) -> int:
         return self._template.errados if self._template else 0
@@ -565,8 +572,9 @@ class CheckGeralPage(QWidget):
             self.linha_flags.lbl_resultado.setText("Ainda não rodou")
         else:
             r = self._flags
-            self.linha_flags.lbl_resultado.setText(f"{r.certas} de {r.flags} corretas")
-            if r.erradas:
+            sem_nota = f"  ·  {self._flags_sem_nota} sem nota no Part List" if self._flags_sem_nota else ""
+            self.linha_flags.lbl_resultado.setText(f"{r.certas} de {r.flags} corretas{sem_nota}")
+            if r.erradas or self._flags_sem_nota:
                 revisar += 1
                 self.linha_flags.marcar("erro")
             else:
