@@ -31,6 +31,9 @@ _FORMAS = {
     "saw": '<path d="M2 8h13v5l-2 3-1.5-3-2 3L8 13l-2 3-1.5-3-2 3zM15 6h5a2 2 0 012 2v4a2 2 0 01-2 2h-5zM18.5 9v2"/>',
     "scissors": '<circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4L8.2 15.8M14.5 14.5L20 20M8.2 8.2L12 12"/>',
     "send": '<path d="M12 16V4M7 9l5-5 5 5M4 20h16"/>',
+    "plus": '<path d="M12 5v14M5 12h14"/>',
+    "upload": '<path d="M12 15V4M8 8l4-4 4 4M5 14v5h14v-5"/>',
+    "cloud": '<path d="M7 18a4 4 0 01-.6-7.96A6 6 0 0117.7 9 4.5 4.5 0 0117 18z"/>',
     "expand": '<rect x="3" y="4" width="18" height="16" rx="2"/>',
     "rail": '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M18 4v16"/>',
     # Aviao visto de cima, apontando para o canto: asa enflechada e dois motores sob as asas.

@@ -33,7 +33,8 @@ separados por `Chr(31)`. O primeiro registro é `OK` ou `ERR`, número e descri�
 script vira `CatiaError` no Python, com a descrição do CATIA como mensagem.
 
 Ferramentas: Update Template, Fix Flags, Check de Flags, Font Size Check e Fix, Position and Zone
-(Check) e Pos and Zone Fix (Design), Check de Template, Symbol Shape, Split 2D e 3D, Compare DWG.
+(Check) e Pos and Zone Fix (Design), Check de Template, Symbol Shape, Split 2D e 3D, Compare DWG e, na aba VPM,
+criação de PN e Update Content no VPM pelo Edge (porte de uma macro Python, ver `MIGRACAO.md`).
 
 ## Regras da casa
 

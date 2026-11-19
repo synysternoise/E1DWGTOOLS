@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QButtonGroup, QFrame, QHBoxLayout, QLabel, QProgressBar, QSizePolicy, QStackedWidget, QVBoxLayout, QWidget,
 )
 
+from engine import vpm_lote
 from ui_qt import theme as T
 from ui_qt.catia_worker import CatiaWorker
 from ui_qt.check_fix_pages import CompareDwgPage, FlagCheckPage, FontSizeFixPage, TemplateCheckPage
@@ -23,18 +24,20 @@ from ui_qt.poszone_page import PosZoneFixPage, PosZonePage
 from ui_qt.sequencia_page import CheckGeralPage, SequenciaPage
 from ui_qt.tool_pages import Split2DPage, Split3DPage, SymbolShapePage, UpdateTemplatePage
 from ui_qt.voo import Barra, CartaoResumo, Voo
+from ui_qt.vpm_page import VpmPage
 
 LARGURA, ALTURA = 1180, 720
 LARGURA_COMPACTA = 460
 INTERVALO_STATUS_MS = 2000
-ABA_DESIGN, ABA_CHECK, ABA_ENVIO = range(3)
-NOMES_ABA = ("Design", "Check", "Envio")
+ABA_DESIGN, ABA_CHECK, ABA_ENVIO, ABA_VPM = range(4)
+NOMES_ABA = ("Design", "Check", "Envio", "VPM")
 # Ampliado, no canto da tela, ou so a barra de icones.
 MODO_CHEIO, MODO_CANTO, MODO_MINI = range(3)
 (
     PAGINA_SEQUENCIA, PAGINA_UPDATE, PAGINA_FLAGS, PAGINA_GERAL, PAGINA_FONT, PAGINA_POSZONE, PAGINA_SPLIT3D, PAGINA_SPLIT2D,
     PAGINA_FONTFIX, PAGINA_CHECKFLAGS, PAGINA_COMPARE, PAGINA_POSZONEFIX, PAGINA_CHECKTEMPLATE, PAGINA_SYMBOL,
-) = range(14)
+    PAGINA_VPM_CRIAR, PAGINA_VPM_UPLOAD, PAGINA_VPM_SEQUENCIA,
+) = range(17)
 
 
 def _so_a_atual_conta(pilha: QStackedWidget) -> None:
@@ -99,6 +102,8 @@ class HubWindow(QWidget):
         self.templatecheck_page = TemplateCheckPage()
         self.compare_page = CompareDwgPage()
         self.symbol_page = SymbolShapePage()
+        # Aba VPM: nao usa a thread do CATIA; cada tela roda o proprio lote no Edge.
+        self.vpm_pages = (VpmPage(vpm_lote.MODO_CRIAR), VpmPage(vpm_lote.MODO_UPLOAD), VpmPage(vpm_lote.MODO_SEQUENCIA))
         self.tool_pages = {
             p.TOOL: p for p in (
                 self.update_page, self.poszone_page, self.poszonefix_page, self.split3d_page, self.split2d_page, self.fontfix_page,
@@ -122,11 +127,12 @@ class HubWindow(QWidget):
         self._corpo = QWidget()
         corpo = QHBoxLayout(self._corpo)
         corpo.setContentsMargins(12, 12, 12, 12)
-        self._itens_aba = {ABA_DESIGN: [], ABA_CHECK: [], ABA_ENVIO: []}
+        self._itens_aba = {ABA_DESIGN: [], ABA_CHECK: [], ABA_ENVIO: [], ABA_VPM: []}
         corpo.setSpacing(12)
         self.rail_buttons = {}
         self.rail_badges = {}
-        self._aba_pagina = {ABA_DESIGN: PAGINA_SEQUENCIA, ABA_CHECK: PAGINA_GERAL, ABA_ENVIO: PAGINA_SPLIT3D}
+        self._aba_pagina = {ABA_DESIGN: PAGINA_SEQUENCIA, ABA_CHECK: PAGINA_GERAL, ABA_ENVIO: PAGINA_SPLIT3D,
+                            ABA_VPM: PAGINA_VPM_CRIAR}
         self._rail = QStackedWidget()
         self._rail.setFixedWidth(240)
         self._rail.addWidget(self._build_rail(
@@ -154,19 +160,25 @@ class HubWindow(QWidget):
             (("PREPARAR PARA ENVIO", (("Split 3D", "saw", PAGINA_SPLIT3D, ""), ("Split 2D", "scissors", PAGINA_SPLIT2D, ""))),),
             "Os Splits criam arquivos novos. O documento aberto não é dividido.",
         ))
+        self._rail.addWidget(self._build_rail(
+            ABA_VPM,
+            (("VPM", (("Criar PNs", "plus", PAGINA_VPM_CRIAR, ""), ("Update Content", "upload", PAGINA_VPM_UPLOAD, ""),
+                      ("Criar e atualizar", "flow", PAGINA_VPM_SEQUENCIA, ""))),),
+            "O VPM abre no Edge. Criação e Upload alteram o VPM e param no primeiro erro.",
+        ))
         corpo.addWidget(self._rail)
 
         self._pages = QStackedWidget()
         for pagina in (
             self.seq_page, self.update_page, self.flags_page, self.geral_page, self.font_page,
             self.poszone_page, self.split3d_page, self.split2d_page, self.fontfix_page, self.flagcheck_page, self.compare_page,
-            self.poszonefix_page, self.templatecheck_page, self.symbol_page,
+            self.poszonefix_page, self.templatecheck_page, self.symbol_page, *self.vpm_pages,
         ):
             self._pages.addWidget(pagina)
             _so_a_atual_conta(pagina._stack) if hasattr(pagina, "_stack") else None
         _so_a_atual_conta(self._pages)
         corpo.addWidget(self._pages, 1)
-        abas = [(NOMES_ABA[a], self._itens_aba[a]) for a in (ABA_DESIGN, ABA_CHECK, ABA_ENVIO)]
+        abas = [(NOMES_ABA[a], self._itens_aba[a]) for a in (ABA_DESIGN, ABA_CHECK, ABA_ENVIO, ABA_VPM)]
         # No canto, o trilho some: esta faixa de icones troca de aba e de ferramenta.
         self._faixa = Barra(abas, em_pe=False)
         self._faixa.hide()
@@ -228,7 +240,7 @@ class HubWindow(QWidget):
         self.contagem_check = label("", "contagem")
         self.contagem_check.setFixedHeight(18)
         self.contagem_check.hide()
-        for i, (nome, ic) in enumerate((("Design", "pencil"), ("Check", "shield"), ("Envio", "send"))):
+        for i, (nome, ic) in enumerate((("Design", "pencil"), ("Check", "shield"), ("Envio", "send"), ("VPM", "cloud"))):
             b = button(nome, "pilula")
             b.setIcon(icone(ic, T.TEXT, 15, "", 3))
             b.setIconSize(QSize(21, 15))
@@ -877,6 +889,9 @@ class HubWindow(QWidget):
                 self.request_poll.emit()
 
     def closeEvent(self, event) -> None:
+        if not all(p.pode_fechar() for p in self.vpm_pages):
+            event.ignore()
+            return
         self.cartao.hide()
         self._timer.stop()
         self.worker.request_stop()

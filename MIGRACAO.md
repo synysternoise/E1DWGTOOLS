@@ -313,3 +313,41 @@ botão de macro não foi testado aqui. `python verificar.py --catia` mostra o es
 - **Vistas travadas no arquivo exportado (09/11/2026).** O Split 2D copia o arquivo do disco, então as
   travas aplicadas no desenho aberto não iam para os arquivos exportados. Agora cada arquivo é travado
   antes de salvar, no Python e em `vba/split2d.txt`. Alterações não salvas continuam fora, como na macro.
+
+## VPM: diferenças conhecidas em relação à macro (19/11/2026)
+
+A aba VPM é o porte da macro "VPM Tools unificado" (Python, Playwright e Edge), que o usuário já rodava
+sozinha. Não é VBA: não entra no teste das macros base. O código ficou em `engine/vpm_lote.py` (Excel,
+arquivos, plano e históricos), `engine/vpm_web.py` (cliques no VPM e no CATIA), `engine/vpm_execucao.py`
+(o lote, PN por PN) e `ui_qt/vpm_page.py` (as três telas). `tests/test_vpm.py` cobre tudo o que não
+depende do VPM, com um VPM simulado. **Nada disto rodou no VPM de verdade:** o VPM só abre na rede da
+empresa.
+
+Igual à macro:
+- mesma pasta, `%LOCALAPPDATA%\VPMTools`, com os mesmos históricos (`historico_criacao_vpm.json` e
+  `historico_upload_unificado.json`) e o mesmo perfil do Edge (`perfil_edge_vpm`, que guarda o login). O
+  que a macro já criou ou enviou continua valendo, e o login não precisa ser feito de novo;
+- mesma ordem de cliques, mesmos textos procurados na página e mesmas proteções: um elemento só por busca,
+  histórico gravado antes do Create e do Upload, confirmação do usuário antes e depois do Upload, parada no
+  primeiro erro, "PICS not connected" interrompendo o lote e SHA-256 dos arquivos conferido antes de cada PN;
+- CATPart e CATProduct seguem o caminho do CATDrawing com o tipo trocado, com o aviso de experimental.
+
+Diferenças:
+- **Sem código guardado em texto.** A macro executava os scripts antigos de dentro de strings e trocava
+  uma linha do Update Content em tempo de execução. Aqui é um código só, já com a conferência final do
+  destino (PN, DOCCAD e tipo) que a troca colocava.
+- **Confirmação do Update Content avulso.** No script avulso da macro ela chamava `self.guard()`, que não
+  existe, e quebrava na primeira pergunta. Na unificada isso não acontecia; aqui só há um caminho.
+- **"Só preencher e conferir".** O script de criação avulso tinha esse modo (preenche, confere e cancela
+  cada formulário) e a unificada não. Voltou na tela Criar PNs.
+- **Ambiente.** Só é conferido no Update Content, onde é usado. A macro conferia até no modo só de criação.
+- **PN do Excel em minúsculas.** O destino do Upload é comparado sem diferenciar maiúsculas.
+- **Criação incerta de um lote anterior.** A linha mostra `REVISAO_NECESSARIA`; na macro ficava `PENDENTE`.
+- **Diagnóstico da árvore no 3D.** Procura o tipo do arquivo; a macro procurava sempre CATDRAWING.
+- **Modelo do Excel.** Vem de `engine/vpm_modelo.xlsx`. Enquanto esse arquivo não estiver no repositório, o
+  botão "Gerar modelo Excel" pede o `.py` da macro uma vez, tira o modelo do `TEMPLATE_BASE64` sem
+  executar a macro e guarda em `%LOCALAPPDATA%\VPMTools\vpm_modelo.xlsx`.
+- **Um lote por vez** entre as três telas, porque o perfil do Edge só abre uma vez. O HUB não fecha com
+  um lote rodando.
+- **Bibliotecas.** `openpyxl` e `playwright` são instaladas pelo `verificar.py`. Se faltarem, só a aba VPM
+  fica sem funcionar, e o verificador avisa em vez de dar erro.

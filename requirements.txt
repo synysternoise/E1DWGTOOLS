@@ -9,3 +9,5 @@ pywin32==312             # ponte COM com o CATIA (GetActiveObject, etc.)
 customtkinter==6.0.0     # interface gráfica (HUB)
 PySide6-Essentials==6.12.0  # nova interface grafica (HUB)
 pillow==12.3.0           # exibição da captura do desenho no preview
+openpyxl==3.1.5           # aba VPM: le o Excel de entrada
+playwright==1.65.2         # aba VPM: abre o VPM no Edge

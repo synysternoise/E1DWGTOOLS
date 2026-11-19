@@ -21,6 +21,11 @@ IMPORTS = (
     ("pywin32", "import pythoncom, win32com.client"),
     ("PySide6-Essentials", "from PySide6 import QtCore, QtGui, QtSvg, QtWidgets"),
 )
+# So a aba VPM usa estas: sem elas o HUB abre e as outras ferramentas funcionam.
+IMPORTS_VPM = (
+    ("openpyxl", "import openpyxl"),
+    ("playwright", "from playwright.sync_api import sync_playwright"),
+)
 GITHUB = "https://github.com/synysternoise/E1DWGTOOLS/blob/migracao-dwgtools/"
 PASTAS_IGNORADAS = {".venv", "venv", ".idea", ".git", "__pycache__", "E1tools"}
 
@@ -45,7 +50,7 @@ MANIFESTO = {
     "src/engine/catia_scripts/pos_zone.catvbs": (391, '68486cc3c4f2a25c'),
     "src/ui_qt/theme.py": (173, 'dc78f0ebe5b5e9bc'),
     "src/ui_qt/voo.py": (339, 'de6d17cfa8f8b742'),
-    "src/ui_qt/icones.py": (85, '89eab1825e9374f3'),
+    "src/ui_qt/icones.py": (88, '54e1d1f99ab74cc9'),
     "src/ui_qt/catia_worker.py": (534, 'c826e6dc57028277'),
     "src/ui_qt/font_size_page.py": (465, '6ad3e0ee81211fb8'),
     "src/ui_qt/pecas.py": (226, '75ca9e75bdb7d59b'),
@@ -55,7 +60,11 @@ MANIFESTO = {
     "src/ui_qt/sequencia_page.py": (596, '2eed1a4a11449dbd'),
     "src/ui_qt/check_fix_pages.py": (711, '3875eb8c5ac2e4a9'),
     "src/ui_qt/poszone_page.py": (788, '7ed7718835f59a81'),
-    "src/ui_qt/hub_window.py": (891, '693ea7959455c42f'),
+    "src/ui_qt/hub_window.py": (906, 'b134e8486f5152da'),
+    "src/engine/vpm_lote.py": (271, '6553ac350499b151'),
+    "src/engine/vpm_web.py": (465, 'de8f411eaad9b8e7'),
+    "src/engine/vpm_execucao.py": (265, '433dab5ede6336ee'),
+    "src/ui_qt/vpm_page.py": (439, '2ee5ee2621b9bb29'),
 }
 
 REDE = re.compile(
@@ -187,10 +196,10 @@ def conferir_arquivos() -> list:
     return problemas
 
 
-def biblioteca_falhando() -> dict:
+def biblioteca_falhando(imports=IMPORTS) -> dict:
     """Devolve {biblioteca: texto do erro} para o que nao carrega."""
     falhas = {}
-    for nome, comando in IMPORTS:
+    for nome, comando in imports:
         codigo, texto = rodar([sys.executable, "-c", comando], 120)
         if codigo != 0:
             falhas[nome] = texto
@@ -212,19 +221,19 @@ def preparar_pip() -> bool:
     return True
 
 
-def instalar() -> bool:
+def instalar(bibliotecas=BIBLIOTECAS) -> bool:
     if not preparar_pip():
         return False
     print("        Instalando as bibliotecas...", flush=True)
     args = [sys.executable, "-m", "pip", "install", "--disable-pip-version-check", "--no-input",
-            "--retries", "2", "--timeout", "30", *BIBLIOTECAS]
+            "--retries", "2", "--timeout", "30", *bibliotecas]
     codigo, texto = rodar(args, 1800)
     if codigo == 0:
         return True
     if REDE.search(texto):
         erro("A internet ou a rede da empresa bloqueou o download.")
         print("        Peça à TI para liberar pypi.org e files.pythonhosted.org,", flush=True)
-        print("        ou para instalar pywin32 e PySide6-Essentials nesse Python.", flush=True)
+        print(f"        ou para instalar {' e '.join(bibliotecas)} nesse Python.", flush=True)
     elif PERMISSAO.search(texto):
         erro("O Windows não deu permissão para instalar nessa pasta.")
     else:
@@ -250,6 +259,20 @@ def conferir_bibliotecas() -> bool:
         return False
     ok("Bibliotecas pywin32 e PySide6 carregam")
     return True
+
+
+def conferir_vpm() -> None:
+    """A aba VPM precisa de openpyxl e playwright. Faltando, so ela fica sem funcionar: e aviso, nao erro."""
+    falhas = biblioteca_falhando(IMPORTS_VPM)
+    faltando = [n for n, t in falhas.items() if "ModuleNotFoundError" in t]
+    if faltando:
+        aviso(f"A aba VPM precisa de: {', '.join(faltando)}")
+        if instalar(tuple(faltando)):
+            falhas = biblioteca_falhando(IMPORTS_VPM)
+    if falhas:
+        aviso(f"A aba VPM não vai funcionar sem {', '.join(falhas)}. As outras ferramentas funcionam.")
+        return
+    ok("Bibliotecas da aba VPM (openpyxl e playwright) carregam")
 
 
 def conferir_tela() -> bool:
@@ -350,6 +373,7 @@ def main() -> int:
     if tudo_certo:
         tudo_certo = conferir_tela()
     if bibliotecas:
+        conferir_vpm()
         informar_programas()
     print("", flush=True)
     if tudo_certo:
