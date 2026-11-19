@@ -496,7 +496,7 @@ class CheckGeralPage(QWidget):
             self._atualizar()
 
     def definir_flags_sem_nota(self, n: int) -> None:
-        """Flags sem nota na DWG_NOTES do Part List, contadas na tela do Check de Flags."""
+        """Diferencas com a DWG_NOTES do Part List (flag sem nota e nota sem flag), contadas no Check de Flags."""
         if n != self._flags_sem_nota:
             self._flags_sem_nota = n
             self._atualizar()
@@ -572,7 +572,7 @@ class CheckGeralPage(QWidget):
             self.linha_flags.lbl_resultado.setText("Ainda não rodou")
         else:
             r = self._flags
-            sem_nota = f"  ·  {self._flags_sem_nota} sem nota no Part List" if self._flags_sem_nota else ""
+            sem_nota = f"  ·  {self._flags_sem_nota} diferença(s) com o Part List" if self._flags_sem_nota else ""
             self.linha_flags.lbl_resultado.setText(f"{r.certas} de {r.flags} corretas{sem_nota}")
             if r.erradas or self._flags_sem_nota:
                 revisar += 1

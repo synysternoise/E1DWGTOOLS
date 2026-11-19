@@ -715,7 +715,7 @@ class HubWindow(QWidget):
         self._atualizar_contagens()
 
     def _atualizar_contagens(self) -> None:
-        self.geral_page.definir_flags_sem_nota(self.flagcheck_page.sem_nota())
+        self.geral_page.definir_flags_sem_nota(self.flagcheck_page.divergencias())
         font, pos = self.geral_page.pendencias_font(), self.geral_page.pendencias_pos()
         flags = self.geral_page.pendencias_flags()
         template = self.geral_page.pendencias_template()

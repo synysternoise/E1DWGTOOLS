@@ -249,6 +249,14 @@ def flags_sem_nota(items: List[FlagItem], notas) -> List[FlagItem]:
     return [i for i in items if codigo_da_nota(i.after) not in codigos]
 
 
+def notas_sem_flag(items: List[FlagItem], notas) -> List[str]:
+    """Codigos da aba DWG_NOTES que nao aparecem em nenhuma flag do desenho, na ordem da aba."""
+    from engine.part_list import codigo_da_nota
+
+    no_desenho = {codigo_da_nota(i.after) for i in items}
+    return [c for c in notas if codigo_da_nota(c) not in no_desenho]
+
+
 def check_flags(
     bridge: CatiaBridge,
     progress: Optional[Callable[[int, int], None]] = None,

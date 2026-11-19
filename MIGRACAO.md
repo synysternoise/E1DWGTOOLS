@@ -357,12 +357,14 @@ Diferenças:
 Recurso novo, que a macro não tem. O Check de Flags compara o código de cada flag do desenho com a coluna
 **Note Code** da aba DWG_NOTES do Part List do SAP. É o mesmo arquivo do Position and Zone: importar numa
 tela vale para as duas.
-- Aponta só a **flag sem nota**: código que está no desenho e não está na DWG_NOTES. Nota da DWG_NOTES sem
-  flag no desenho não é erro.
+- Aponta os dois lados: **flag sem nota** (código no desenho que não está na DWG_NOTES) e **nota sem flag**
+  (código da DWG_NOTES que não aparece em nenhuma flag do desenho). A nota sem flag não tem lugar no desenho:
+  aparece na tabela como "Só no Part List", sem navegação.
 - Valem todos os códigos da aba, NI e NL.
 - O código é comparado no padrão da flag, com quatro números: NL006 no desenho ou na planilha vale NL0006.
 - O SAP corta descrições longas em várias linhas com o mesmo código (NI0928 em duas linhas): o código conta
   uma vez.
 - Sem a aba DWG_NOTES, ou sem o cabeçalho "Note Code", a tela avisa e não compara. O Position and Zone
   continua funcionando com o mesmo arquivo.
-- As flags sem nota entram no contador do Check de Flags e na Visão geral.
+- Os dois lados entram no contador do Check de Flags e na Visão geral. Se a leitura das flags parou antes do
+  fim, a tela avisa que pode faltar flag.

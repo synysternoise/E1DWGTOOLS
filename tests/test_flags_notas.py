@@ -52,8 +52,19 @@ class FlagsSemNota(unittest.TestCase):
         itens = [flag("NL0001", 1), flag("NL0002", 2), flag("NL0005", 3), flag("NI0928", 4)]
         self.assertEqual([i.after for i in ff.flags_sem_nota(itens, notas)], ["NL0005"])
 
-    def test_nota_sem_flag_nao_e_erro(self):
+    def test_nota_sem_flag_fica_fora_desta_lista(self):
         self.assertEqual(ff.flags_sem_nota([flag("NL0001", 1)], ["NL0001", "NL0002", "NI0362"]), [])
+
+
+class NotasSemFlag(unittest.TestCase):
+    def test_aponta_nota_do_part_list_que_nao_esta_no_desenho(self):
+        notas = pl.codigos_das_notas(ABA)
+        itens = [flag("NL0001", 1), flag("NL0001", 2), flag("NI0928", 3), flag("NL0005", 4)]
+        self.assertEqual(ff.notas_sem_flag(itens, notas), ["NI0362", "NI0926", "NI0990", "NL0002"])
+
+    def test_flag_errada_conta_pelo_codigo_certo(self):
+        errada = ff.FlagItem("Sheet.1", 1, "Front view", 1, "Text.1", "NL002", "NL0002", 7, 1, ff.PARA_CORRIGIR, 1)
+        self.assertEqual(ff.notas_sem_flag([errada], ["NL0002"]), [])
 
 
 if __name__ == "__main__":

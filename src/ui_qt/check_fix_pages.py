@@ -20,6 +20,13 @@ from ui_qt.font_size_page import PAPEL_OK, MarkDelegate, button, label
 from ui_qt.pecas import Cartao, LinhaSituacao, Resumo, botao, botao_grande, icone_grande, largura_livre, moldura
 from ui_qt.tool_page import LARGURA_LATERAL, ToolPage, tabela
 
+class _NotaSemFlag:
+    """Linha da tabela para um codigo que so existe no Part List: nao ha flag para ir ate ela."""
+
+    def __init__(self, codigo: str):
+        self.codigo = codigo
+
+
 PENDENTE, CORRIGIDO, COMO_ESTAVA, FALHOU, SO_NO_CATIA = "Pendente", "Corrigido", "Como estava", "Falhou", "Cota: corrija no CATIA"
 
 
@@ -56,9 +63,9 @@ class FlagCheckPage(ToolPage):
         cartoes.setSpacing(8)
         self.card_erradas = Cartao("para corrigir", "vermelho")
         self.card_certas = Cartao("corretas", "verde")
-        self.card_sem_nota = Cartao("sem nota no Part List", "ambar")
-        self.card_lidas = Cartao("flags lidas")
-        for c in (self.card_erradas, self.card_certas, self.card_sem_nota, self.card_lidas):
+        self.card_sem_nota = Cartao("flags sem nota no Part List", "ambar")
+        self.card_sem_flag = Cartao("notas do Part List sem flag", "ambar")
+        for c in (self.card_erradas, self.card_certas, self.card_sem_nota, self.card_sem_flag):
             cartoes.addWidget(c, 1)
         col.addLayout(cartoes)
         linha_pl = QHBoxLayout()
@@ -75,7 +82,8 @@ class FlagCheckPage(ToolPage):
         self.btn_certas = button("", "filtro")
         self.btn_todas = button("", "filtro")
         self.btn_sem_nota = button("", "filtro")
-        for i, b in enumerate((self.btn_erradas, self.btn_certas, self.btn_todas, self.btn_sem_nota)):
+        self.btn_sem_flag = button("", "filtro")
+        for i, b in enumerate((self.btn_erradas, self.btn_certas, self.btn_todas, self.btn_sem_nota, self.btn_sem_flag)):
             b.setCheckable(True)
             self._grupo.addButton(b, i)
             filtros.addWidget(b)
@@ -115,7 +123,7 @@ class FlagCheckPage(ToolPage):
 
     def _build_side(self, col: QVBoxLayout) -> bool:
         col.addWidget(label("Resumo", "titulo"))
-        self.resumo = Resumo(("Textos analisados", "Flags lidas", "No objeto inteiro", "Pelo Text Editor", "Fixas com cadeado", "Corretas", "Para corrigir", "Sem nota no Part List", "Ignorados", "Erros"))
+        self.resumo = Resumo(("Textos analisados", "Flags lidas", "No objeto inteiro", "Pelo Text Editor", "Fixas com cadeado", "Corretas", "Para corrigir", "Flags sem nota", "Notas sem flag", "Ignorados", "Erros"))
         col.addWidget(self.resumo)
         col.addStretch(1)
         self.btn_corrigir = botao_grande("CORRIGIR NO FIX FLAGS", "flag")
@@ -125,27 +133,39 @@ class FlagCheckPage(ToolPage):
 
     def _show_report(self, report) -> None:
         sem_nota = self.sem_nota()
+        sem_flag = len(self.notas_sem_flag())
+        comparou = self._notas is not None
         parou = "  ·  Parado antes do fim" if report.stopped else ""
         self.lbl_sub.setText(f"{report.textos} textos analisados  ·  {report.flags} flags{parou}")
         self.card_erradas.valor(report.erradas)
         self.card_certas.valor(report.certas)
-        self.card_lidas.valor(report.flags)
-        self.card_sem_nota.valor(sem_nota if self._notas is not None else "-")
+        self.card_sem_nota.valor(sem_nota if comparou else "-")
+        self.card_sem_flag.valor(sem_flag if comparou else "-")
         for nome, valor, cor in (
             ("Textos analisados", report.textos, ""), ("Flags lidas", report.flags, ""), ("No objeto inteiro", report.objeto, ""),
             ("Pelo Text Editor", report.text_editor, ""), ("Fixas com cadeado", report.cadeado, ""),
             ("Corretas", report.certas, T.GREEN if report.certas else ""), ("Para corrigir", report.erradas, T.RED if report.erradas else ""),
-            ("Sem nota no Part List", sem_nota if self._notas is not None else "-", T.AMBER if sem_nota else ""),
+            ("Flags sem nota", sem_nota if comparou else "-", T.AMBER if sem_nota else ""),
+            ("Notas sem flag", sem_flag if comparou else "-", T.AMBER if sem_flag else ""),
             ("Ignorados", report.ignoradas, ""), ("Erros", report.erros, T.RED if report.erros else ""),
         ):
             self.resumo.definir(nome, valor, cor)
         self.btn_erradas.setText(f"Para corrigir ({report.erradas})")
         self.btn_certas.setText(f"Corretas ({report.certas})")
         self.btn_todas.setText(f"Todas ({len(report.items)})")
-        self.btn_sem_nota.setText(f"Sem nota no Part List ({sem_nota})")
-        self.btn_sem_nota.setVisible(self._notas is not None)
+        self.btn_sem_nota.setText(f"Flags sem nota ({sem_nota})")
+        self.btn_sem_flag.setText(f"Notas sem flag ({sem_flag})")
+        self.btn_sem_nota.setVisible(comparou)
+        self.btn_sem_flag.setVisible(comparou)
         self.btn_corrigir.setEnabled(report.erradas > 0)
-        (self.btn_erradas if report.erradas else (self.btn_sem_nota if sem_nota else self.btn_todas)).setChecked(True)
+        if report.erradas:
+            self.btn_erradas.setChecked(True)
+        elif sem_nota:
+            self.btn_sem_nota.setChecked(True)
+        elif sem_flag:
+            self.btn_sem_flag.setChecked(True)
+        else:
+            self.btn_todas.setChecked(True)
         self._mostrar_part_list()
         self._preencher()
 
@@ -155,6 +175,8 @@ class FlagCheckPage(ToolPage):
         sem = self._sem_nota()
         if filtro == 3:
             self._rows = [i for i in itens if i.order in sem]
+        elif filtro == 4:
+            self._rows = [_NotaSemFlag(c) for c in self.notas_sem_flag()]
         else:
             self._rows = [i for i in itens if (filtro == 2 or (i.ok if filtro == 1 else not i.ok))]
         self._atual = -1
@@ -164,6 +186,15 @@ class FlagCheckPage(ToolPage):
         self.table.setRowCount(len(self._rows))
         for n, it in enumerate(self._rows):
             marca = QTableWidgetItem()
+            if isinstance(it, _NotaSemFlag):
+                marca.setData(PAPEL_OK, None)
+                self.table.setItem(n, 0, marca)
+                for coluna, texto in ((1, "—"), (2, "Só no Part List"), (3, it.codigo), (4, ""), (5, "Sem flag"), (6, "")):
+                    cel = QTableWidgetItem(texto)
+                    if coluna == 5:
+                        cel.setForeground(QColor(T.AMBER))
+                    self.table.setItem(n, coluna, cel)
+                continue
             marca.setData(PAPEL_OK, it.ok)
             self.table.setItem(n, 0, marca)
             nota = "" if self._notas is None else ("Sem nota" if it.order in sem else "Tem nota")
@@ -181,7 +212,7 @@ class FlagCheckPage(ToolPage):
         else:
             self.lbl_pos.setText("")
             self.lbl_nav_state.setText("")
-            self.lbl_detail.setText("Nenhuma flag nesta lista")
+            self.lbl_detail.setText("Nada nesta lista")
             self.lbl_where.setText("")
         self.btn_prev.setEnabled(bool(self._rows))
         self.btn_next.setEnabled(bool(self._rows))
@@ -194,6 +225,11 @@ class FlagCheckPage(ToolPage):
         self._atual = linha
         it = self._rows[linha]
         self.lbl_pos.setText(f"{linha + 1} de {len(self._rows)}")
+        if isinstance(it, _NotaSemFlag):
+            self.lbl_detail.setText(f"{it.codigo} está na DWG_NOTES do Part List e não tem flag no desenho")
+            self.lbl_where.setText("Coloque a flag no desenho ou confira o Part List")
+            self._estado("", T.MUTED)
+            return
         texto = "Correta" if it.ok else f"{mostrar(it.before)}  ›  deveria ser {it.after}"
         if it.order in self._sem_nota():
             texto += f"  ·  {it.after} não está na DWG_NOTES do Part List"
@@ -237,6 +273,16 @@ class FlagCheckPage(ToolPage):
         """Flags do desenho cujo codigo nao esta na DWG_NOTES. Zero sem Part List."""
         return len(self._sem_nota())
 
+    def notas_sem_flag(self) -> List[str]:
+        """Codigos da DWG_NOTES que nao aparecem em nenhuma flag do desenho. Vazio sem Part List."""
+        if self._notas is None or self._report is None:
+            return []
+        return ff.notas_sem_flag(self._report.items, self._notas)
+
+    def divergencias(self) -> int:
+        """Os dois lados: flag sem nota e nota sem flag. Entra no contador e na Visao geral."""
+        return self.sem_nota() + len(self.notas_sem_flag())
+
     def _mostrar_part_list(self) -> None:
         self.btn_pl.setEnabled(not self._lendo_pl)
         self.btn_pl.setText("Trocar Part List" if self._arquivos_pl else "Importar Part List")
@@ -246,10 +292,16 @@ class FlagCheckPage(ToolPage):
             self.linha_pl.definir("neutro", "Sem Part List: importe aqui ou no Position and Zone para comparar com a DWG_NOTES")
         elif self._notas is None:
             self.linha_pl.definir("aviso", "O Part List não tem a aba DWG_NOTES com a coluna Note Code: flags não comparadas")
-        elif self.sem_nota():
-            self.linha_pl.definir("aviso", f"{self.sem_nota()} flag(s) sem nota na DWG_NOTES ({len(self._notas)} notas no Part List)")
+        elif self._report is None:
+            self.linha_pl.definir("neutro", f"{len(self._notas)} notas no Part List: confira as flags para comparar")
         else:
-            self.linha_pl.definir("ok", f"Todas as flags têm nota na DWG_NOTES ({len(self._notas)} notas no Part List)")
+            sem_nota, sem_flag = self.sem_nota(), len(self.notas_sem_flag())
+            parou = "  ·  Leitura parada antes do fim: pode faltar flag" if self._report.stopped else ""
+            if sem_nota or sem_flag:
+                self.linha_pl.definir("aviso", f"{sem_nota} flag(s) sem nota e {sem_flag} nota(s) sem flag "
+                                               f"({len(self._notas)} notas no Part List){parou}")
+            else:
+                self.linha_pl.definir("ok", f"Desenho e Part List batem: {len(self._notas)} notas, todas com flag{parou}")
 
     def _importar_part_list(self) -> None:
         caminhos, _ = QFileDialog.getOpenFileNames(self, "Selecione um ou dois arquivos extraídos do SAP", "",
