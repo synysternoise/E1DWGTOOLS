@@ -241,6 +241,24 @@ compara uma foto do desenho antes e depois.
   o mesmo nome, lugar e formato, sem vínculo, e ligado aos parâmetros do próprio desenho. Nas folhas 2
   em diante o campo SHEET/OF é recriado só com o número: antes ele ficava "2 XX", com o "XX" vindo do
   vínculo com o template. `vba/update.txt` ainda não tem essa correção.
+- **A1 com "1 XX" e ligado ao template (19/11/2026).** Reproduzido em casa com os templates montados por
+  `tests/parity/montar_template_real.catvbs` (v1 a v7) e provado com `testar_template_real.py`:
+  - campo SHEET/OF na mesma linha do rótulo ("SHEET / OF   1/XX"): não era achado e ficava "1/XX" em todas
+    as folhas. Agora vale embaixo do rótulo ou à direita dele, na mesma linha;
+  - texto ligado a parâmetro com unidade (comprimento, ângulo): não era reconhecido e ficava ligado ao
+    template, com o valor dele. No V5R20 o número sem unidade é lido em metros (734006 vira 7,34e+008mm),
+    então o marcador vai com a unidade do valor atual (734006mm);
+  - a rede de segurança pelo `NbLink` nunca rodava: a propriedade não existe no CATIA V5 (erro 438). No
+    lugar, depois de fechar o template a conversão confere se o CATIA ainda o mantém carregado. Se sim,
+    algo do desenho aponta para ele, e o aviso diz isso e quantos dittos e tabelas o Background do
+    template tem;
+  - **ainda ficam ligados ao template**, agora com aviso: dittos (componentes de uma detail sheet do
+    template) e células de tabela. Na tabela, trocar o texto da célula e religar ao parâmetro do desenho
+    mostra o valor certo, mas o vínculo com o template continua até a tabela ser apagada: a correção seria
+    recriar a tabela inteira. Só vale fazer se a sonda (`sonda_template_real.py A1`) mostrar tabela ou
+    ditto no template real;
+  - a leitura guardada em `templates_lidos.json` passou para a versão 2, e todo template é lido de novo.
+  `vba/update.txt` não tem essas correções.
 
 ## Position and Zone: diferenças conhecidas em relação ao VBA
 

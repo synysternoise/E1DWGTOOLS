@@ -408,15 +408,35 @@ def map_text_links(parametros, fundo) -> Dict[str, TextLink]:
     return links
 
 
+# O que o CATIA poe depois do numero num parametro com unidade: 734006mm, 734006 deg.
+RE_UNIDADE = re.compile(r"\s*[A-Za-z\u00b0\u00b5][A-Za-z0-9\u00b0\u00b5/]*")
+RE_UNIDADE_NO_FIM = re.compile(r"[A-Za-z\u00b0\u00b5][A-Za-z0-9\u00b0\u00b5/]*$")
+RE_NUMERO_NO_INICIO = re.compile(r"^[-+]?\d")
+
+
 def _marcar(p, i: int) -> str:
-    """Parametro de texto: "#E1P<n>#". Parametro inteiro: marcador numerico de 6 digitos."""
-    for marca in (f"#E1P{i}#", str(734000 + i)):
+    """Parametro de texto: "#E1P<n>#". Parametro numerico: marcador de 6 digitos.
+
+    Com unidade (comprimento, angulo), o numero sozinho e lido em metros (734006 vira 7,34e+008mm, no
+    V5R20): o marcador vai com a unidade do valor atual (734006mm), que e como ele aparece na legenda.
+    """
+    numero = str(734000 + i)
+    try:
+        antes = _valor(p).strip()
+    except COM_ERROR:
+        antes = ""
+    unidade = RE_UNIDADE_NO_FIM.search(antes) if RE_NUMERO_NO_INICIO.match(antes) else None
+    candidatos = [f"#E1P{i}#", numero] + ([numero + unidade.group(0)] if unidade else [])
+    for marca in candidatos:
         try:
             p.ValuateFromString(marca)
-            if _valor(p) == marca:
-                return marca
+            valor = _valor(p)
         except COM_ERROR:
-            pass
+            continue
+        if valor == marca:
+            return marca
+        if marca.startswith(numero) and valor.startswith(numero) and RE_UNIDADE.fullmatch(valor[len(numero):]):
+            return valor
     return ""
 
 
@@ -455,6 +475,8 @@ RE_RESERVA_FOLHA = re.compile(r"^(?:[1X]{1,2}/)?X{1,3}$")
 ROTULOS_FOLHA = ("SHEET/OF", "SHEETOF", "SHT/OF", "SHTOF")
 CELULA_FOLHA_X = 30.0  # o valor fica embaixo do rotulo, na mesma celula
 CELULA_FOLHA_Y = 25.0
+CELULA_FOLHA_LINHA = 3.0  # ou na mesma linha, a direita do rotulo ("SHEET / OF   1/XX")
+CELULA_FOLHA_DIREITA = 40.0
 LEGENDA_LARGURA = 260.0  # sem rotulo: canto de baixo, a direita
 LEGENDA_ALTURA = 90.0
 
@@ -464,15 +486,19 @@ def _so_letras(valor: str) -> str:
 
 
 def escolher_reserva_folha(textos, largura: float):
-    """Qual texto (valor, x, y, nome) e o XX do campo SHEET/OF. Embaixo do rotulo SHEET/OF, o mais perto.
-    Sem rotulo no Background, o XX mais a direita no canto da legenda. None se nao houver."""
+    """Qual texto (valor, x, y, nome) e o XX do campo SHEET/OF: embaixo do rotulo SHEET/OF ou na mesma
+    linha, a direita dele; o mais perto. Sem rotulo no Background, o XX mais a direita no canto da legenda.
+    None se nao houver."""
     candidatos = [t for t in textos if RE_RESERVA_FOLHA.match(_so_letras(t[0]))]
     rotulos = [t for t in textos if _so_letras(t[0]) in ROTULOS_FOLHA]
     melhor, distancia = None, 0.0
     for r in rotulos:
         for c in candidatos:
-            if abs(c[1] - r[1]) <= CELULA_FOLHA_X and 0 < r[2] - c[2] <= CELULA_FOLHA_Y:
-                d = abs(c[1] - r[1]) + (r[2] - c[2])
+            dx, dy = c[1] - r[1], r[2] - c[2]
+            embaixo = abs(dx) <= CELULA_FOLHA_X and 0 < dy <= CELULA_FOLHA_Y
+            ao_lado = abs(dy) <= CELULA_FOLHA_LINHA and 0 < dx <= CELULA_FOLHA_DIREITA
+            if embaixo or ao_lado:
+                d = abs(dx) + abs(dy)
                 if melhor is None or d < distancia:
                     melhor, distancia = c, d
     if rotulos:
@@ -685,6 +711,13 @@ def _copiar_formato(sel, velho, novo) -> None:
             pass
 
 
+def _contar(vista, colecao: str) -> int:
+    try:
+        return int(getattr(vista, colecao).Count)
+    except (COM_ERROR, AttributeError):
+        return 0
+
+
 def recriar_texto(sel, vista, velho, conteudo: str):
     """Troca o texto colado por um novo, igual e sem vinculo nenhum.
 
@@ -794,6 +827,9 @@ class _Conversao:
 
     def aplicar_template(self, caminho: str, folhas: List[dict], todas: List[dict]) -> None:
         modelo = None
+        # Ja carregado (outro desenho convertido antes o prende): a conferencia do fim nao diria nada.
+        carregado_antes = self.template_carregado(caminho)
+        self._itens_do_template = (0, 0)
         try:
             with self.fase("Abrir o template"):
                 modelo = self.abrir_template(caminho)
@@ -804,6 +840,40 @@ class _Conversao:
         finally:
             with self.fase("Fechar o template"):
                 self.fechar_template(modelo)
+        if not carregado_antes:
+            self.conferir_ligacao(caminho)
+
+    def template_carregado(self, caminho: str) -> bool:
+        """O CATIA ainda tem o arquivo do template na memoria, mesmo sem janela?"""
+        alvo = os.path.normcase(caminho)
+        try:
+            docs = self.app.Documents
+            total = docs.Count
+        except COM_ERROR:
+            return False
+        for i in range(1, total + 1):
+            try:
+                if os.path.normcase(str(docs.Item(i).FullName)) == alvo:
+                    return True
+            except COM_ERROR:
+                continue
+        return False
+
+    def conferir_ligacao(self, caminho: str) -> None:
+        """Depois de fechado, o template so fica carregado se algo do desenho ainda aponta para ele.
+
+        Substitui a conferencia texto a texto pelo NbLink, que o CATIA V5 nao tem (erro 438 no V5R20).
+        """
+        if not self.template_carregado(caminho):
+            return
+        dittos, tabelas = self._itens_do_template
+        partes = [f"{n} {nome}" for n, nome in ((dittos, "ditto(s)"), (tabelas, "tabela(s)")) if n]
+        suspeitos = f" O Background do template tem {' e '.join(partes)}, que a conversão não religa." if partes else ""
+        self.report.warnings.append(
+            "O desenho continua ligado ao template: o CATIA manteve o arquivo carregado depois de fechá-lo. "
+            f"Confira em Edit > Links.{suspeitos} Se outro desenho já convertido estiver aberto, feche-o e "
+            "converta de novo para confirmar."
+        )
 
     def fechar_template(self, modelo) -> None:
         """Como o On Error Resume Next da macro: um passo que falha nao impede os outros."""
@@ -819,6 +889,7 @@ class _Conversao:
         fundo_modelo = folha_modelo.Views.Item(2)
         sel_modelo = modelo.Selection
         sel = self.doc.Selection
+        self._itens_do_template = (_contar(fundo_modelo, "Components"), _contar(fundo_modelo, "Tables"))
 
         # A colagem entre documentos perde os Attribute Links: o mapa e lido antes da copia e os
         # vinculos sao refeitos depois da colagem com os parametros do proprio desenho.
@@ -912,8 +983,6 @@ class _Conversao:
                     self._numerar_folha(sel, indice, folha.Views.Item(1), links[chave_total], prefixos, posicao, f["nome"])
                 if posicao >= 2:
                     self._numerar_margem(indice, margem, posicao, f["nome"])
-            with self.fase("Tirar o que sobrou ligado ao template"):
-                self._isolar_restantes(sel, indice, links, f["nome"])
             with self.fase("Apagar as grades antigas"):
                 self._apagar_views_auxiliares(sel, folha)
 
@@ -1059,36 +1128,6 @@ class _Conversao:
             except COM_ERROR:
                 continue
         indice.esquecer()
-
-    def _isolar_restantes(self, sel, indice: _IndiceTextos, links: Dict[str, TextLink], folha: str) -> None:
-        """Rede de seguranca: texto colado com vinculo que a leitura do template nao reconheceu.
-
-        O Background acabou de vir do template: um texto com vinculo que nao e um dos refeitos aqui so
-        pode estar ligado ao arquivo do template. Fica o valor que ele mostra, sem vinculo, e o aviso.
-        """
-        refeitos = {position_key(l.x, l.y) for l in links.values()}
-        sobras = []
-        for t in list(indice.todos()):
-            n = _ler(t, "NbLink")
-            if not n:
-                continue  # sem vinculo, ou a versao do CATIA nao informa: fica como esta
-            try:
-                if position_key(t.x, t.y) not in refeitos:
-                    sobras.append(t)
-            except COM_ERROR:
-                continue
-        for t in sobras:
-            nome = _ler(t, "Name") or "?"
-            try:
-                recriar_texto(sel, indice.vista, t, str(t.Text))
-                self.report.warnings.append(
-                    f"Folha {folha}: o texto {nome} estava ligado ao template e ficou sem vínculo. Confira se ele "
-                    "deveria mostrar um parâmetro do desenho."
-                )
-            except COM_ERROR:
-                self.report.warnings.append(f"Folha {folha}: o texto {nome} continua ligado ao template (Edit > Links > Isolate).")
-        if sobras:
-            indice.esquecer()
 
     def _numerar_folha(self, sel, indice, vista_principal, link, prefixos, numero, nome) -> None:
         """Folhas 2 em diante: o numero fica sem vinculo, para nenhum Update voltar a mostrar o total."""
@@ -1320,7 +1359,7 @@ def run_update_template(
 # ---------------------------------------------------------------------
 # Leitura do template guardada entre uma conversao e outra
 # ---------------------------------------------------------------------
-VERSAO_DO_GUARDADO = 1
+VERSAO_DO_GUARDADO = 2  # 2: leitura de parametro com unidade (19/11/2026)
 
 
 def caminho_do_guardado() -> str:

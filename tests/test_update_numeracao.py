@@ -57,6 +57,13 @@ class ReservaDaFolha(unittest.TestCase):
         textos = [("SHEET/OF", 1112.0, 55.0, "a"), ("XX", 975.0, 45.0, "b"), ("XX", 1112.0, 20.0, "c")]
         self.assertIsNone(at.escolher_reserva_folha(textos, 1189.0))
 
+    def test_valor_na_mesma_linha_do_rotulo(self):
+        # Template com "SHEET / OF   1/XX" numa linha so: antes ficava "1/XX" em todas as folhas.
+        textos = [("SHEET / OF", 790.0, 34.0, "a"), ("1/XX", 808.0, 34.0, "b"), ("XXX", 740.0, 34.0, "c")]
+        self.assertEqual(at.escolher_reserva_folha(textos, 841.0)[3], "b")
+        longe = [("SHEET / OF", 790.0, 34.0, "a"), ("XX", 860.0, 34.0, "b")]
+        self.assertIsNone(at.escolher_reserva_folha(longe, 1189.0))
+
     def test_sem_rotulo_vale_o_mais_a_direita_no_canto(self):
         textos = [("XX", 975.0, 45.0, "a"), ("XX", 1114.0, 45.0, "b"), ("XX", 1150.0, 400.0, "c"), ("XX", 300.0, 45.0, "d")]
         self.assertEqual(at.escolher_reserva_folha(textos, 1189.0)[3], "b")
@@ -259,20 +266,61 @@ class TextoSemVinculoDoTemplate(unittest.TestCase):
         self.assertEqual(novo.variaveis, [(1, 1, parametro)])
         self.assertEqual(conv.report.warnings, [])
 
-    def test_texto_ligado_que_a_leitura_nao_reconheceu_tambem_sai(self):
-        v, velho = self.colado("1:4", "Text.162")
-        conv = at._Conversao.__new__(at._Conversao)
-        conv.report = SimpleNamespace(warnings=[])
-        conv._isolar_restantes(_Sel(), at._IndiceTextos(v), {}, "Sheet.1")
-        [novo] = v.Texts.itens
-        self.assertEqual((novo.Text, novo.Name, novo.NbLink), ("1:4", "Text.162", 0))
-        self.assertIn("Text.162 estava ligado ao template", conv.report.warnings[0])
 
-    def test_texto_refeito_com_o_parametro_do_desenho_fica(self):
-        v, velho = self.colado("XXX", "Text.159")
-        link = at.TextLink("XXX", "XXX", ["Drawing_No"], 1114.0, 45.0, "Text.159")
+
+
+class LigacaoComOTemplate(unittest.TestCase):
+    """Depois de fechado, o template so continua carregado se algo do desenho aponta para ele."""
+
+    def conversao(self, carregados, itens=(0, 0)):
         conv = at._Conversao.__new__(at._Conversao)
         conv.report = SimpleNamespace(warnings=[])
-        conv._isolar_restantes(_Sel(), at._IndiceTextos(v), {"Text.159": link}, "Sheet.1")
-        self.assertEqual(v.Texts.itens, [velho])
+        docs = [SimpleNamespace(FullName=n) for n in carregados]
+        conv.app = SimpleNamespace(Documents=SimpleNamespace(Count=len(docs), Item=lambda i: docs[i - 1]))
+        conv._itens_do_template = itens
+        return conv
+
+    def test_template_descarregado_nao_avisa(self):
+        conv = self.conversao([r"C:\d\171-52382-001.CATDrawing"])
+        conv.conferir_ligacao(r"\\rede\E1_DRW_TEMPLATE_A1_R00.CATDrawing")
         self.assertEqual(conv.report.warnings, [])
+
+    def test_template_ainda_carregado_avisa_com_dittos_e_tabelas(self):
+        tpl = r"\\rede\E1_DRW_TEMPLATE_A1_R00.CATDrawing"
+        conv = self.conversao([r"C:\d\171-52382-001.CATDrawing", tpl.upper()], itens=(2, 1))
+        conv.conferir_ligacao(tpl)
+        [aviso] = conv.report.warnings
+        self.assertIn("continua ligado ao template", aviso)
+        self.assertIn("2 ditto(s) e 1 tabela(s)", aviso)
+
+
+class MarcadorDoParametro(unittest.TestCase):
+    class Parametro:
+        """Como o CATIA V5R20: com unidade, o numero sozinho e lido em metros (734006 vira 7,34e+008mm)."""
+
+        def __init__(self, unidade=None, texto=False):
+            self.unidade, self.texto, self.valor = unidade, texto, "0"
+
+        def ValuateFromString(self, s):
+            u = (self.unidade or "").strip()
+            if self.texto:
+                self.valor = s
+            elif s.isdigit():
+                self.valor = s if not u else "7,34e+008"
+            elif u and s.endswith(u) and s[:-len(u)].strip().isdigit():
+                self.valor = s[:-len(u)].strip()
+            else:
+                raise at.COM_ERROR(-1, "valor recusado", None, None)
+
+        def ValueAsString(self):
+            return self.valor + (self.unidade or "") if not self.texto else self.valor
+
+    def test_texto_inteiro_e_com_unidade(self):
+        self.assertEqual(at._marcar(self.Parametro(texto=True), 3), "#E1P3#")
+        self.assertEqual(at._marcar(self.Parametro(), 3), "734003")
+        self.assertEqual(at._marcar(self.Parametro("mm"), 6), "734006mm")
+        self.assertEqual(at._marcar(self.Parametro(" deg"), 6), "734006 deg")
+
+    def test_marcador_com_unidade_acha_o_texto(self):
+        link = at.build_link("ESP 734006mm", {"734006mm": "Thickness"}, 650.0, 50.0, "Text.9")
+        self.assertEqual((link.template_text, link.parametros), ("ESP |", ["Thickness"]))

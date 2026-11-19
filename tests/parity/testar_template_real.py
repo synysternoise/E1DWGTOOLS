@@ -31,9 +31,17 @@ CAMPO_Y = (25.0, 45.0)
 
 
 def fechar_tudo(app) -> None:
+    """De tras para frente e com limite: um documento ainda ligado a outro nao sai da memoria no Close."""
     app.DisplayFileAlerts = False
-    while app.Documents.Count > 0:
-        app.Documents.Item(1).Close()
+    for _ in range(10):
+        total = app.Documents.Count
+        if not total:
+            break
+        for i in range(total, 0, -1):
+            try:
+                app.Documents.Item(i).Close()
+            except Exception:  # noqa: BLE001
+                pass
     app.DisplayFileAlerts = True
 
 
@@ -115,7 +123,7 @@ def rodar(app, bridge, pasta, desenho, variante) -> None:
     except at.TemplateError as exc:
         print("    ERRO:", exc.mensagem.replace("\r\n", " | "))
         return
-    for aviso in rep.warnings:
+    for aviso in rep.warnings:  # inclui o aviso de desenho ainda ligado ao template
         print("    aviso:", aviso)
     if not rep.warnings:
         print("    (sem avisos)")
