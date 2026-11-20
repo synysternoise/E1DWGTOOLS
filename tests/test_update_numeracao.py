@@ -257,6 +257,7 @@ class TextoSemVinculoDoTemplate(unittest.TestCase):
         v, velho = self.colado("XXX", "Text.159")
         conv = at._Conversao.__new__(at._Conversao)
         conv.report = SimpleNamespace(warnings=[])
+        conv._registro = []
         parametro = object()
         conv._parametro = lambda _cache, _nome: parametro
         link = at.TextLink("XXX", "XXX", ["Drawing_No"], 1114.0, 45.0, "Text.159")
@@ -288,11 +289,24 @@ class TextoColado(unittest.TestCase):
         v = self.vista(("", 820.45, 27.62, "Text.151"), ("XX", 820.45, 27.62, "Text.150"))
         self.assertEqual(at._IndiceTextos(v).localizar("Text.78", 820.45, 27.62).Name, "Text.150")
 
+    def test_copia_identica_no_mesmo_lugar_sai_junto(self):
+        # A0 real: o campo era recriado, mas um "XX" igual no mesmo lugar ficava ligado ao template.
+        v = self.vista(("XX", 820.45, 27.62, "Text.78"), ("XX", 820.45, 27.62, "Text.150"), ("1/", 817.28, 27.62, "Text.75"))
+        conv = at._Conversao.__new__(at._Conversao)
+        conv.report = SimpleNamespace(warnings=[])
+        conv._registro = []
+        conv._parametro = lambda _cache, _nome: object()
+        link = at.TextLink("|", "|", ["No_of_Sheets"], 820.45, 27.62, "Text.78")
+        conv._refazer_vinculos(_Sel(), at._IndiceTextos(v), {"Text.78": link}, "", {}, "Sheet.1")
+        self.assertEqual(sorted(t.Text for t in v.Texts.itens), ["1/", "|"])
+        self.assertIn("copias apagadas: 1", conv._registro[0])
+
     def test_longe_demais_nao_acha_e_avisa(self):
         v = self.vista(("XX", 821.0, 27.62, "Text.150"))
         self.assertIsNone(at._IndiceTextos(v).localizar("Text.78", 820.45, 27.62))
         conv = at._Conversao.__new__(at._Conversao)
         conv.report = SimpleNamespace(warnings=[])
+        conv._registro = []
         link = at.TextLink("|", "|", ["No_of_Sheets"], 820.45, 27.62, "Text.78")
         conv._refazer_vinculos(_Sel(), at._IndiceTextos(v), {"Text.78": link}, "", {}, "Sheet.1")
         self.assertIn("No_of_Sheets não foi achado", conv.report.warnings[0])

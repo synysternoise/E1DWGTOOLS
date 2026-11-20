@@ -729,6 +729,29 @@ def _copiar_formato(sel, velho, novo) -> None:
             pass
 
 
+def _mesmo(a, b) -> bool:
+    if a is b:
+        return True
+    try:
+        return a._oleobj_ == b._oleobj_
+    except AttributeError:
+        return False
+
+
+def copias_no_lugar(indice, velho, x: float, y: float, colado: str) -> list:
+    """Outros textos com o mesmo conteudo do campo colado, no mesmo lugar: sobra de template ou de conversao."""
+    copias = []
+    for t in indice.todos():
+        try:
+            if _mesmo(t, velho) or str(t.Text) != colado:
+                continue
+            if max(abs(t.x - x), abs(t.y - y)) <= TOLERANCIA_COLADO:
+                copias.append(t)
+        except COM_ERROR:
+            continue
+    return copias
+
+
 def _contar(vista, colecao: str) -> int:
     try:
         return int(getattr(vista, colecao).Count)
@@ -770,6 +793,9 @@ class _Conversao:
         self.report: Optional[TemplateReport] = None
         self.feitas = 0
         self.tempos: Dict[str, float] = {}  # segundos por fase, para o arquivo de diagnostico
+        self._registro: List[str] = []  # o que cada campo virou, para update_vinculos.txt
+        self._fundo_primeira = None
+        self._itens_do_template = (0, 0)
         self.inicio = time.perf_counter()
 
     @contextmanager
@@ -848,6 +874,8 @@ class _Conversao:
         # Ja carregado (outro desenho convertido antes o prende): a conferencia do fim nao diria nada.
         carregado_antes = self.template_carregado(caminho)
         self._itens_do_template = (0, 0)
+        self._registro: List[str] = [f"Template: {caminho}"]
+        self._fundo_primeira = None
         try:
             with self.fase("Abrir o template"):
                 modelo = self.abrir_template(caminho)
@@ -860,6 +888,30 @@ class _Conversao:
                 self.fechar_template(modelo)
         if not carregado_antes:
             self.conferir_ligacao(caminho)
+        self.gravar_registro(carregado_antes)
+
+    def gravar_registro(self, carregado_antes: bool) -> None:
+        """%APPDATA%\\E1DWGTools\\update_vinculos.txt: o que foi achado e recriado em cada campo, e os textos da
+        folha 1 depois da conversao. E o que mostra a causa quando algo fica ligado ao template."""
+        linhas = list(self._registro)
+        if carregado_antes:
+            linhas.append("Template ja estava carregado antes: a conferencia do vinculo nao vale nesta conversao.")
+        if self._fundo_primeira is not None:
+            linhas.append("Textos do Background da folha 1 depois da conversao (nome | texto | x | y):")
+            try:
+                textos = self._fundo_primeira.Texts
+                for i in range(1, textos.Count + 1):
+                    t = textos.Item(i)
+                    linhas.append(f"  {t.Name} | {str(t.Text)!r} | {t.x:.4f} | {t.y:.4f}")
+            except COM_ERROR as exc:
+                linhas.append(f"  (nao leu: {exc})")
+        try:
+            destino = caminho_do_registro()
+            os.makedirs(os.path.dirname(destino), exist_ok=True)
+            with open(destino, "w", encoding="utf-8") as f:
+                f.write("\n".join(linhas) + "\n")
+        except OSError:
+            pass
 
     def template_carregado(self, caminho: str) -> bool:
         """O CATIA ainda tem o arquivo do template na memoria, mesmo sem janela?"""
@@ -990,6 +1042,8 @@ class _Conversao:
 
             indice = _IndiceTextos(fundo)
             posicao = f["posicao"]
+            if posicao == 1:
+                self._fundo_primeira = fundo
             # Folha 1: SHEET/OF fica ligado e mostra 1/<total>, e o numero antigo da Main View sai.
             # Folhas 2 em diante: o campo nao e religado e recebe so o numero da folha.
             with self.fase("Refazer os vínculos da legenda"):
@@ -1124,6 +1178,8 @@ class _Conversao:
             if t is not None:
                 alvos.append((link, t))
             else:  # antes era pulado em silencio, e o campo ficava ligado ao template
+                self._registro.append(f"{folha} | {'+'.join(link.parametros)} | template {link.nome} "
+                                      f"({link.x:.4f}, {link.y:.4f}) | NAO ACHADO")
                 self.report.warnings.append(
                     f"Folha {folha}: o campo ligado a {', '.join(link.parametros)} não foi achado depois de colar o "
                     "formato e pode ter ficado ligado ao template (confira em Edit > Links)."
@@ -1131,12 +1187,29 @@ class _Conversao:
         for link, velho in alvos:
             achados = [self._parametro(cache, n) for n in link.parametros]
             try:
+                colado, vx, vy, vnome = str(velho.Text), velho.x, velho.y, str(velho.Name)
+            except COM_ERROR:
+                colado, vx, vy, vnome = "?", link.x, link.y, "?"
+            copias = copias_no_lugar(indice, velho, link.x, link.y, colado)
+            try:
                 t = recriar_texto(sel, indice.vista, velho, link.template_text)
             except COM_ERROR:
                 self.report.warnings.append(
                     f"Folha {folha}: o texto {link.nome} continua ligado ao template (Edit > Links > Isolate)."
                 )
                 continue
+            # Uma copia identica no mesmo lugar ficaria ligada ao template por baixo do campo novo.
+            apagadas = 0
+            for o in copias:
+                try:
+                    _apagar(sel, o)
+                    apagadas += 1
+                except COM_ERROR:
+                    pass
+            self._registro.append(
+                f"{folha} | {'+'.join(link.parametros)} | template {link.nome} ({link.x:.4f}, {link.y:.4f}) | "
+                f"colado {vnome} {colado!r} ({vx:.4f}, {vy:.4f}) | copias apagadas: {apagadas}"
+            )
             if any(p is None for p in achados):
                 continue  # sem o parametro no desenho, fica o texto do template, sem vinculo; a macro avisa
             try:
@@ -1438,6 +1511,10 @@ def guardar_template(caminho: str, links: Dict[str, TextLink], margem) -> None:
             json.dump(tudo, f)
     except OSError:
         pass  # sem guardar, a proxima conversao so le o template de novo
+
+
+def caminho_do_registro() -> str:
+    return os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), "E1DWGTools", "update_vinculos.txt")
 
 
 def caminho_dos_tempos() -> str:
