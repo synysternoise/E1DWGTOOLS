@@ -263,6 +263,10 @@ compara uma foto do desenho antes e depois.
     caía do outro lado do arredondamento, ou outro texto tinha a mesma posição arredondada, o campo não era
     achado, era pulado sem aviso e ficava com o XX do template, ligado a ele. Agora vale o texto mais perto até
     0,05 mm (no empate, o que não está vazio), e um campo não achado gera aviso.
+  - Depois de recriar um campo, uma cópia idêntica no mesmo lugar é apagada, e cada conversão grava
+    `%APPDATA%\E1DWGTools\update_vinculos.txt` com o que cada campo achou e os textos da folha 1 depois da
+    conversão. No A0 real ainda sobrava o Text.150 (o "XX" do campo de folhas) ligado ao template; a causa
+    não está fechada.
   `vba/update.txt` não tem essas correções.
 
 ## Position and Zone: diferenças conhecidas em relação ao VBA
