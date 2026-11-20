@@ -285,6 +285,14 @@ class TextoColado(unittest.TestCase):
         achado = at._IndiceTextos(v).localizar("Text.78", 820.4549, 27.6222)
         self.assertEqual(achado.Name, "Text.150")
 
+    def test_a0_real_1_barra_e_xx_no_mesmo_ponto(self):
+        # Template A0: Text.6 "1/" e Text.83 "XX" (No_of_Sheets) em (1168.32, 28.25). Colados com outro nome.
+        v = self.vista(("1/", 1168.32, 28.25, "Text.149"), ("XX", 1168.32, 28.25, "Text.150"))
+        achado = at._IndiceTextos(v).localizar("Text.83", 1168.32, 28.25, "XX")
+        self.assertEqual(achado.Name, "Text.150")
+        link = at.TextLink("|", "|", ["No_of_Sheets"], 1168.32, 28.25, "Text.83", "XX")
+        self.assertEqual(at.sheet_field_prefixes(v, link), [(1168.32, 28.25)])
+
     def test_dois_textos_no_mesmo_lugar_vale_o_que_nao_esta_vazio(self):
         v = self.vista(("", 820.45, 27.62, "Text.151"), ("XX", 820.45, 27.62, "Text.150"))
         self.assertEqual(at._IndiceTextos(v).localizar("Text.78", 820.45, 27.62).Name, "Text.150")

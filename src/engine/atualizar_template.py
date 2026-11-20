@@ -241,6 +241,9 @@ class TextLink:
     x: float
     y: float
     nome: str
+    # O que o texto mostra no template ("XX"). Desempata quando outro texto colado esta no mesmo ponto
+    # (no A0 real o "1/" e o "XX" do SHEET/OF tem a mesma posicao).
+    original: str = ""
 
 
 def build_link(texto: str, marcadores: Dict[str, str], x: float, y: float, nome: str) -> Optional[TextLink]:
@@ -368,6 +371,10 @@ def map_text_links(parametros, fundo) -> Dict[str, TextLink]:
         return links
     originais = []
     marcadores: Dict[str, str] = {}
+    try:
+        lidos_antes = [str(fundo.Texts.Item(k).Text) for k in range(1, fundo.Texts.Count + 1)]
+    except COM_ERROR:
+        lidos_antes = []
     for i in range(1, total + 1):
         try:
             p = parametros.Item(i)
@@ -391,6 +398,8 @@ def map_text_links(parametros, fundo) -> Dict[str, TextLink]:
                 except COM_ERROR:
                     continue
                 if link is not None:
+                    if k <= len(lidos_antes):
+                        link.original = lidos_antes[k - 1]
                     chave, sufixo = nome, 1
                     while chave.lower() in (c.lower() for c in links):
                         sufixo += 1
@@ -464,7 +473,8 @@ def sheet_field_prefixes(fundo, link: TextLink) -> List[Tuple[float, float]]:
             valor = str(t.Text).strip(" ").replace(" ", "")
             if valor and not valor.replace("1", "").replace("/", ""):
                 x, y = t.x, t.y
-                if abs(y - link.y) <= 10.0 and x < link.x and link.x - x <= 40.0:
+                # A esquerda do campo ou no mesmo ponto dele (A0 real: "1/" e "XX" com a mesma posicao).
+                if abs(y - link.y) <= 10.0 and x - link.x <= TOLERANCIA_COLADO and link.x - x <= 40.0:
                     saida.append((x, y))
         except COM_ERROR:
             continue
@@ -533,7 +543,7 @@ def sheet_field_without_link(fundo, largura: float, links: Dict[str, TextLink]) 
     # Se o XX estava ligado a um parametro de outro nome, esse vinculo sai: o campo passa a ser o da folha.
     for chave in [c for c, l in links.items() if position_key(l.x, l.y) == position_key(x, y)]:
         del links[chave]
-    link = TextLink(RESERVAS[0], RESERVAS[0], [SHEET_COUNT_PARAMETER], x, y, nome)
+    link = TextLink(RESERVAS[0], RESERVAS[0], [SHEET_COUNT_PARAMETER], x, y, nome, _valor_lido)
     if not sheet_field_prefixes(fundo, link):
         link.template_text = "1/" + RESERVAS[0]
     chave, sufixo = nome, 1
@@ -592,14 +602,16 @@ class _IndiceTextos:
         self._por_nome = None
         self._por_posicao = None
 
-    def localizar(self, nome: str, x: float, y: float):
+    def localizar(self, nome: str, x: float, y: float, original: Optional[str] = None):
         """O texto colado que corresponde ao do template.
 
         Colado, o texto ganha outro nome (Text.78 do template vira Text.150 no desenho), entao o nome so
         vale com a posicao conferindo. Depois vale o texto mais perto ate TOLERANCIA_COLADO: a busca pela
         posicao arredondada a 0,01 mm falhava quando a colagem caia do outro lado do arredondamento, ou
         quando outro texto tinha a mesma posicao arredondada, e o campo ficava ligado ao template (A0 real,
-        19/11/2026). No empate, vale o texto que nao esta vazio.
+        19/11/2026). No empate vale o texto que mostra o mesmo que no template (original): no A0 real o
+        "1/" e o "XX" do SHEET/OF estao no mesmo ponto, e sem isso era recriado o "1/". Depois, o que nao
+        esta vazio.
         """
         c = self._nomes().get(nome.lower())
         if c is not None:
@@ -612,11 +624,14 @@ class _IndiceTextos:
         for t in self._todos():
             try:
                 d = max(abs(t.x - x), abs(t.y - y))
-                vazio = not str(t.Text).strip()
+                texto = str(t.Text)
             except COM_ERROR:
                 continue
-            if d <= TOLERANCIA_COLADO and (chave_melhor is None or (d, vazio) < chave_melhor):
-                melhor, chave_melhor = t, (d, vazio)
+            if d > TOLERANCIA_COLADO:
+                continue
+            chave = (bool(original) and texto != original, d, not texto.strip())
+            if chave_melhor is None or chave < chave_melhor:
+                melhor, chave_melhor = t, chave
         return melhor
 
 
@@ -1174,7 +1189,7 @@ class _Conversao:
         for chave, link in links.items():
             if chave.lower() == pular.lower():
                 continue
-            t = indice.localizar(link.nome, link.x, link.y)
+            t = indice.localizar(link.nome, link.x, link.y, link.original)
             if t is not None:
                 alvos.append((link, t))
             else:  # antes era pulado em silencio, e o campo ficava ligado ao template
@@ -1227,17 +1242,24 @@ class _Conversao:
 
     def _numerar_folha(self, sel, indice, vista_principal, link, prefixos, numero, nome) -> None:
         """Folhas 2 em diante: o numero fica sem vinculo, para nenhum Update voltar a mostrar o total."""
-        campo = indice.localizar(link.nome, link.x, link.y)
+        campo = indice.localizar(link.nome, link.x, link.y, link.original)
         if campo is None:
             self.report.warnings.append(f"Folha {numero} ({nome}): campo SHEET/OF não encontrado, número não atualizado.")
             return
         for x, y in prefixos:
-            t = indice.posicoes().get(position_key(x, y))
-            if t is not None:
+            # So textos "1/" no ponto: pela posicao arredondada podia sair o proprio campo.
+            for t in list(indice.todos()):
                 try:
-                    _apagar(sel, t)
+                    valor = str(t.Text).strip(" ").replace(" ", "")
+                    perto = max(abs(t.x - x), abs(t.y - y)) <= TOLERANCIA_COLADO
                 except COM_ERROR:
-                    pass
+                    continue
+                if perto and valor and not valor.replace("1", "").replace("/", "") and not _mesmo(t, campo):
+                    try:
+                        _apagar(sel, t)
+                    except COM_ERROR:
+                        pass
+        indice.esquecer()
         if has_working_sheet_number(vista_principal, link.x, link.y):
             # O desenho ja tem o numero na Main View: fica so ele, e o total do Background sai.
             try:
@@ -1455,7 +1477,7 @@ def run_update_template(
 # ---------------------------------------------------------------------
 # Leitura do template guardada entre uma conversao e outra
 # ---------------------------------------------------------------------
-VERSAO_DO_GUARDADO = 2  # 2: leitura de parametro com unidade (19/11/2026)
+VERSAO_DO_GUARDADO = 3  # 2: parametro com unidade; 3: texto original de cada campo (19/11/2026)
 
 
 def caminho_do_guardado() -> str:

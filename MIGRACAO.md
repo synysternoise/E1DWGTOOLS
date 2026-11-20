@@ -265,8 +265,13 @@ compara uma foto do desenho antes e depois.
     0,05 mm (no empate, o que não está vazio), e um campo não achado gera aviso.
   - Depois de recriar um campo, uma cópia idêntica no mesmo lugar é apagada, e cada conversão grava
     `%APPDATA%\E1DWGTools\update_vinculos.txt` com o que cada campo achou e os textos da folha 1 depois da
-    conversão. No A0 real ainda sobrava o Text.150 (o "XX" do campo de folhas) ligado ao template; a causa
-    não está fechada.
+    conversão.
+  - **Causa do "1 XX" no A0 real (sonda de 19/11/2026):** no template A0 o "1/" (Text.6) e o "XX" ligado a
+    No_of_Sheets (Text.83) estão exatamente no mesmo ponto. Colados com outro nome, a busca pela posição
+    empatava e recriava o "1/" ligado ao parâmetro (mostrando 1), e o XX ficava ligado ao template. Agora
+    cada campo guarda o que mostrava no template ("XX") e, no empate, vale o texto colado igual a ele. O "1/"
+    no mesmo ponto passa a contar como prefixo e sai nas folhas 2 em diante, sem risco de apagar o campo.
+    Provado no CATIA com o template de teste v9, montado igual. A leitura guardada passou para a versão 3.
   `vba/update.txt` não tem essas correções.
 
 ## Position and Zone: diferenças conhecidas em relação ao VBA
