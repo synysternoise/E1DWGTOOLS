@@ -269,6 +269,35 @@ class TextoSemVinculoDoTemplate(unittest.TestCase):
 
 
 
+
+class TextoColado(unittest.TestCase):
+    """Colado, o texto ganha outro nome e a posicao pode mudar na ultima casa (A0 real, 19/11/2026)."""
+
+    def vista(self, *textos):
+        v = _Vista()
+        for valor, x, y, nome in textos:
+            v.Texts.itens.append(_Texto(v, valor, x, y, nome))
+        return v
+
+    def test_acha_com_outro_nome_e_posicao_do_outro_lado_do_arredondamento(self):
+        v = self.vista(("1/", 817.2758, 27.6222, "Text.149"), ("XX", 820.4551, 27.6222, "Text.150"))
+        achado = at._IndiceTextos(v).localizar("Text.78", 820.4549, 27.6222)
+        self.assertEqual(achado.Name, "Text.150")
+
+    def test_dois_textos_no_mesmo_lugar_vale_o_que_nao_esta_vazio(self):
+        v = self.vista(("", 820.45, 27.62, "Text.151"), ("XX", 820.45, 27.62, "Text.150"))
+        self.assertEqual(at._IndiceTextos(v).localizar("Text.78", 820.45, 27.62).Name, "Text.150")
+
+    def test_longe_demais_nao_acha_e_avisa(self):
+        v = self.vista(("XX", 821.0, 27.62, "Text.150"))
+        self.assertIsNone(at._IndiceTextos(v).localizar("Text.78", 820.45, 27.62))
+        conv = at._Conversao.__new__(at._Conversao)
+        conv.report = SimpleNamespace(warnings=[])
+        link = at.TextLink("|", "|", ["No_of_Sheets"], 820.45, 27.62, "Text.78")
+        conv._refazer_vinculos(_Sel(), at._IndiceTextos(v), {"Text.78": link}, "", {}, "Sheet.1")
+        self.assertIn("No_of_Sheets não foi achado", conv.report.warnings[0])
+
+
 class LigacaoComOTemplate(unittest.TestCase):
     """Depois de fechado, o template so continua carregado se algo do desenho aponta para ele."""
 

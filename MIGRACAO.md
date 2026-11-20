@@ -258,6 +258,11 @@ compara uma foto do desenho antes e depois.
     recriar a tabela inteira. Só vale fazer se a sonda (`sonda_template_real.py A1`) mostrar tabela ou
     ditto no template real;
   - a leitura guardada em `templates_lidos.json` passou para a versão 2, e todo template é lido de novo.
+  - **A0 real com "1 XX" e o campo de folhas ligado ao template.** Colado, o texto ganha outro nome (Text.78
+    do template vira Text.150 no desenho) e era procurado pela posição arredondada a 0,01 mm. Quando a colagem
+    caía do outro lado do arredondamento, ou outro texto tinha a mesma posição arredondada, o campo não era
+    achado, era pulado sem aviso e ficava com o XX do template, ligado a ele. Agora vale o texto mais perto até
+    0,05 mm (no empate, o que não está vazio), e um campo não achado gera aviso.
   `vba/update.txt` não tem essas correções.
 
 ## Position and Zone: diferenças conhecidas em relação ao VBA

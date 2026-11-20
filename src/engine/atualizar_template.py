@@ -30,6 +30,7 @@ SHEET_COUNT_PARAMETER = "No_of_Sheets"
 WORKING_SHEET_NUMBER_TEXT = "Text.1"
 CAT_PAPER_USER = 13
 POSITION_TOLERANCE = 0.001
+TOLERANCIA_COLADO = 0.05  # mm: folga para achar o texto colado; dois campos da legenda nunca ficam tao perto
 RESERVAS = ("|", "~", "^", "`")
 
 # Uma busca seleciona o conteudo inteiro da view. Se algum tipo nao existir na versao do CATIA, a
@@ -592,6 +593,14 @@ class _IndiceTextos:
         self._por_posicao = None
 
     def localizar(self, nome: str, x: float, y: float):
+        """O texto colado que corresponde ao do template.
+
+        Colado, o texto ganha outro nome (Text.78 do template vira Text.150 no desenho), entao o nome so
+        vale com a posicao conferindo. Depois vale o texto mais perto ate TOLERANCIA_COLADO: a busca pela
+        posicao arredondada a 0,01 mm falhava quando a colagem caia do outro lado do arredondamento, ou
+        quando outro texto tinha a mesma posicao arredondada, e o campo ficava ligado ao template (A0 real,
+        19/11/2026). No empate, vale o texto que nao esta vazio.
+        """
         c = self._nomes().get(nome.lower())
         if c is not None:
             try:
@@ -599,7 +608,16 @@ class _IndiceTextos:
                     return c
             except COM_ERROR:
                 pass
-        return self.posicoes().get(position_key(x, y))
+        melhor, chave_melhor = None, None
+        for t in self._todos():
+            try:
+                d = max(abs(t.x - x), abs(t.y - y))
+                vazio = not str(t.Text).strip()
+            except COM_ERROR:
+                continue
+            if d <= TOLERANCIA_COLADO and (chave_melhor is None or (d, vazio) < chave_melhor):
+                melhor, chave_melhor = t, (d, vazio)
+        return melhor
 
 
 def has_working_sheet_number(vista_principal, campo_x: float, campo_y: float) -> bool:
@@ -1105,6 +1123,11 @@ class _Conversao:
             t = indice.localizar(link.nome, link.x, link.y)
             if t is not None:
                 alvos.append((link, t))
+            else:  # antes era pulado em silencio, e o campo ficava ligado ao template
+                self.report.warnings.append(
+                    f"Folha {folha}: o campo ligado a {', '.join(link.parametros)} não foi achado depois de colar o "
+                    "formato e pode ter ficado ligado ao template (confira em Edit > Links)."
+                )
         for link, velho in alvos:
             achados = [self._parametro(cache, n) for n in link.parametros]
             try:
