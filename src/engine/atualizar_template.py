@@ -951,14 +951,11 @@ class _Conversao:
         """
         if not self.template_carregado(caminho):
             return
+        # Nao vira aviso na tela: no PC da empresa o CATIA manteve o template carregado com o desenho sem
+        # nenhum link externo (Edit > Links vazio, 19/11/2026). Fica so no update_vinculos.txt.
         dittos, tabelas = self._itens_do_template
-        partes = [f"{n} {nome}" for n, nome in ((dittos, "ditto(s)"), (tabelas, "tabela(s)")) if n]
-        suspeitos = f" O Background do template tem {' e '.join(partes)}, que a conversão não religa." if partes else ""
-        self.report.warnings.append(
-            "O desenho continua ligado ao template: o CATIA manteve o arquivo carregado depois de fechá-lo. "
-            f"Confira em Edit > Links.{suspeitos} Se outro desenho já convertido estiver aberto, feche-o e "
-            "converta de novo para confirmar."
-        )
+        self._registro.append(f"Template ainda carregado depois de fechado (dittos: {dittos}, tabelas: {tabelas}). "
+                              "Nao prova vinculo: confira em Edit > Links.")
 
     def fechar_template(self, modelo) -> None:
         """Como o On Error Resume Next da macro: um passo que falha nao impede os outros."""

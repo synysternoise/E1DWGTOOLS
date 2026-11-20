@@ -333,16 +333,18 @@ class LigacaoComOTemplate(unittest.TestCase):
 
     def test_template_descarregado_nao_avisa(self):
         conv = self.conversao([r"C:\d\171-52382-001.CATDrawing"])
+        conv._registro = []
         conv.conferir_ligacao(r"\\rede\E1_DRW_TEMPLATE_A1_R00.CATDrawing")
         self.assertEqual(conv.report.warnings, [])
 
-    def test_template_ainda_carregado_avisa_com_dittos_e_tabelas(self):
+    def test_template_ainda_carregado_vai_so_para_o_registro(self):
+        # No PC da empresa o template ficou carregado com o desenho sem links: nao e aviso na tela.
         tpl = r"\\rede\E1_DRW_TEMPLATE_A1_R00.CATDrawing"
         conv = self.conversao([r"C:\d\171-52382-001.CATDrawing", tpl.upper()], itens=(2, 1))
+        conv._registro = []
         conv.conferir_ligacao(tpl)
-        [aviso] = conv.report.warnings
-        self.assertIn("continua ligado ao template", aviso)
-        self.assertIn("2 ditto(s) e 1 tabela(s)", aviso)
+        self.assertEqual(conv.report.warnings, [])
+        self.assertIn("dittos: 2, tabelas: 1", conv._registro[0])
 
 
 class MarcadorDoParametro(unittest.TestCase):

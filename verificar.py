@@ -32,11 +32,11 @@ PASTAS_IGNORADAS = {".venv", "venv", ".idea", ".git", "__pycache__", "E1tools"}
 # Gerado com:  python verificar.py --manifesto
 # arquivo: (linhas, assinatura)
 MANIFESTO = {
-    "main_qt.py": (18, 'e0f9ec4ebdcefb2e'),
+    "main_qt.py": (25, 'bf15c1afdd9b271a'),
     "src/engine/catia_bridge.py": (138, 'f6d41732974241a7'),
     "src/engine/font_check.py": (299, '067b23b7a20d700b'),
     "src/engine/fix_flags.py": (288, '43d2ce7c1ca939c9'),
-    "src/engine/atualizar_template.py": (1580, '8c2b17bd1bbeac74'),
+    "src/engine/atualizar_template.py": (1577, '8c75f46c72ab9563'),
     "src/engine/pos_zone.py": (1474, 'd65b983731e0bdc7'),
     "src/engine/documento.py": (60, '3018d2076f26d016'),
     "src/engine/symbol_shape.py": (65, 'b3789405193e3595'),
@@ -50,7 +50,7 @@ MANIFESTO = {
     "src/engine/catia_scripts/pos_zone.catvbs": (391, '68486cc3c4f2a25c'),
     "src/ui_qt/theme.py": (173, 'dc78f0ebe5b5e9bc'),
     "src/ui_qt/voo.py": (339, 'de6d17cfa8f8b742'),
-    "src/ui_qt/icones.py": (88, '54e1d1f99ab74cc9'),
+    "src/ui_qt/icones.py": (116, '859d757d45b9e3a2'),
     "src/ui_qt/catia_worker.py": (534, 'c826e6dc57028277'),
     "src/ui_qt/font_size_page.py": (465, '6ad3e0ee81211fb8'),
     "src/ui_qt/pecas.py": (226, '75ca9e75bdb7d59b'),

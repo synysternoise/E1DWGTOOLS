@@ -272,6 +272,9 @@ compara uma foto do desenho antes e depois.
     cada campo guarda o que mostrava no template ("XX") e, no empate, vale o texto colado igual a ele. O "1/"
     no mesmo ponto passa a contar como prefixo e sai nas folhas 2 em diante, sem risco de apagar o campo.
     Provado no CATIA com o template de teste v9, montado igual. A leitura guardada passou para a versão 3.
+  - **Confirmado no A0 real (19/11/2026):** SHEET/OF 1/1 e Edit > Links sem nenhum link externo. O aviso de
+    "template ainda carregado" saiu da tela: o CATIA da empresa manteve o template carregado mesmo sem
+    link nenhum, então o aviso enganava. A informação fica só no `update_vinculos.txt`.
   `vba/update.txt` não tem essas correções.
 
 ## Position and Zone: diferenças conhecidas em relação ao VBA

@@ -48,6 +48,34 @@ _FORMAS = {
 }
 
 
+# Icone do app (janela e barra de tarefas): o aviao do selo, com o E atras dele e o 1 na frente.
+ICONE_APP = (
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">'
+    '<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3B82FF"/>'
+    '<stop offset="1" stop-color="#1746B8"/></linearGradient></defs>'
+    '<rect x="8" y="8" width="240" height="240" rx="56" fill="url(#g)"/>'
+    '<text x="40" y="190" font-family="Segoe UI" font-weight="700" font-size="120" fill="#FFFFFF" opacity="0.55">E</text>'
+    '<g transform="translate(52 28) scale(7.0)">' + _FORMAS["plane"].replace("currentColor", "#FFFFFF") + '</g>'
+    '<text x="150" y="214" font-family="Segoe UI" font-weight="700" font-size="104" fill="#FFFFFF">1</text>'
+    '</svg>'
+)
+
+
+def icone_app() -> QIcon:
+    """O mesmo desenho em varios tamanhos: o Windows escolhe o da barra de tarefas, do Alt+Tab e da janela."""
+    ic = QIcon()
+    renderer = QSvgRenderer(QByteArray(ICONE_APP.encode("utf-8")))
+    for tamanho in (16, 20, 24, 32, 40, 48, 64, 128, 256):
+        px = QPixmap(tamanho, tamanho)
+        px.fill(Qt.transparent)
+        pintor = QPainter(px)
+        pintor.setRenderHint(QPainter.Antialiasing)
+        renderer.render(pintor, QRectF(0, 0, tamanho, tamanho))
+        pintor.end()
+        ic.addPixmap(px)
+    return ic
+
+
 @lru_cache(maxsize=256)
 def pixmap(nome: str, cor: str, tamanho: int = 18, traco: float = 2.0) -> QPixmap:
     forma = _FORMAS[nome].replace("currentColor", cor)
