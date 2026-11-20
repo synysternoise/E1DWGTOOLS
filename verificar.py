@@ -323,6 +323,14 @@ def diagnosticar_catia() -> int:
         print(f"    Itens selecionados: {ativo.Selection.Count}", flush=True)
     except Exception as exc:
         print(f"    Sem documento ativo ({exc})", flush=True)
+    try:
+        # Com a Background View ou uma grade travada ativa, o CATIA desliga os comandos de desenho.
+        folha = app.ActiveDocument.Sheets.ActiveSheet
+        vista = folha.Views.ActiveView
+        print(f"    Folha ativa: {folha.Name}", flush=True)
+        print(f"    Vista ativa: {vista.Name} (tipo {vista.ViewType}, travada: {bool(vista.LockStatus)})", flush=True)
+    except Exception as exc:  # documento que nao e desenho
+        print(f"    Vista ativa: não leu ({exc})", flush=True)
     _, processos = rodar(["tasklist", "/FO", "CSV", "/NH"], 30)
     for programa in ("python.exe", "CNEXT.exe", "EXCEL.EXE"):
         print(f"    {programa} rodando: {processos.lower().count(programa.lower())}", flush=True)
