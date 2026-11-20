@@ -58,7 +58,7 @@ MANIFESTO = {
     "src/ui_qt/fix_flags_page.py": (502, '64fdbefbf00b7566'),
     "src/ui_qt/tool_pages.py": (372, 'a5cc1446f4be080f'),
     "src/ui_qt/sequencia_page.py": (604, '62a858cfddd8e236'),
-    "src/ui_qt/check_fix_pages.py": (850, 'a588db14f0d81e5f'),
+    "src/ui_qt/check_fix_pages.py": (850, 'da4e69ae5ebfb5e9'),
     "src/ui_qt/poszone_page.py": (788, '7ed7718835f59a81'),
     "src/ui_qt/hub_window.py": (910, 'ab67c4471f8d9ec0'),
     "src/engine/vpm_lote.py": (271, '6553ac350499b151'),

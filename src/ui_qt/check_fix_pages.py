@@ -63,8 +63,8 @@ class FlagCheckPage(ToolPage):
         cartoes.setSpacing(8)
         self.card_erradas = Cartao("para corrigir", "vermelho")
         self.card_certas = Cartao("corretas", "verde")
-        self.card_sem_nota = Cartao("flags sem nota no Part List", "ambar")
-        self.card_sem_flag = Cartao("notas do Part List sem flag", "ambar")
+        self.card_sem_nota = Cartao("flags sem nota", "ambar")
+        self.card_sem_flag = Cartao("notas sem flag", "ambar")
         for c in (self.card_erradas, self.card_certas, self.card_sem_nota, self.card_sem_flag):
             cartoes.addWidget(c, 1)
         col.addLayout(cartoes)
