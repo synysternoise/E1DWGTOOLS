@@ -31,6 +31,10 @@ WORKING_SHEET_NUMBER_TEXT = "Text.1"
 CAT_PAPER_USER = 13
 POSITION_TOLERANCE = 0.001
 TOLERANCIA_COLADO = 0.05  # mm: folga para achar o texto colado; dois campos da legenda nunca ficam tao perto
+# mm: o texto que mostra o mesmo que no template ("XX") ainda e o campo ate esta distancia. No A0 real com
+# varias folhas (23/11/2026) o XX colado caiu mais longe que 0,05 mm, o "1/" no mesmo ponto foi pego no lugar
+# dele e o XX ficou na folha, ligado ao template ("3 XX"). Uma celula da legenda tem mais de 5 mm.
+RAIO_DO_ORIGINAL = 2.0
 RESERVAS = ("|", "~", "^", "`")
 
 # Uma busca seleciona o conteudo inteiro da view. Se algum tipo nao existir na versao do CATIA, a
@@ -627,9 +631,10 @@ class _IndiceTextos:
                 texto = str(t.Text)
             except COM_ERROR:
                 continue
-            if d > TOLERANCIA_COLADO:
+            igual = bool(original) and texto == original
+            if d > (RAIO_DO_ORIGINAL if igual else TOLERANCIA_COLADO):
                 continue
-            chave = (bool(original) and texto != original, d, not texto.strip())
+            chave = (bool(original) and not igual, d, not texto.strip())
             if chave_melhor is None or chave < chave_melhor:
                 melhor, chave_melhor = t, chave
         return melhor
@@ -753,14 +758,19 @@ def _mesmo(a, b) -> bool:
         return False
 
 
-def copias_no_lugar(indice, velho, x: float, y: float, colado: str) -> list:
-    """Outros textos com o mesmo conteudo do campo colado, no mesmo lugar: sobra de template ou de conversao."""
+def copias_no_lugar(indice, velho, x: float, y: float, colado: Optional[str], original: str = "") -> list:
+    """Outros textos com o mesmo conteudo do campo colado, no mesmo lugar: sobra de template ou de conversao.
+
+    Tambem os que mostram o mesmo que o campo no template (original, "XX") ate RAIO_DO_ORIGINAL: um XX colado
+    que sobra fica ligado ao template."""
     copias = []
     for t in indice.todos():
         try:
-            if _mesmo(t, velho) or str(t.Text) != colado:
+            if _mesmo(t, velho):
                 continue
-            if max(abs(t.x - x), abs(t.y - y)) <= TOLERANCIA_COLADO:
+            texto = str(t.Text)
+            d = max(abs(t.x - x), abs(t.y - y))
+            if (texto == colado and d <= TOLERANCIA_COLADO) or (original and texto == original and d <= RAIO_DO_ORIGINAL):
                 copias.append(t)
         except COM_ERROR:
             continue
@@ -1202,7 +1212,7 @@ class _Conversao:
                 colado, vx, vy, vnome = str(velho.Text), velho.x, velho.y, str(velho.Name)
             except COM_ERROR:
                 colado, vx, vy, vnome = "?", link.x, link.y, "?"
-            copias = copias_no_lugar(indice, velho, link.x, link.y, colado)
+            copias = copias_no_lugar(indice, velho, link.x, link.y, colado, link.original)
             try:
                 t = recriar_texto(sel, indice.vista, velho, link.template_text)
             except COM_ERROR:
@@ -1241,8 +1251,23 @@ class _Conversao:
         """Folhas 2 em diante: o numero fica sem vinculo, para nenhum Update voltar a mostrar o total."""
         campo = indice.localizar(link.nome, link.x, link.y, link.original)
         if campo is None:
+            self._registro.append(f"{nome} | SHEET/OF folha {numero} | template {link.nome} "
+                                  f"({link.x:.4f}, {link.y:.4f}) | NAO ACHADO")
             self.report.warnings.append(f"Folha {numero} ({nome}): campo SHEET/OF não encontrado, número não atualizado.")
             return
+        try:
+            achado = f"{campo.Name} {str(campo.Text)!r} ({campo.x:.4f}, {campo.y:.4f})"
+        except COM_ERROR:
+            achado = "?"
+        # Um "XX" do template que sobra no campo continua ligado ao template: sai junto.
+        sobras = copias_no_lugar(indice, campo, link.x, link.y, None, link.original)
+        apagadas = 0
+        for t in sobras:
+            try:
+                _apagar(sel, t)
+                apagadas += 1
+            except COM_ERROR:
+                pass
         for x, y in prefixos:
             # So textos "1/" no ponto: pela posicao arredondada podia sair o proprio campo.
             for t in list(indice.todos()):
@@ -1257,7 +1282,12 @@ class _Conversao:
                     except COM_ERROR:
                         pass
         indice.esquecer()
-        if has_working_sheet_number(vista_principal, link.x, link.y):
+        principal = has_working_sheet_number(vista_principal, link.x, link.y)
+        self._registro.append(
+            f"{nome} | SHEET/OF folha {numero} | template {link.nome} ({link.x:.4f}, {link.y:.4f}) | colado {achado} | "
+            f"XX que sobrou apagado: {apagadas} | numero na Main View: {'sim' if principal else 'nao'}"
+        )
+        if principal:
             # O desenho ja tem o numero na Main View: fica so ele, e o total do Background sai.
             try:
                 _apagar(sel, campo)

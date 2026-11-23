@@ -309,6 +309,36 @@ class TextoColado(unittest.TestCase):
         self.assertEqual(sorted(t.Text for t in v.Texts.itens), ["1/", "|"])
         self.assertIn("copias apagadas: 1", conv._registro[0])
 
+    def test_xx_colado_deslocado_ainda_e_o_campo(self):
+        # A0 real com varias folhas (23/11/2026): o XX colado caiu a mais de 0,05 mm e o "1/" foi pego.
+        v = self.vista(("1/", 1168.32, 28.25, "Text.148"), ("XX", 1168.62, 28.25, "Text.149"))
+        self.assertEqual(at._IndiceTextos(v).localizar("Text.83", 1168.32, 28.25, "XX").Name, "Text.149")
+
+    def conversao(self):
+        conv = at._Conversao.__new__(at._Conversao)
+        conv.report = SimpleNamespace(warnings=[])
+        conv._registro = []
+        return conv
+
+    def test_folha_3_fica_so_com_o_numero(self):
+        v = self.vista(("1/", 1168.32, 28.25, "Text.148"), ("XX", 1168.62, 28.25, "Text.149"),
+                       ("XX", 1168.40, 28.25, "Text.150"), ("SCALE", 1100.0, 40.0, "Text.10"))
+        conv = self.conversao()
+        link = at.TextLink("XX", "XX", ["No_of_Sheets"], 1168.32, 28.25, "Text.83", "XX")
+        sem_numero = SimpleNamespace(Scale=1, x=0.0, y=0.0, Texts=_Textos(None))
+        conv._numerar_folha(_Sel(), at._IndiceTextos(v), sem_numero, link, [(1168.32, 28.25)], 3, "Sheet.3")
+        self.assertEqual(sorted(t.Text for t in v.Texts.itens), ["3", "SCALE"])
+        self.assertIn("XX que sobrou apagado: 1", conv._registro[0])
+
+    def test_folha_3_com_numero_na_main_view_fica_sem_xx(self):
+        v = self.vista(("1/", 1168.32, 28.25, "Text.148"), ("XX", 1168.62, 28.25, "Text.149"))
+        conv = self.conversao()
+        link = at.TextLink("XX", "XX", ["No_of_Sheets"], 1168.32, 28.25, "Text.83", "XX")
+        principal = SimpleNamespace(Scale=1, x=0.0, y=0.0, Texts=_Textos(None))
+        principal.Texts.itens.append(_Texto(None, "3", 1160.0, 28.0, "Text.1"))
+        conv._numerar_folha(_Sel(), at._IndiceTextos(v), principal, link, [(1168.32, 28.25)], 3, "Sheet.3")
+        self.assertEqual(v.Texts.itens, [])
+
     def test_longe_demais_nao_acha_e_avisa(self):
         v = self.vista(("XX", 821.0, 27.62, "Text.150"))
         self.assertIsNone(at._IndiceTextos(v).localizar("Text.78", 820.45, 27.62))
