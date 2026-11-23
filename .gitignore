@@ -11,3 +11,8 @@ _shot.png
 
 # Config local do Claude Code
 .claude/
+
+# Executavel (python compilar.py)
+build/
+dist/
+*.spec
