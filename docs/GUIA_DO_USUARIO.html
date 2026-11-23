@@ -1,0 +1,1550 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>E1 Tools - Guia do usuário</title><style>
+@page { size: A4; margin: 15mm 15mm 18mm 15mm; }
+* { -webkit-print-color-adjust: exact; print-color-adjust: exact; box-sizing: border-box; }
+html, body { background: transparent; }
+body { margin: 0; font-family: 'Segoe UI', Arial, sans-serif; font-size: 9.6pt; line-height: 1.5; color: #E9EFFB; }
+p { margin: 0 0 7px; }
+strong { color: #FFFFFF; font-weight: 600; }
+a { color: #6FD0FF; text-decoration: none; }
+code { font-family: Consolas, monospace; font-size: 8.6pt; color: #6FD0FF; background: #0F1E3D;
+        border: 1px solid #18294F; padding: 0 4px; border-radius: 4px; }
+pre { background: #0A1530; border: 1px solid #18294F; border-radius: 8px; padding: 8px 12px; }
+pre code { background: none; border: none; padding: 0; }
+ul, ol { margin: 0 0 8px; padding-left: 18px; }
+li { margin: 2px 0; }
+li::marker { color: #93A6C9; }
+
+/* capa */
+.capa { height: 262mm; display: flex; flex-direction: column; page-break-after: always; }
+.capa .marca { display: flex; align-items: center; gap: 14px; }
+.capa .marca svg { width: 54px; height: 54px; }
+.capa .marca b { font-size: 20pt; letter-spacing: .5px; }
+.capa .marca span { display: block; font-size: 7.5pt; font-weight: 700; color: #93A6C9; letter-spacing: 1.6px; }
+.capa h1 { font-size: 34pt; line-height: 1.1; margin: 46mm 0 6px; font-weight: 700; }
+.capa .linha { color: #93A6C9; font-size: 11pt; max-width: 135mm; }
+.capa .janela { margin-top: auto; border: 1px solid #22396B; border-radius: 10px; width: 100%; }
+.capa .rodape { display: flex; justify-content: space-between; color: #5F7299; font-size: 8pt; margin-top: 8px; }
+
+/* sumario */
+.sumario { page-break-after: always; }
+.rot { font-size: 7.5pt; font-weight: 700; color: #93A6C9; letter-spacing: 1.4px; text-transform: uppercase; }
+.sumario h2 { font-size: 20pt; margin: 2px 0 16px; }
+.sumario .cap { display: grid; grid-template-columns: 26px 1fr 22px; padding: 9px 0; border-top: 1px solid #18294F; }
+.sumario .n { color: #3B82FF; font-weight: 700; }
+.sumario .t { font-weight: 600; }
+.sumario .pg { color: #93A6C9; text-align: right; }
+.sumario .subs { grid-column: 2 / 4; display: grid; grid-template-columns: 1fr 22px; margin-top: 3px; }
+.sumario .subs span { color: #93A6C9; font-size: 8.8pt; padding: 1px 0; }
+.sumario .subs span.pg { text-align: right; color: #5F7299; }
+.aviso-capa { margin-top: 18px; }
+
+/* capitulos */
+.capitulo { page-break-before: always; display: flex; gap: 14px; align-items: flex-end; padding-bottom: 12px;
+            margin-bottom: 14px; border-bottom: 1px solid #22396B; }
+.capitulo .num { font-size: 40pt; line-height: .9; font-weight: 700; color: #24447F; }
+.capitulo h2 { font-size: 19pt; margin: 2px 0 0; line-height: 1.15; }
+.capitulo .sub { color: #93A6C9; font-size: 10pt; }
+h3 { font-size: 14pt; margin: 4px 0 10px; display: flex; align-items: baseline; gap: 10px; }
+h3 .num { font-size: 9pt; font-weight: 700; color: #FFFFFF; background: #3B82FF; border-radius: 6px;
+          padding: 1px 7px; position: relative; top: -2px; }
+.pgm { font-size: 1px; color: #060D1C; letter-spacing: 0; }
+h3.ferramenta { page-break-before: always; }
+h3.primeira { page-break-before: avoid; margin-top: 4px; }
+h3.solta { font-size: 12pt; margin-top: 18px; }
+h4 { font-size: 7.5pt; font-weight: 700; color: #93A6C9; letter-spacing: 1.4px; text-transform: uppercase;
+      margin: 14px 0 6px; page-break-after: avoid; }
+
+/* ficha: Para que serve / Quando usar */
+.ficha { background: #0F1E3D; border: 1px solid #18294F; border-radius: 10px; padding: 4px 14px;
+          margin: 0 0 12px; page-break-inside: avoid; }
+.ficha div { display: grid; grid-template-columns: 34mm 1fr; padding: 6px 0; }
+.ficha div + div { border-top: 1px solid #18294F; }
+.ficha b { font-size: 7.5pt; font-weight: 700; color: #93A6C9; letter-spacing: 1.2px; text-transform: uppercase;
+           padding-top: 2px; }
+
+/* tabelas como listas do HUB */
+table { width: 100%; border-collapse: separate; border-spacing: 0; margin: 4px 0 12px; font-size: 8.8pt;
+         border: 1px solid #22396B; border-radius: 8px; overflow: hidden; }
+tr { page-break-inside: avoid; }
+th { background: #0A1530; color: #93A6C9; font-size: 7.3pt; font-weight: 700; letter-spacing: 1px;
+      text-transform: uppercase; text-align: left; padding: 6px 9px; }
+td { background: #0F1E3D; padding: 6px 9px; vertical-align: top; border-top: 1px solid #18294F; }
+td:first-child { color: #FFFFFF; font-weight: 600; width: 32%; }
+table.galeria, table.galeria td, table.galeria th { background: none; border: none; padding: 0 4px; }
+table.galeria th { padding-bottom: 4px; }
+table.galeria td:first-child { width: auto; }
+table.galeria img { width: 100%; margin: 0; }
+
+/* etiquetas iguais as do HUB */
+.etq { display: inline-block; font-size: 7pt; font-weight: 700; letter-spacing: .8px; border-radius: 10px;
+        padding: 1px 8px; white-space: nowrap; }
+.etq.ambar { color: #E6A23C; border: 1px solid #6B4E1E; background: #3A2A12; }
+.etq.verde { color: #2ECC71; border: 1px solid #1E6B45; background: #0F3B2A; }
+.etq.azul { color: #6FD0FF; border: 1px dashed #3B82FF; }
+.etq.vermelho { color: #F0695C; border: 1px solid #6E2C2A; background: #3A1A1C; }
+
+figure { margin: 6px 0 12px; page-break-inside: avoid; text-align: center; }
+figure img { max-width: 100%; max-height: 118mm; border: 1px solid #22396B; border-radius: 8px; }
+figcaption { color: #5F7299; font-size: 7.8pt; margin-top: 4px; }
+.nota { background: #3A2A12; border: 1px solid #6B4E1E; border-radius: 8px; padding: 8px 12px;
+         margin: 4px 0 12px; page-break-inside: avoid; }
+.nota p:last-child { margin: 0; }
+.nota.info { background: #0F1E3D; border-color: #22396B; }
+</style></head><body><section class="capa">
+<div class="marca"><svg viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3B82FF"/><stop offset="1" stop-color="#1746B8"/></linearGradient></defs><rect x="8" y="8" width="240" height="240" rx="56" fill="url(#g)"/><g transform="translate(20 4) scale(9.6)" opacity="0.30"><g transform="rotate(45 12 12)" fill="#FFFFFF"><path d="M12 1.5c.9 0 1.3 1.6 1.3 3.2V9l9 5.2v1.6l-9-2.3v5l3 2.2v1.3L12 21l-4.3 1v-1.3l3-2.2v-5l-9 2.3v-1.6l9-5.2V4.7c0-1.6.4-3.2 1.3-3.2z"/><rect x="6.5" y="9.3" width="1.6" height="2.7" rx=".7"/><rect x="15.9" y="9.3" width="1.6" height="2.7" rx=".7"/></g></g><text x="128" y="172" text-anchor="middle" font-family="Segoe UI" font-weight="700" font-size="128" fill="#FFFFFF">E1</text></svg><div><b>E1 TOOLS</b><span>HUB DE FERRAMENTAS · CATIA V5</span></div></div>
+<h1>Guia do usuário</h1>
+<div class="linha">Todas as ferramentas do HUB para os desenhos 2D do programa E1 (EMB170-190): o que cada uma faz,
+quando usar, passo a passo e o que significam os avisos.</div>
+<img class="janela" src="guia/05_hub_janela.png">
+<div class="rodape"><span>Versão de 20/11/2026</span><span>Branch migracao-dwgtools</span></div>
+</section><section class="sumario"><div class="rot">Conteúdo</div><h2>Sumário</h2><div class="cap"><span class="n">1</span><span class="t">Antes de começar</span><span class="pg">3</span></div><div class="cap"><span class="n">2</span><span class="t">A janela do HUB</span><span class="pg">4</span></div><div class="cap"><span class="n">3</span><span class="t">Aba Design <span style="color:#93A6C9;font-weight:400">· ferramentas que alteram o desenho</span></span><span class="pg">7</span><div class="subs"><span>3.1  Sequência de aplicação</span><span class="pg">7</span><span>3.2  Update Template</span><span class="pg">9</span><span>3.3  Symbol Shape Converter</span><span class="pg">13</span><span>3.4  Fix Flags</span><span class="pg">15</span><span>3.5  Font Size Fix</span><span class="pg">17</span><span>3.6  Pos and Zone Fix</span><span class="pg">19</span></div></div><div class="cap"><span class="n">4</span><span class="t">Aba Check <span style="color:#93A6C9;font-weight:400">· conferências que não alteram o desenho</span></span><span class="pg">21</span><div class="subs"><span>4.1  Visão geral</span><span class="pg">21</span><span>4.2  Font Size Check</span><span class="pg">23</span><span>4.3  Position and Zone</span><span class="pg">24</span><span>4.4  Check de Flags</span><span class="pg">27</span><span>4.5  Check de Template</span><span class="pg">30</span><span>4.6  Compare DWG</span><span class="pg">32</span></div></div><div class="cap"><span class="n">5</span><span class="t">Aba Envio <span style="color:#93A6C9;font-weight:400">· Splits</span></span><span class="pg">33</span><div class="subs"><span>5.1  Split 3D</span><span class="pg">33</span><span>5.2  Split 2D</span><span class="pg">35</span></div></div><div class="cap"><span class="n">6</span><span class="t">Aba VPM</span><span class="pg">37</span><div class="subs"><span>6.1  O que as três telas têm em comum</span><span class="pg">37</span><span>6.2  Criar PNs</span><span class="pg">39</span><span>6.3  Update Content</span><span class="pg">41</span><span>6.4  Criar e atualizar</span><span class="pg">43</span></div></div><div class="cap"><span class="n">7</span><span class="t">Instalação e atualização</span><span class="pg">44</span></div><div class="cap"><span class="n">8</span><span class="t">Arquivos de diagnóstico e onde ficam</span><span class="pg">46</span></div><div class="cap"><span class="n">9</span><span class="t">Problemas comuns</span><span class="pg">47</span></div><div class="nota info aviso-capa"><p><strong>Sobre os prints.</strong> As imagens são do HUB de verdade, preenchidas com dados de exemplo (desenho 171-60466-803, Part List e lote do VPM inventados). Nas telas do VPM aparece só a prévia, porque o VPM só abre na rede da empresa.</p></div></section><div class="capitulo" id="1-antes-de-começar"><div class="num">01<span class="pgm">@@1@@</span></div><div><h2>Antes de começar</h2></div></div>
+<h4>O que você precisa</h4>
+<ul>
+<li>CATIA V5 aberto, com o desenho (CATDrawing) ativo. Para o Split 3D, uma peça (CATPart) ativa.</li>
+<li>Excel instalado, para ler o Part List do SAP no Position and Zone e no Check de Flags.</li>
+<li>Microsoft Edge e acesso à rede da empresa, só para a aba VPM.</li>
+</ul>
+<div class="ficha"><div><b>Como abrir</b><span>na pasta do programa, rode</span></div></div><pre><code class="language-bash">python main_qt.py
+</code></pre>
+<p>O HUB pode ser aberto antes ou depois do CATIA. Ele percebe sozinho quando o CATIA abre e qual documento
+está ativo, a cada 2 segundos. Desenho aberto pelo VPM também é reconhecido: o HUB olha o tipo do
+documento no CATIA, e não só a extensão do nome.</p>
+<h4>Três regras que valem para todas as ferramentas</h4>
+<ol>
+<li><strong>Salve uma cópia antes de usar uma ferramenta que altera o desenho.</strong> As ferramentas da aba Design
+   mudam o desenho aberto. Nada é salvo pelo HUB: você confere e salva. Se algo sair errado, feche o
+   desenho <strong>sem salvar</strong> e abra de novo.</li>
+<li><strong>Não mexa no CATIA enquanto o HUB trabalha.</strong> Durante uma execução, o chip no alto mostra
+   "CATIA ocupado" e a tela avisa. Clicar no CATIA nesse momento pode atrapalhar o que está sendo feito.</li>
+<li><strong>A etiqueta de cada tela diz o que ela faz com o desenho:</strong></li>
+</ol>
+<table>
+<thead>
+<tr>
+<th>Etiqueta</th>
+<th>Significado</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><span class="etq ambar">ALTERA O DESENHO</span></td>
+<td>Muda o desenho aberto. Confira e salve depois.</td>
+</tr>
+<tr>
+<td><span class="etq verde">SÓ CONFERE</span></td>
+<td>Só lê. O desenho não muda.</td>
+</tr>
+<tr>
+<td><span class="etq azul">CRIA ARQUIVOS</span></td>
+<td>Grava arquivos novos em outra pasta. O documento aberto não é dividido.</td>
+</tr>
+<tr>
+<td><span class="etq vermelho">ALTERA O VPM</span></td>
+<td>Cria PNs ou envia arquivos para o VPM. Não dá para desfazer pelo HUB.</td>
+</tr>
+</tbody>
+</table>
+
+<div class="capitulo" id="2-a-janela-do-hub"><div class="num">02<span class="pgm">@@2@@</span></div><div><h2>A janela do HUB</h2></div></div>
+<figure><img src="guia/05_hub_janela.png" alt="Janela do HUB"><figcaption>Janela do HUB</figcaption></figure>
+<table>
+<thead>
+<tr>
+<th>Parte da tela</th>
+<th>Para que serve</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Abas no alto (Design, Check, Envio, VPM)</td>
+<td>Trocam o grupo de ferramentas. O número vermelho ao lado de Check é o total de itens para revisar nos checks desta sessão.</td>
+</tr>
+<tr>
+<td>Chip "CATIA ativo"</td>
+<td>Verde: CATIA aberto e livre. Amarelo "CATIA ocupado": o HUB está trabalhando nele. Vermelho "CATIA fechado": o HUB não achou o CATIA.</td>
+</tr>
+<tr>
+<td>Chip com o nome do documento</td>
+<td>O documento ativo no CATIA. "Nenhum desenho" quando não há.</td>
+</tr>
+<tr>
+<td>Lista à esquerda</td>
+<td>As ferramentas da aba. O número em cada uma é o que ficou para revisar no último resultado.</td>
+</tr>
+<tr>
+<td>Faixa "Progresso", embaixo</td>
+<td>O avião anda conforme a ferramenta avança. "Pousou: CATIA livre" quando termina.</td>
+</tr>
+<tr>
+<td>Botões no canto direito</td>
+<td>Minimizar, modo canto, modo só ícones e fechar. Veja <a href="#modos-de-janela">modos de janela</a>.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Sem CATIA ou sem desenho</strong>, cada ferramenta mostra o que falta e um botão PROCURAR DE NOVO. Não é
+preciso clicar: o HUB libera a ferramenta assim que o documento certo fica ativo.</p>
+<table class="galeria">
+<thead>
+<tr>
+<th>CATIA fechado</th>
+<th>Documento ativo não é um desenho</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><img alt="CATIA fechado" src="guia/00_sem_catia.png" /></td>
+<td><img alt="Sem desenho" src="guia/00_sem_desenho.png" /></td>
+</tr>
+</tbody>
+</table>
+<h4>Telas comuns a quase todas as ferramentas</h4>
+<ul>
+<li><strong>Início:</strong> explica a ferramenta e tem o botão principal.</li>
+<li><strong>Em andamento:</strong> barra de progresso, aviso para não mexer no CATIA e, quando a ferramenta permite,
+  o botão PARAR. Parar termina o item ou a folha atual e para; o que já foi feito fica feito.</li>
+<li><strong>Resultado:</strong> lista do que foi encontrado ou feito, com um resumo à direita.</li>
+<li><strong>Navegação até o item:</strong> nas listas de flags, textos, callouts e folhas, clicar numa linha (ou usar
+  ANTERIOR e PRÓXIMO) leva o CATIA até o item, seleciona e enquadra. O estado aparece ao lado:
+  "Indo até…" (amarelo), "Selecionado no CATIA" (verde) ou "não encontrado" (vermelho, quando o item foi
+  apagado ou o desenho foi fechado). Do último item, PRÓXIMO volta para o primeiro.</li>
+</ul>
+<h3 id="modos-de-janela" class="solta">Modos de janela</h3>
+<table>
+<thead>
+<tr>
+<th>Modo</th>
+<th>Como entrar</th>
+<th>Como fica</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Normal</td>
+<td>Padrão ao abrir</td>
+<td>Janela de 1180 × 720 com tudo visível. Pode ser arrastada pelo cabeçalho.</td>
+</tr>
+<tr>
+<td>Canto</td>
+<td>Botão com dois painéis, no alto à direita</td>
+<td>Coluna estreita na borda direita da tela, sempre por cima do CATIA. As abas e ferramentas viram uma faixa de ícones (D, C, E, V e os ícones de cada ferramenta). As listas mostram só as colunas principais. Clique de novo no mesmo botão para voltar ao normal.</td>
+</tr>
+<tr>
+<td>Só ícones</td>
+<td>Botão com o quadrado, no alto à direita</td>
+<td>Uma barra fina no canto da tela, sempre por cima. Clicar no ícone de uma ferramenta abre um cartão com o resumo dela e os botões EXECUTAR e ABRIR NO CANTO. Clicar de novo no mesmo ícone fecha o cartão. Os dois botões no pé da barra vão para o modo canto ou para o normal.</td>
+</tr>
+</tbody>
+</table>
+<table class="galeria">
+<thead>
+<tr>
+<th>Modo canto</th>
+<th>Só ícones</th>
+<th>Cartão no modo só ícones</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><img alt="Modo canto" src="guia/80_modo_canto.png" /></td>
+<td><img alt="Só ícones" src="guia/81_modo_icones.png" /></td>
+<td><img alt="Cartão" src="guia/82_modo_icones_cartao.png" /></td>
+</tr>
+</tbody>
+</table>
+<p>O botão EXECUTAR do cartão faz o mesmo que o botão principal da tela da ferramenta.</p>
+<p><strong>Ao fechar o HUB</strong>, ele tira a seleção que deixou no CATIA e religa alertas, tela e interação do CATIA.
+Com um lote do VPM rodando, o HUB não fecha: interrompa o lote antes.</p>
+
+<div class="capitulo" id="3-aba-design-ferramentas-que-alteram-o-desenho"><div class="num">03<span class="pgm">@@3@@</span></div><div><h2>Aba Design</h2><div class="sub">ferramentas que alteram o desenho</div></div></div>
+<p>Todas as ferramentas desta aba <strong>alteram o desenho aberto</strong>. Salve uma cópia antes. Cada uma roda
+sozinha ou junto com as outras na Sequência de aplicação.</p>
+<h3 id="31-sequência-de-aplicação" class="ferramenta primeira"><span class="num">3.1</span>Sequência de aplicação<span class="pgm">@@3.1@@</span></h3>
+<div class="ficha"><div><b>Para que serve</b><span>roda, em ordem e de uma vez, Update Template, Symbol Shape Converter, Fix Flags e a
+análise do Font Size Fix.</span></div><div><b>Quando usar</b><span>para preparar um desenho inteiro de uma vez, por exemplo depois de trazer um desenho no
+template antigo.</span></div></div><figure><img src="guia/01_sequencia_escolha.png" alt="Escolha das etapas"><figcaption>Escolha das etapas</figcaption></figure>
+<h4>Passo a passo</h4>
+<ol>
+<li>Abra o desenho no CATIA e salve uma cópia.</li>
+<li>Em <strong>Design › Sequência de aplicação</strong>, escolha <strong>Completa</strong> (as quatro etapas) ou desmarque as que
+   não quer (vira <strong>Minha seleção</strong>). O número ao lado de cada etapa mostra a ordem.</li>
+<li>Confira à direita: "CATIA ativo" e o nome do desenho "detectado" em verde.</li>
+<li>Clique em <strong>EXECUTAR N ETAPAS</strong>.</li>
+<li>Acompanhe a linha do tempo. Se precisar, clique em <strong>PARAR DEPOIS DESTA ETAPA</strong>: a etapa atual termina
+   e as seguintes não rodam.</li>
+</ol>
+<table class="galeria">
+<thead>
+<tr>
+<th>Em andamento</th>
+<th>Concluída</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><img alt="Sequência rodando" src="guia/02_sequencia_rodando.png" /></td>
+<td><img alt="Sequência concluída" src="guia/03_sequencia_concluida.png" /></td>
+</tr>
+</tbody>
+</table>
+<h4>O que cada etapa faz na sequência</h4>
+<table>
+<thead>
+<tr>
+<th>Etapa</th>
+<th>O que faz</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Update Template</td>
+<td>Troca o template no próprio desenho. Se o formato não for detectado, abre uma janela pedindo o formato. Se você escolheu formatos à mão na tela do Update Template, a sequência usa essa escolha.</td>
+</tr>
+<tr>
+<td>Symbol Shape Converter</td>
+<td>Converte a ponta dos leaders dos textos.</td>
+</tr>
+<tr>
+<td>Fix Flags</td>
+<td>Corrige as flags. Na sequência não pergunta antes: clicar em EXECUTAR já é a confirmação.</td>
+</tr>
+<tr>
+<td>Font Size Fix</td>
+<td><strong>Não corrige nada sozinho.</strong> Só analisa e deixa a lista pronta para você revisar.</td>
+</tr>
+</tbody>
+</table>
+<h4>Resultados</h4>
+<ul>
+<li>Cada etapa mostra o resumo do que aconteceu (por exemplo "Etiqueta trocada em 3 folhas, 1 aviso(s)",
+  "9 corrigidas, 31 já certas", "4 fora do padrão: você revisa").</li>
+<li><strong>Sequência concluída:</strong> todas as etapas marcadas rodaram. Com o Font Size Fix na lista, aparece o
+  botão <strong>REVISAR AS FONTES</strong>, que abre a tela do Font Size Fix com a lista pronta. Sem ele, aparece
+  <strong>CONFERIR NO CHECK</strong>.</li>
+<li><strong>Sequência parada:</strong> você parou, ou cancelou a janela de formato do Update Template. As etapas que não
+  rodaram ficam como "Não rodou: você parou a sequência".</li>
+<li><strong>A sequência parou por um erro:</strong> a etapa com erro fica com um X e as seguintes não rodam. A mensagem
+  do erro aparece em "O que está acontecendo". Confira o desenho antes de continuar; se o erro foi no
+  Update Template, leia a mensagem: ela diz se o desenho pode ter ficado parcialmente convertido.</li>
+</ul>
+<p>O resultado detalhado de cada etapa também fica na tela da própria ferramenta (Update Template, Symbol
+Shape, Fix Flags, Font Size Fix).</p>
+<h3 id="32-update-template" class="ferramenta"><span class="num">3.2</span>Update Template<span class="pgm">@@3.2@@</span></h3>
+<div class="ficha"><div><b>Para que serve</b><span>troca o template (formato, legenda, margem e grade de zonas) <strong>no próprio desenho</strong>,
+pelo template atual do formato. As vistas do desenho não são tocadas.</span></div><div><b>Quando usar</b><span>desenho no template antigo ou com legenda desatualizada.</span></div></div><h4>O que altera no desenho</h4>
+<ul>
+<li>apaga o Background antigo e cola o Background do template novo em cada folha;</li>
+<li>apaga as grades de zonas antigas (<code>ZONE</code>, <code>ZONE A0</code>, <code>ZONES_A1_SHT1</code> e parecidas) e cola as do template.
+  Uma vista sua com "ZONE" no meio do nome continua intacta;</li>
+<li>nas folhas 2 em diante, os números da margem e os rótulos da grade ganham a dezena da folha (na folha
+  2, a coluna 9 vira 29; F6 vira F26);</li>
+<li>refaz os campos da legenda ligados aos parâmetros <strong>do próprio desenho</strong>, sem vínculo com o arquivo do
+  template (em Edit › Links não deve aparecer o template);</li>
+<li>numera o campo SHEET/OF: a primeira folha mostra <code>1/total</code> e as outras só o próprio número; o
+  parâmetro <code>No_of_Sheets</code> recebe o total de folhas.</li>
+</ul>
+<div class="ficha"><div><b>De onde vêm os templates</b><span>da pasta da rede
+<code>\\nfscad05.sjk.emb\dmuv5\smarteam\b01\v5\DLNames\START_UP\</code>, arquivos
+<code>E1_DRW_TEMPLATE_&lt;formato&gt;_R00.CATDrawing</code>. Formatos aceitos: 3A0, A0, A1, A2, A3 e E3.</span></div></div><figure><img src="guia/10_update_previa.png" alt="Prévia do Update Template"><figcaption>Prévia do Update Template</figcaption></figure>
+<h4>Passo a passo</h4>
+<ol>
+<li>Abra o desenho e salve uma cópia.</li>
+<li>Em <strong>Design › Update Template</strong>, confira o <strong>TAMANHO DETECTADO</strong>. O HUB lê o formato de cada folha no
+   Background, sem alterar nada. Embaixo aparecem o nome do desenho e o número de folhas.</li>
+<li>Se o tamanho estiver certo, clique em <strong>CONFIRMAR E ATUALIZAR</strong>.</li>
+<li>Se estiver errado, ou se uma folha tiver outro formato, clique em <strong>ESCOLHER MANUALMENTE</strong>:<ul>
+<li>selecione na tabela a folha (ou as folhas) que quer mudar;</li>
+<li>clique no formato. Ele vale só para as folhas selecionadas;</li>
+<li><strong>USAR O TAMANHO DETECTADO</strong> descarta a escolha manual.</li>
+</ul>
+</li>
+<li>Aguarde. A conversão <strong>não pode ser parada no meio</strong>, porque o desenho ficaria parcialmente convertido.</li>
+<li>Confira o desenho e salve.</li>
+</ol>
+<figure><img src="guia/11_update_manual.png" alt="Escolha manual do formato"><figcaption>Escolha manual do formato</figcaption></figure>
+<p>Quando nenhuma folha tem o formato no Background, a escolha manual já abre sozinha. Se o formato da
+primeira folha não for achado na hora de converter, o HUB pede numa janela ("Definição de Formato"):
+digite 3A0, A0, A1, A2, A3 ou E3. Cancelar essa janela cancela a conversão sem mudar nada.</p>
+<figure><img src="guia/12_update_resultado.png" alt="Resultado do Update Template"><figcaption>Resultado do Update Template</figcaption></figure>
+<p><strong>Resultado:</strong> a lista das folhas com o formato aplicado, a frase "Confira o desenho e salve para
+confirmar" e, se houver, os <strong>AVISOS</strong>. Depois da conversão a prévia é lida de novo.</p>
+<h4>Avisos que podem aparecer no resultado</h4>
+<table>
+<thead>
+<tr>
+<th>Aviso</th>
+<th>O que significa</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Folha N (nome): formato não identificado, usado X.</td>
+<td>A folha não tinha formato no Background e recebeu o da primeira folha. Confira se é o certo.</td>
+</tr>
+<tr>
+<td>Folha N (nome): campo SHEET/OF não encontrado, número não atualizado.</td>
+<td>O campo de número de folha não foi achado na legenda dessa folha. Preencha à mão.</td>
+</tr>
+<tr>
+<td>Folha N (nome): N número(s) da margem não foram atualizados.</td>
+<td>Alguns números da margem ficaram sem a dezena da folha. Confira a margem.</td>
+</tr>
+<tr>
+<td>Folha N: não foi possível numerar a grade X.</td>
+<td>A grade de zonas dessa folha ficou sem a dezena.</td>
+</tr>
+<tr>
+<td>Parâmetro X não existe no desenho: o campo da legenda ficou com o valor do template.</td>
+<td>O desenho não tem esse parâmetro. O campo mostra o valor do template.</td>
+</tr>
+<tr>
+<td>Folha N: o campo ligado a X não foi achado depois de colar…</td>
+<td>Um campo da legenda não foi refeito e pode ter ficado ligado ao template. Confira em Edit › Links.</td>
+</tr>
+<tr>
+<td>Nenhum texto do template está ligado a No_of_Sheets…</td>
+<td>A numeração das folhas não foi atualizada.</td>
+</tr>
+<tr>
+<td>Numeração da margem não encontrada no template…</td>
+<td>As margens ficaram sem a dezena da folha.</td>
+</tr>
+<tr>
+<td>Parâmetro No_of_Sheets não encontrado ou não editável.</td>
+<td>O total de folhas não foi gravado no parâmetro.</td>
+</tr>
+</tbody>
+</table>
+<h4>Mensagens de erro (a conversão não acontece ou para)</h4>
+<table>
+<thead>
+<tr>
+<th>Mensagem</th>
+<th>O que fazer</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Pasta dos templates inacessível / Não foi possível ler a pasta dos templates</td>
+<td>A rede está fora ou a pasta mudou. A mensagem mostra a pasta pesquisada.</td>
+</tr>
+<tr>
+<td>Template não encontrado para o formato X</td>
+<td>Não há template desse formato na pasta. Escolha outro formato ou avise quem mantém os templates.</td>
+</tr>
+<tr>
+<td>O template já está aberto… Feche-o sem salvar e execute novamente.</td>
+<td>O template está aberto numa janela do CATIA. Feche sem salvar. Se ele estiver carregado sem janela (depois de uma conversão anterior), isso é normal e não bloqueia.</td>
+</tr>
+<tr>
+<td>Falha na execução… "O desenho pode ter ficado parcialmente convertido. Feche-o SEM SALVAR e abra novamente"</td>
+<td>O erro aconteceu no meio da troca. Não salve: feche, abra de novo e repita.</td>
+</tr>
+<tr>
+<td>Formato inválido</td>
+<td>O formato digitado na janela não é um dos aceitos.</td>
+</tr>
+</tbody>
+</table>
+<h4>Cuidados</h4>
+<ul>
+<li>Os dittos e as tabelas de um template podem continuar ligados a ele. Se a legenda do seu template
+  usar tabela ou ditto, confira em Edit › Links depois de converter.</li>
+<li>O arquivo <code>update_vinculos.txt</code> (veja a <a href="#8-arquivos-de-diagnóstico-e-onde-ficam">seção 8</a>) mostra
+  o que cada campo da legenda achou na última conversão.</li>
+</ul>
+<h3 id="33-symbol-shape-converter" class="ferramenta"><span class="num">3.3</span>Symbol Shape Converter<span class="pgm">@@3.3@@</span></h3>
+<div class="ficha"><div><b>Para que serve</b><span>troca a ponta dos leaders dos textos pelo símbolo cheio: círculo transparente,
+círculo vazado e onda viram círculo cheio; seta vazada vira seta cheia.</span></div><div><b>Quando usar</b><span>depois do Update Template, para deixar os símbolos no padrão. Na sequência ele já roda
+nessa ordem.</span></div></div><figure><img src="guia/13_symbol_inicio.png" alt="Symbol Shape: início"><figcaption>Symbol Shape: início</figcaption></figure>
+<h4>Passo a passo</h4>
+<ol>
+<li>Abra o desenho e salve uma cópia.</li>
+<li>Em <strong>Design › Symbol Shape Converter</strong>, clique em <strong>CONVERTER OS SÍMBOLOS</strong>.</li>
+<li>A conversão roda no desenho inteiro de uma vez e não tem botão de parar.</li>
+</ol>
+<figure><img src="guia/14_symbol_resultado.png" alt="Symbol Shape: resultado"><figcaption>Symbol Shape: resultado</figcaption></figure>
+<h4>Resultado</h4>
+<ul>
+<li>tabela por folha com quantos <strong>círculos</strong> e <strong>setas</strong> foram convertidos;</li>
+<li>resumo: convertidos, círculos, setas e <strong>leaders lidos</strong> (todos os leaders de texto conferidos);</li>
+<li>"N símbolo(s) convertido(s) com sucesso. Confira o desenho e salve para confirmar.";</li>
+<li>"Nenhum símbolo passível de conversão foi encontrado. O desenho não foi alterado." quando não havia
+  nada para trocar.</li>
+</ul>
+<h3 id="34-fix-flags" class="ferramenta"><span class="num">3.4</span>Fix Flags<span class="pgm">@@3.4@@</span></h3>
+<div class="ficha"><div><b>Para que serve</b><span>corrige o código das flag notes para o padrão de letras e quatro números, por exemplo
+<strong>NL006 vira NL0006</strong> e "NI 12" vira NI0012.</span></div><div><b>Quando usar</b><span>sempre que o Check de Flags apontar flags fora do padrão, ou antes de liberar o desenho.</span></div></div><p><strong>Flags reconhecidas:</strong> Right Flag, Left Flag, Both Flag, flags fixas com cadeado e flags aplicadas pelo
+Text Editor (também quando só parte do texto tem a flag).</p>
+<h4>O que altera e o que não altera</h4>
+<ul>
+<li>só o texto das flags fora do padrão. O tipo da flag é mantido;</li>
+<li>flag já correta não é tocada: nem texto, nem moldura, nem cor;</li>
+<li>nenhum espaço é acrescentado. Tirar um espaço de fora de um código já com quatro números conta como
+  correção;</li>
+<li>a flag <strong>não é pintada</strong> de verde ou vermelho: o resultado fica só na tela;</li>
+<li>se o texto tinha largura de quebra fixa, ela é ajustada para o código não partir em duas linhas;</li>
+<li>texto com letras de cores misturadas fica com a cor da primeira letra depois de regravado (é do CATIA).</li>
+</ul>
+<figure><img src="guia/20_fixflags_inicio.png" alt="Fix Flags: início"><figcaption>Fix Flags: início</figcaption></figure>
+<h4>Passo a passo</h4>
+<ol>
+<li>Abra o desenho e salve uma cópia.</li>
+<li>Em <strong>Design › Fix Flags</strong>, clique em <strong>CORRIGIR FLAGS</strong>. Não abre janela de confirmação: o clique já
+   é a confirmação.</li>
+<li>Acompanhe "Folha N de M". <strong>PARAR</strong> termina a folha atual e para.</li>
+<li>No resultado, percorra a lista. Clique numa linha ou use ANTERIOR/PRÓXIMO para ir até a flag no
+   CATIA; a navegação enquadra a flag junto com a ponta da seta.</li>
+<li>Confira e salve. <strong>CONFERIR NO CHECK</strong> leva à Visão geral do Check.</li>
+</ol>
+<figure><img src="guia/21_fixflags_resultado.png" alt="Fix Flags: resultado"><figcaption>Fix Flags: resultado</figcaption></figure>
+<h4>Resultado</h4>
+<ul>
+<li>cartões: <strong>corrigidas</strong>, <strong>já estavam certas</strong> e <strong>flags lidas</strong>;</li>
+<li>filtros: Corrigidas, Já corretas, Com problema e Todas. A tela abre no que pede atenção primeiro;</li>
+<li>colunas: folha, vista, texto <strong>ANTES</strong>, texto <strong>DEPOIS</strong> e <strong>TIPO</strong> da flag (com "(Text Editor)"
+  quando aplicada por ele, e "fixa" quando tem cadeado).</li>
+</ul>
+<h4>Resultado de cada flag</h4>
+<table>
+<thead>
+<tr>
+<th>Resultado</th>
+<th>Significado</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Corrigida</td>
+<td>O código foi trocado e conferido.</td>
+</tr>
+<tr>
+<td>Já correta</td>
+<td>Já estava no padrão. Não foi tocada.</td>
+</tr>
+<tr>
+<td>Falhou, texto restaurado</td>
+<td>A troca falhou e o texto voltou a ser o que era. Corrija à mão.</td>
+</tr>
+<tr>
+<td>Falhou, não restaurada</td>
+<td>A troca falhou e o texto <strong>não</strong> pôde voltar. Confira essa flag no CATIA.</td>
+</tr>
+<tr>
+<td>Erro</td>
+<td>O CATIA recusou a leitura ou a gravação dessa flag.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Resumo à direita:</strong> textos analisados, flags lidas, no objeto inteiro, pelo Text Editor, fixas com
+cadeado, corrigidas, já certas, <strong>ignorados</strong> (texto com flag que não tem um código de letras e números,
+e por isso fica como está), <strong>falhas de validação</strong> (a releitura não bateu com o esperado),
+<strong>restaurados</strong> e <strong>erros</strong>. Embaixo: "Pode voltar a usar o CATIA" ou "Confira as flags com problema".</p>
+<p><strong>Se der erro no meio:</strong> aparece "O fix foi interrompido", com o número e a descrição do erro, e "O que
+aparece abaixo já foi alterado no desenho". A lista mostra o que já foi mudado até ali.</p>
+<h3 id="35-font-size-fix" class="ferramenta"><span class="num">3.5</span>Font Size Fix<span class="pgm">@@3.5@@</span></h3>
+<div class="ficha"><div><b>Para que serve</b><span>mostra os textos com tamanho fora do padrão da folha e corrige <strong>um por um</strong>, com a
+sua confirmação. Muda só o tamanho.</span></div><div><b>Quando usar</b><span>quando o Font Size Check aponta textos fora do padrão, ou no fim da Sequência de
+aplicação (botão REVISAR AS FONTES).</span></div></div><p><strong>Padrão de tamanho por formato</strong> (o formato é lido no Background de cada folha):</p>
+<table>
+<thead>
+<tr>
+<th>Formato</th>
+<th>Tamanhos aceitos</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A0, E0, E3, 3A0</td>
+<td>0,197" e 0,277"</td>
+</tr>
+<tr>
+<td>A1, A3</td>
+<td>0,17" e 0,25"</td>
+</tr>
+<tr>
+<td>A2</td>
+<td>0,108" e 0,193"</td>
+</tr>
+<tr>
+<td>A4</td>
+<td>0,07" e 0,125"</td>
+</tr>
+</tbody>
+</table>
+<p><strong>O que fica de fora:</strong> Main View, Background, a grade de zonas do template, vistas ocultas e itens
+ocultos. Cotas não são conferidas no CATIA V5R20, que não informa o tamanho da cota; se uma cota
+aparecer, a situação dela é "Cota: corrija no CATIA". Vista travada é destravada só durante a troca e
+travada de novo, mesmo se a troca falhar.</p>
+<figure><img src="guia/31_fontfix_resultado.png" alt="Font Size Fix"><figcaption>Font Size Fix</figcaption></figure>
+<h4>Passo a passo</h4>
+<ol>
+<li>Abra o desenho e salve uma cópia.</li>
+<li>Em <strong>Design › Font Size Fix</strong>, clique em <strong>ANALISAR AS FONTES</strong>. Se o formato não estiver no
+   Background de nenhuma folha, o HUB pede o formato numa janela.</li>
+<li>A lista mostra cada texto fora do padrão: texto, folha, tamanho <strong>ATUAL</strong>, <strong>PADRÃO DA FOLHA</strong> e
+   <strong>SITUAÇÃO</strong>. Ao escolher uma linha, o CATIA vai até o texto.</li>
+<li>No painel <strong>ITEM ATUAL</strong>, em <strong>CORRIGIR PARA</strong>, já vem marcado o padrão mais perto do tamanho atual.
+   Troque se quiser o outro.</li>
+<li>Clique em <strong>CORRIGIR ESTE</strong>. O HUB troca o tamanho, lê de volta e passa ao próximo.</li>
+<li>Para manter um texto como está, clique em <strong>DEIXAR COMO ESTÁ</strong>.</li>
+<li><strong>REMOVER ESTE TEXTO DA LISTA</strong> tira da lista um texto que não precisa ser conferido, sem alterar o
+   desenho. Ele volta na próxima análise.</li>
+<li>Salve o desenho.</li>
+</ol>
+<h4>Situação de cada texto</h4>
+<table>
+<thead>
+<tr>
+<th>Situação</th>
+<th>Significado</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Pendente</td>
+<td>Ainda não decidido.</td>
+</tr>
+<tr>
+<td>Corrigido</td>
+<td>Tamanho trocado e conferido. A coluna ATUAL mostra o novo e "(era …)".</td>
+</tr>
+<tr>
+<td>Como estava</td>
+<td>Você escolheu deixar como está. Ainda dá para corrigir depois.</td>
+</tr>
+<tr>
+<td>Falhou</td>
+<td>O CATIA não aceitou o tamanho (por exemplo "O CATIA não aceitou o tamanho: ficou X"). Tente de novo ou corrija à mão.</td>
+</tr>
+<tr>
+<td>Cota: corrija no CATIA</td>
+<td>Cotas não são corrigidas pelo HUB.</td>
+</tr>
+</tbody>
+</table>
+<p>O resumo embaixo conta Corrigidos, Como estava e Pendentes. O texto no alto informa quantos itens
+ocultos foram ignorados e quantos você removeu da lista.</p>
+<h3 id="36-pos-and-zone-fix" class="ferramenta"><span class="num">3.6</span>Pos and Zone Fix<span class="pgm">@@3.6@@</span></h3>
+<div class="ficha"><div><b>Para que serve</b><span>é a mesma tabela do <a href="#43-position-and-zone">Position and Zone</a> (aba Check), com um
+recurso a mais: <strong>mover o balão para a zona certa</strong>.</span></div><div><b>Quando usar</b><span>quando o Position and Zone aponta zona diferente entre o desenho e o Part List.</span></div></div><p><strong>Por que mover:</strong> a zona de um callout vem do lugar do balão na folha. Corrigir a zona é mover o balão.</p>
+<figure><img src="guia/43_poszonefix.png" alt="Pos and Zone Fix"><figcaption>Pos and Zone Fix</figcaption></figure>
+<h4>Passo a passo</h4>
+<ol>
+<li>Salve uma cópia do desenho.</li>
+<li>Em <strong>Design › Pos and Zone Fix</strong>, clique em <strong>MAPEAR CALLOUTS</strong> (ou use o mapeamento já feito no
+   Check: as duas telas mostram a mesma leitura) e carregue o Part List (veja a
+   <a href="#43-position-and-zone">seção 4.3</a>).</li>
+<li>Escolha a linha com zona diferente. O CATIA vai até o balão.</li>
+<li>Em <strong>MOVER PARA A ZONA</strong>, o HUB já sugere a zona pedida pelo Part List, se ela existir nesta folha.
+   Embaixo aparece <strong>Anda junto:</strong> com os textos encostados no balão (flag, número, quantidade), que se
+   movem com ele.</li>
+<li>Clique em <strong>MOVER PARA (zona)</strong>. O balão vai para o ponto da zona pedida mais perto de onde está. A
+   ponta do leader não sai do lugar. O HUB lê a posição de volta para conferir.</li>
+<li>Olhe o balão selecionado no CATIA. <strong>O HUB não verifica se o novo lugar ficou em cima de outro
+   desenho:</strong> quem confere é você.</li>
+<li>Se não gostou, clique em <strong>DESFAZER</strong> (desfaz os movimentos em ordem, do último para o primeiro).</li>
+<li>Salve o desenho.</li>
+</ol>
+<h4>Quando o botão de mover fica desligado ou recusa</h4>
+<table>
+<thead>
+<tr>
+<th>Situação</th>
+<th>Mensagem</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>O número é sublinhado, não balão</td>
+<td>"Só o balão define a zona: este número é sublinhado."</td>
+</tr>
+<tr>
+<td>A folha não tem grade de zonas lida</td>
+<td>"Esta folha não tem zonas mapeadas."</td>
+</tr>
+<tr>
+<td>O Part List pede zona de outra folha</td>
+<td>"O Part List pede X, que não é desta folha."</td>
+</tr>
+<tr>
+<td>O balão já está na zona escolhida</td>
+<td>"O balão já está na zona X."</td>
+</tr>
+<tr>
+<td>O CATIA não informou a posição da vista</td>
+<td>"Não dá para mover por zona."</td>
+</tr>
+<tr>
+<td>Depois de mover, a zona lida não bateu</td>
+<td>"O balão ficou na zona X, e não na Y. Voltei para onde estava."</td>
+</tr>
+<tr>
+<td>A leitura ficou velha (desenho mudou)</td>
+<td>"O balão não está mais na leitura do desenho. Mapeie de novo."</td>
+</tr>
+<tr>
+<td>Vista travada</td>
+<td>Não move. Destrave a vista no CATIA se precisar mover.</td>
+</tr>
+</tbody>
+</table>
+<p>Se a posição já bate em outro balão do mesmo número, o HUB não sugere mover os outros: eles só mostram
+onde a peça aparece. <strong>CONFERIR NO CHECK</strong> volta para a tela do Check com a tabela atualizada.</p>
+
+<div class="capitulo" id="4-aba-check-conferências-que-não-alteram-o-desenho"><div class="num">04<span class="pgm">@@4@@</span></div><div><h2>Aba Check</h2><div class="sub">conferências que não alteram o desenho</div></div></div>
+<p>Nada nesta aba altera o desenho. As conferências só leem, e a navegação só seleciona e enquadra.</p>
+<h3 id="41-visão-geral" class="ferramenta primeira"><span class="num">4.1</span>Visão geral<span class="pgm">@@4.1@@</span></h3>
+<div class="ficha"><div><b>Para que serve</b><span>roda vários checks de uma vez e mostra o resultado de cada um nesta sessão.</span></div></div><figure><img src="guia/57_check_geral.png" alt="Visão geral do Check"><figcaption>Visão geral do Check</figcaption></figure>
+<h4>Passo a passo</h4>
+<ol>
+<li>Marque os checks que quer rodar (Font Size Check, Position and Zone, Check de Flags, Check de
+   Template).</li>
+<li>Clique em <strong>RODAR N CHECKS</strong>. Eles rodam um depois do outro.</li>
+<li>Em cada linha, <strong>Revisar ›</strong> abre a tela do check com a lista.</li>
+</ol>
+<h4>O que cada cor significa</h4>
+<table>
+<thead>
+<tr>
+<th>Marca</th>
+<th>Significado</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Verde (✓)</td>
+<td>Sem problemas.</td>
+</tr>
+<tr>
+<td>Vermelho (✕)</td>
+<td>Tem itens para corrigir.</td>
+</tr>
+<tr>
+<td>Amarelo (!)</td>
+<td>Tem itens para conferir. No Position and Zone, aparece também quando falta carregar o Part List: "Sem Part List: zona e quantidade não foram comparadas".</td>
+</tr>
+<tr>
+<td>Cinza (–)</td>
+<td>Ainda não rodou nesta sessão.</td>
+</tr>
+</tbody>
+</table>
+<p>Os cartões no alto contam quantos checks têm itens para revisar, quantos estão sem problemas e quantos
+não rodaram. Nada aqui é estimado: só aparece o que de fato rodou. O <strong>Compare DWG</strong> é um programa à
+parte e não informa resultado para o HUB; <strong>Abrir ›</strong> só o abre.</p>
+<h3 id="42-font-size-check" class="ferramenta"><span class="num">4.2</span>Font Size Check<span class="pgm">@@4.2@@</span></h3>
+<div class="ficha"><div><b>Para que serve</b><span>confere o tamanho de todos os textos pelo formato de cada folha. Usa as mesmas
+regras do <a href="#35-font-size-fix">Font Size Fix</a>, sem alterar nada.</span></div></div><figure><img src="guia/51_fontcheck_resultado.png" alt="Font Size Check"><figcaption>Font Size Check</figcaption></figure>
+<h4>Passo a passo</h4>
+<ol>
+<li>Em <strong>Check › Font Size Check</strong>, clique em <strong>ANALISAR</strong>.</li>
+<li>Se o formato não estiver no Background de nenhuma folha, digite o formato pedido (A0, A1, A2, A3,
+   A4, E0, E3 ou 3A0).</li>
+<li>A lista abre em <strong>Fora do padrão</strong>. Os filtros <strong>Corretos</strong> e <strong>Todos</strong> mostram o resto.</li>
+<li>Clique em cada linha (ou ANTERIOR/PRÓXIMO) para ir até o texto no CATIA. O zoom é de 8 vezes o da
+   folha inteira.</li>
+<li><strong>REMOVER ESTE TEXTO DA LISTA</strong> tira um texto que não precisa ser conferido, sem alterar o desenho.</li>
+</ol>
+<p><strong>Resultado:</strong> PN, formato, itens analisados; para cada item a folha, a vista, o texto, o <strong>TAMANHO</strong>
+em polegadas e o <strong>PADRÃO DA FOLHA</strong>. Itens ocultos fora do padrão não entram na lista; o total
+ignorado aparece no Font Size Fix. Sem nada fora do padrão, a tela diz "Nenhum item fora do padrão" e
+mostra os padrões usados.</p>
+<p>Para corrigir, use o <a href="#35-font-size-fix">Font Size Fix</a>.</p>
+<h3 id="43-position-and-zone" class="ferramenta"><span class="num">4.3</span>Position and Zone<span class="pgm">@@4.3@@</span></h3>
+<div class="ficha"><div><b>Para que serve</b><span>acha os callouts (balões de posição) de todas as folhas, calcula a zona e a
+quantidade de cada um e compara com o <strong>Part List do SAP</strong>. Só confere.</span></div><div><b>Quando usar</b><span>antes de liberar o desenho, para garantir que posição, zona e quantidade batem com o
+Part List.</span></div></div><table class="galeria">
+<thead>
+<tr>
+<th>Logo depois de mapear, sem Part List</th>
+<th>Com o Part List carregado</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><img alt="Sem Part List" src="guia/41_poszone_sem_partlist.png" /></td>
+<td><img alt="Com Part List" src="guia/42_poszone_com_partlist.png" /></td>
+</tr>
+</tbody>
+</table>
+<h4>Passo a passo</h4>
+<ol>
+<li>Em <strong>Check › Position and Zone</strong>, clique em <strong>MAPEAR CALLOUTS</strong>. O HUB lê todas as folhas (não tem
+   botão de parar: sem todas as folhas, as quantidades somadas ficariam erradas).</li>
+<li>Se aparecer uma janela de aviso no fim, leia: ela lista o que pode ter deixado uma zona errada ou
+   vazia (veja a tabela de avisos abaixo).</li>
+<li>Em <strong>PART LIST DO SAP</strong>, clique em <strong>CARREGAR</strong> e escolha <strong>um ou dois</strong> arquivos Excel extraídos do
+   SAP. O HUB abre um Excel escondido, lê e fecha.</li>
+<li>Use os filtros: <strong>Para revisar</strong>, <strong>OK</strong>, <strong>Só no Part List</strong>, <strong>Não contados</strong> e <strong>Todos</strong>.</li>
+<li>Clique em cada linha para ir até o balão no CATIA. As setas passam por <strong>todos os balões</strong> de cada
+   posição. Duplo clique na linha já escolhida alterna entre os balões da mesma posição.</li>
+<li>Para um item que o programa não soube confirmar e que você conferiu, clique em <strong>DEIXAR COMO ESTÁ
+   (OK)</strong>. Clique de novo (TIRAR O OK) para desfazer.</li>
+<li>Para corrigir a zona, <strong>CORRIGIR NO DESIGN</strong> abre o <a href="#36-pos-and-zone-fix">Pos and Zone Fix</a>.</li>
+<li><strong>ABRIR NO EXCEL</strong> gera a planilha de Callouts como a macro fazia, para quem ainda quiser o Excel.</li>
+</ol>
+<h4>O Part List do SAP</h4>
+<ul>
+<li>arquivo Excel (.xlsx, .xlsm ou .xls) com a aba <strong>COMPONENT</strong> ou <strong>PSA</strong>;</li>
+<li>dados a partir da linha 5: PN na coluna B, posição na M, zona na N, quantidade na T (efetividade nas
+  colunas O, R e S);</li>
+<li>com dois arquivos, os dois são somados;</li>
+<li>o mesmo Part List vale para o Check de Flags (aba DWG_NOTES): importar numa tela vale para as duas;</li>
+<li>ao mapear outro desenho (outro PN), o Part List carregado é descartado, para não comparar com o
+  desenho errado;</li>
+<li><strong>LIMPAR</strong> pergunta "Deseja limpar os dados importados do SAP?" e tira só o Part List: a leitura do
+  desenho continua.</li>
+</ul>
+<h4>Colunas da tabela</h4>
+<table>
+<thead>
+<tr>
+<th>Coluna</th>
+<th>Conteúdo</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Marca</td>
+<td>Verde: bate. Vermelho: para revisar. Ciano: OK manual. Cinza: sem Part List para comparar.</td>
+</tr>
+<tr>
+<td>POS</td>
+<td>Número da posição. Vermelho se não está no Part List.</td>
+</tr>
+<tr>
+<td>ZONA</td>
+<td>Zona do balão no desenho. Com mais de um balão, todas as zonas (<code>C004; D002</code>).</td>
+</tr>
+<tr>
+<td>QTD</td>
+<td>Quantidade somada no desenho.</td>
+</tr>
+<tr>
+<td>VISTA ORIGEM</td>
+<td>Folha e vista do balão.</td>
+</tr>
+<tr>
+<td>PL ZONA / PL QTD / PN</td>
+<td>O que o Part List diz para essa posição. Só aparecem com o Part List carregado.</td>
+</tr>
+</tbody>
+</table>
+<p>Verde ou vermelho em cada célula mostra o que bate e o que não bate.</p>
+<p><strong>Situação de cada linha</strong> (aparece embaixo da tabela e no painel do callout):</p>
+<table>
+<thead>
+<tr>
+<th>Situação</th>
+<th>Significado</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Posição, zona e quantidade batem com o Part List</td>
+<td>Tudo certo.</td>
+</tr>
+<tr>
+<td>Zona diferente: desenho X, Part List Y</td>
+<td>O balão está em outra zona. Com mais de uma zona, no desenho ou no SAP, basta uma bater para ficar verde.</td>
+</tr>
+<tr>
+<td>Quantidade diferente: desenho X, Part List Y</td>
+<td>A soma das quantidades do desenho não bate.</td>
+</tr>
+<tr>
+<td>Não está no Part List</td>
+<td>O balão existe no desenho e a posição não existe no Part List.</td>
+</tr>
+<tr>
+<td>Está no Part List e não tem balão no desenho</td>
+<td>Filtro "Só no Part List". Não tem para onde navegar.</td>
+</tr>
+<tr>
+<td>(motivo), não contabilizado</td>
+<td>Filtro "Não contados": texto ambíguo (grupo de balões) ou com moldura inconsistente, que ficou fora da conta. Confira à mão.</td>
+</tr>
+<tr>
+<td>Carregue o Part List para comparar</td>
+<td>Ainda sem Part List.</td>
+</tr>
+<tr>
+<td>OK manual, por (usuário) no (Check ou Design)</td>
+<td>Você marcou OK.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Como a zona e a quantidade são calculadas</strong> (para entender um resultado estranho):</p>
+<ul>
+<li>a grade de zonas sai dos rótulos da margem da folha: a mesma letra dos dois lados, na mesma altura, e
+  o mesmo número em cima e embaixo, na mesma coluna. Se a margem não fechar, a grade desenhada do
+  template (<code>ZONES_A1_SHT1</code> e parecidas) serve de reserva;</li>
+<li>as colunas são numeradas da direita para a esquerda e as linhas de baixo para cima. Nas folhas 2 em
+  diante a coluna ganha a dezena da folha (C004 vira C024);</li>
+<li>a zona do balão é a do centro de zona mais próximo;</li>
+<li>a zona vem do <strong>balão</strong> (número com círculo). Número sublinhado só conta a quantidade;</li>
+<li>callout com <strong>REF</strong> perto é ignorado;</li>
+<li>quantidade escrita ao lado, na mesma linha (por exemplo <code>2 PL</code>, <code>4 PLACES</code>, <code>2 REQD</code>), entra na
+  conta. Quantidades indicadas por chave também são reconhecidas.</li>
+</ul>
+<h4>Avisos no fim do mapeamento</h4>
+<table>
+<thead>
+<tr>
+<th>Aviso</th>
+<th>O que fazer</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>O CATIA não informou a posição destas vistas. Os callouts delas ficaram sem zona (N/A)</td>
+<td>Os callouts dessas vistas aparecem com zona N/A. Confira à mão. A causa ainda não é conhecida.</td>
+</tr>
+<tr>
+<td>O CATIA não informou a posição destes callouts…</td>
+<td>Idem, para callouts soltos.</td>
+</tr>
+<tr>
+<td>Não achei a grade de zonas destas folhas…</td>
+<td>A folha não tem margem nem grade reconhecível. Os balões ficaram sem zona.</td>
+</tr>
+<tr>
+<td>Nestas folhas a margem não fechou nos dois lados e a zona saiu por um caminho de reserva. Confira um balão de cada</td>
+<td>A zona provavelmente está certa, mas confira um balão de cada folha citada.</td>
+</tr>
+<tr>
+<td>Há folhas com o mesmo nome…</td>
+<td>Renomeie as folhas para navegar e mover sem confusão.</td>
+</tr>
+</tbody>
+</table>
+<p>Todos esses avisos terminam com o caminho do arquivo <code>poszone_grade.txt</code>, que mostra de onde saiu a grade
+de cada folha e a posição de cada balão (veja a <a href="#8-arquivos-de-diagnóstico-e-onde-ficam">seção 8</a>).</p>
+<h4>O OK manual</h4>
+<ul>
+<li>vale por posição e fica guardado <strong>neste PC</strong>, separado por desenho. Não vai junto com o desenho para
+  o PC de outra pessoa;</li>
+<li>deixa de valer sozinho se a zona ou a quantidade mudarem, no desenho ou no Part List.</li>
+</ul>
+<h3 id="44-check-de-flags" class="ferramenta"><span class="num">4.4</span>Check de Flags<span class="pgm">@@4.4@@</span></h3>
+<div class="ficha"><div><b>Para que serve</b><span>confere se as flag notes estão no padrão (como NL0006), com as mesmas regras do
+<a href="#34-fix-flags">Fix Flags</a>, e compara os códigos com a aba <strong>DWG_NOTES</strong> do Part List do SAP. Não altera
+nada.</span></div></div><figure><img src="guia/53_flagcheck_resultado.png" alt="Check de Flags"><figcaption>Check de Flags</figcaption></figure>
+<h4>Passo a passo</h4>
+<ol>
+<li>Em <strong>Check › Check de Flags</strong>, clique em <strong>CONFERIR AS FLAGS</strong>.</li>
+<li>Para comparar com o Part List, clique em <strong>Importar Part List</strong> (ou importe no Position and Zone: o
+   arquivo é o mesmo e vale para as duas telas).</li>
+<li>Use os filtros: <strong>Para corrigir</strong>, <strong>Corretas</strong>, <strong>Todas</strong>, <strong>Flags sem nota</strong> e <strong>Notas sem flag</strong>
+   (os dois últimos só aparecem com o Part List carregado).</li>
+<li>Clique em cada linha para ir até a flag no CATIA.</li>
+<li>Para corrigir os códigos fora do padrão, <strong>CORRIGIR NO FIX FLAGS</strong> abre o Fix Flags.</li>
+</ol>
+<h4>Cartões e colunas</h4>
+<ul>
+<li><strong>para corrigir</strong>: flags fora do padrão. A coluna DEVERIA SER mostra o código certo;</li>
+<li><strong>corretas</strong>: flags no padrão;</li>
+<li><strong>flags sem nota</strong>: código que está no desenho e não está na DWG_NOTES;</li>
+<li><strong>notas sem flag</strong>: código da DWG_NOTES que não aparece em nenhuma flag do desenho;</li>
+<li>coluna <strong>PART LIST</strong>: "Tem nota" (verde) ou "Sem nota" (amarelo). Sem Part List, o cartão mostra "-".</li>
+</ul>
+<h4>Comparação com o Part List (aba DWG_NOTES)</h4>
+<ul>
+<li>vale a coluna <strong>Note Code</strong> da aba DWG_NOTES; entram todos os códigos, NI e NL;</li>
+<li>o código é comparado no padrão da flag, com quatro números: NL006 no desenho ou na planilha vale
+  NL0006. Uma flag fora do padrão conta pelo código certo;</li>
+<li>descrição longa cortada em várias linhas com o mesmo código conta uma vez só.</li>
+</ul>
+<p>O filtro <strong>Flags sem nota</strong> mostra as flags do desenho cujo código não está na DWG_NOTES. A coluna PART LIST
+fica "Sem nota" e, ao clicar na linha, o CATIA vai até a flag. A flag pode estar no padrão (aqui NL0005 está
+correta) e mesmo assim não ter nota: ou a nota falta no Part List, ou o código da flag está trocado.</p>
+<figure><img src="guia/55_flagcheck_flags_sem_nota.png" alt="Flags sem nota: código do desenho que não está na DWG_NOTES"><figcaption>Flags sem nota: código do desenho que não está na DWG_NOTES</figcaption></figure>
+<h4>Linha de situação do Part List</h4>
+<table>
+<thead>
+<tr>
+<th>Mensagem</th>
+<th>Significado</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Sem Part List: importe aqui ou no Position and Zone para comparar com a DWG_NOTES</td>
+<td>Nada foi comparado ainda.</td>
+</tr>
+<tr>
+<td>O Part List não tem a aba DWG_NOTES com a coluna Note Code: flags não comparadas</td>
+<td>O arquivo serve para o Position and Zone, mas não tem as notas.</td>
+</tr>
+<tr>
+<td>N notas no Part List: confira as flags para comparar</td>
+<td>O Part List foi lido; falta rodar a conferência.</td>
+</tr>
+<tr>
+<td>N flag(s) sem nota e N nota(s) sem flag</td>
+<td>Há diferenças. Use os dois filtros.</td>
+</tr>
+<tr>
+<td>Desenho e Part List batem: N notas, todas com flag</td>
+<td>Tudo certo.</td>
+</tr>
+<tr>
+<td>… Leitura parada antes do fim: pode faltar flag</td>
+<td>A conferência foi parada; a lista de "notas sem flag" pode ter falsos positivos.</td>
+</tr>
+</tbody>
+</table>
+<p>O filtro <strong>Notas sem flag</strong> faz o caminho contrário: códigos da DWG_NOTES que não aparecem em nenhuma flag.</p>
+<figure><img src="guia/54_flagcheck_notas_sem_flag.png" alt="Notas sem flag: código da DWG_NOTES que não aparece no desenho"><figcaption>Notas sem flag: código da DWG_NOTES que não aparece no desenho</figcaption></figure>
+<p>Uma <strong>nota sem flag</strong> não tem lugar no desenho: aparece como "Só no Part List", sem navegação. A tela
+sugere "Coloque a flag no desenho ou confira o Part List".</p>
+<p>As diferenças com o Part List (flags sem nota e notas sem flag) entram no contador do Check de Flags e
+na Visão geral, junto com as flags para corrigir.</p>
+<h3 id="45-check-de-template" class="ferramenta"><span class="num">4.5</span>Check de Template<span class="pgm">@@4.5@@</span></h3>
+<div class="ficha"><div><b>Para que serve</b><span>confere a legenda de cada folha: numeração, formato e escala. Só lê: não ativa
+folha, não seleciona e não escreve no desenho.</span></div></div><figure><img src="guia/56_templatecheck_resultado.png" alt="Check de Template"><figcaption>Check de Template</figcaption></figure>
+<h4>Passo a passo</h4>
+<ol>
+<li>Em <strong>Check › Check de Template</strong>, clique em <strong>CONFERIR O TEMPLATE</strong>.</li>
+<li>A lista abre em <strong>Para revisar</strong> (errados e para conferir). <strong>Certos</strong> e <strong>Todos</strong> mostram o resto.</li>
+<li>Clique numa linha para abrir a folha no CATIA. Embaixo aparece a explicação do item.</li>
+</ol>
+<h4>O que é conferido</h4>
+<table>
+<thead>
+<tr>
+<th>Conferência</th>
+<th>Regra</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Numeração</td>
+<td>Campo SHEET/OF: a primeira folha mostra <code>1/total</code>; as outras, só o próprio número.</td>
+</tr>
+<tr>
+<td>Total de folhas</td>
+<td>O parâmetro <code>No_of_Sheets</code>, se existir, precisa ser igual ao número de folhas.</td>
+</tr>
+<tr>
+<td>Formato</td>
+<td>A etiqueta do formato precisa bater com o tamanho do papel. 3A0 e E3 são papel personalizado, sem medida de referência: ficam em Conferir.</td>
+</tr>
+<tr>
+<td>Escala</td>
+<td>O campo SCALE é comparado com as vistas da folha. Todas batem: Certo. Nenhuma bate: Errado. Só parte bate: Conferir.</td>
+</tr>
+</tbody>
+</table>
+<p>Na escala, não contam as vistas com ISOMETRIC, ISO, SECTION ou VIEW no nome, nem as grades de zona. A
+exceção é VIEW LOOKING (FWD, AFT etc.), que conta. PLAN VIEW fica fora. O nome do desenho não é
+conferido.</p>
+<p>Os campos são achados pelo rótulo (<code>SCALE</code> e <code>SHEET / OF</code>), com o valor embaixo ou ao lado.</p>
+<h4>Situações</h4>
+<table>
+<thead>
+<tr>
+<th>Situação</th>
+<th>Significado</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Certo</td>
+<td>Bate com a regra.</td>
+</tr>
+<tr>
+<td>Errado</td>
+<td>Não bate. A explicação diz o que era esperado. Entra no contador.</td>
+</tr>
+<tr>
+<td>Conferir</td>
+<td>O programa não tem como afirmar: campo não achado ("Não achei o campo SCALE nesta folha"), folha sem vista para comparar, escala que não é número (NTS), formato sem medida de referência. <strong>Não entra no contador da aba</strong>, mas aparece em amarelo na Visão geral.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Limite conhecido:</strong> este check foi testado com uma legenda montada no arranjo das fotos do desenho
+171-54397-801, não com o template real da rede.</p>
+<h3 id="46-compare-dwg" class="ferramenta"><span class="num">4.6</span>Compare DWG<span class="pgm">@@4.6@@</span></h3>
+<div class="ficha"><div><b>Para que serve</b><span>abre o Compare DWG, um programa separado. O HUB só abre o programa; ele funciona em
+janela própria, mesmo com o CATIA fechado, e não devolve resultado para o HUB.</span></div></div><figure><img src="guia/58_compare.png" alt="Compare DWG"><figcaption>Compare DWG</figcaption></figure>
+<h4>Passo a passo</h4>
+<ol>
+<li>Na primeira vez, clique em <strong>ADICIONAR O CAMINHO DO COMPARE DWG</strong> e escolha o programa (.exe, .bat,
+   .cmd, atalho .lnk ou .py).</li>
+<li>Depois, <strong>ABRIR O COMPARE DWG</strong> abre direto.</li>
+<li><strong>TROCAR O CAMINHO</strong> escolhe outro programa.</li>
+</ol>
+<p>O caminho fica guardado em <code>%APPDATA%\E1DWGTools\config.json</code>, fora da pasta do HUB, e não se perde ao
+atualizar o programa. Se o programa mudar de lugar, a tela mostra "Programa não encontrado nesse
+caminho" e o botão vira <strong>ESCOLHER O CAMINHO DE NOVO</strong>.</p>
+
+<div class="capitulo" id="5-aba-envio-splits"><div class="num">05<span class="pgm">@@5@@</span></div><div><h2>Aba Envio</h2><div class="sub">Splits</div></div></div>
+<p>Os Splits <strong>criam arquivos novos</strong>. O documento aberto não é dividido. Os dois mostram o tamanho de cada
+arquivo gerado comparado com o limite de envio de <strong>200 MB</strong>.</p>
+<h3 id="51-split-3d" class="ferramenta primeira"><span class="num">5.1</span>Split 3D<span class="pgm">@@5.1@@</span></h3>
+<div class="ficha"><div><b>Para que serve</b><span>divide os Bodies de um CATPart em várias peças menores.</span></div><div><b>Quando usar</b><span>peça grande demais para enviar inteira.</span></div></div><figure><img src="guia/60_split3d_previa.png" alt="Prévia do Split 3D"><figcaption>Prévia do Split 3D</figcaption></figure>
+<h4>Passo a passo</h4>
+<ol>
+<li>Abra o CATPart no CATIA. Ele precisa estar <strong>salvo</strong> em disco.</li>
+<li>Em <strong>Envio › Split 3D</strong>, confira o arquivo, o PN e o tamanho.</li>
+<li>Em <strong>Dividir em</strong>, escolha o número de partes. A tabela mostra quais Bodies vão em cada arquivo.</li>
+<li>Clique em <strong>PARTIR EM N ARQUIVOS</strong>. <strong>PARAR</strong> termina a parte atual e para.</li>
+<li>Confira os tamanhos no resultado. <strong>ABRIR A PASTA</strong> abre a pasta dos arquivos.</li>
+</ol>
+<h4>O que é criado</h4>
+<ul>
+<li>uma subpasta <code>SPLIT_PARTS</code> ao lado do CATPart;</li>
+<li>um arquivo por parte, com o nome do arquivo original e <code>_P01</code>, <code>_P02</code>…;</li>
+<li>os Bodies (menos o PartBody) são repartidos em sequência entre as partes; o <strong>PartBody vai em todas</strong>.</li>
+</ul>
+<figure><img src="guia/61_split3d_resultado.png" alt="Resultado do Split 3D"><figcaption>Resultado do Split 3D</figcaption></figure>
+<h4>Avisos</h4>
+<table>
+<thead>
+<tr>
+<th>Aviso</th>
+<th>Significado</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Abra um CATPart.</td>
+<td>O documento ativo não é uma peça.</td>
+</tr>
+<tr>
+<td>Salve o CATPart antes de executar.</td>
+<td>A peça nunca foi salva em disco.</td>
+</tr>
+<tr>
+<td>Nenhum Body encontrado. / NENHUM BODY PARA DIVIDIR</td>
+<td>A peça só tem o PartBody.</td>
+</tr>
+<tr>
+<td>Acima de 200 MB (no resultado)</td>
+<td>Esse arquivo ainda passa do limite de envio. Divida em mais partes.</td>
+</tr>
+</tbody>
+</table>
+<p>Depois de um erro ("Erro ao executar o SPLIT 3D"), a peça incompleta não fica aberta, e os alertas e a
+tela do CATIA voltam ao normal.</p>
+<h3 id="52-split-2d" class="ferramenta"><span class="num">5.2</span>Split 2D<span class="pgm">@@5.2@@</span></h3>
+<div class="ficha"><div><b>Para que serve</b><span>exporta cada folha do desenho para um CATDrawing próprio.</span></div><div><b>Quando usar</b><span>desenho com muitas folhas que precisa ser enviado em partes.</span></div></div><figure><img src="guia/62_split2d_previa.png" alt="Prévia do Split 2D"><figcaption>Prévia do Split 2D</figcaption></figure>
+<h4>Passo a passo</h4>
+<ol>
+<li>Abra o desenho. Ele precisa ter sido <strong>salvo</strong> em disco: o Split 2D copia o arquivo do disco.
+   <strong>Alterações não salvas não vão para os arquivos exportados.</strong></li>
+<li>Em <strong>Envio › Split 2D</strong>, confira o arquivo, o tamanho e a lista "Folhas que viram arquivos".</li>
+<li>Clique em <strong>DIVIDIR POR FOLHA</strong>. <strong>PARAR</strong> termina a folha atual e para.</li>
+<li>Confira o resultado. <strong>ABRIR A PASTA</strong> abre a pasta.</li>
+</ol>
+<h4>O que é criado e o que muda</h4>
+<ul>
+<li>uma pasta com o PN do desenho dentro de <strong>Downloads</strong> (por exemplo <code>Downloads\171-60466-803\</code>);</li>
+<li>um arquivo por folha, com o nome da folha;</li>
+<li>um arquivo com o mesmo nome que já existir nessa pasta é <strong>substituído</strong>;</li>
+<li>todas as vistas destravadas são <strong>travadas</strong>, no desenho aberto e em cada arquivo exportado. A tela
+  avisa quantas: "N vista(s) foram bloqueadas automaticamente". No desenho aberto, a trava só fica se
+  você salvar.</li>
+</ul>
+<figure><img src="guia/63_split2d_resultado.png" alt="Resultado do Split 2D"><figcaption>Resultado do Split 2D</figcaption></figure>
+<p><strong>Avisos:</strong> "Abra um CATDrawing antes de executar.", "Salve o CATDrawing antes de executar a macro." e,
+no resultado, "Acima de 200 MB" para o arquivo que ainda passa do limite. Depois de um erro, a cópia
+incompleta não fica aberta.</p>
+
+<div class="capitulo" id="6-aba-vpm"><div class="num">06<span class="pgm">@@6@@</span></div><div><h2>Aba VPM</h2></div></div>
+<p>A aba VPM cria PNs e atualiza o conteúdo de PNs no <strong>VPM web</strong>, pelo <strong>Microsoft Edge</strong>. É o porte da
+macro "VPM Tools unificado".</p>
+<div class="nota">
+<p><strong>Atenção:</strong> nada desta aba foi testado no VPM de verdade, porque o VPM só abre na rede da empresa.
+As telas abaixo mostram a prévia com dados de exemplo. Criação e Upload <strong>alteram o VPM e não podem
+ser desfeitos pelo HUB</strong>.</p>
+</div>
+<h3 id="61-o-que-as-três-telas-têm-em-comum" class="ferramenta primeira"><span class="num">6.1</span>O que as três telas têm em comum<span class="pgm">@@6.1@@</span></h3>
+<ul>
+<li><strong>Primeiro a prévia, depois a execução.</strong> <strong>VALIDAR E MONTAR PRÉVIA</strong> lê o Excel e a pasta, confere
+  tudo e monta a tabela, sem abrir o VPM ("Prévia validada: N PNs. Nada foi enviado ao VPM.").
+  <strong>EXECUTAR PLANO</strong> só fica disponível depois disso. Mudar o Excel, a pasta, os tipos ou o ambiente
+  apaga a prévia.</li>
+<li><strong>Confirmação antes de começar</strong>, com o número de PNs e os cuidados. O botão padrão é <strong>Não</strong>.</li>
+<li><strong>O lote para no primeiro erro.</strong> As linhas seguintes ficam "NAO_EXECUTADO".</li>
+<li><strong>Login:</strong> o Edge abre com o mesmo perfil da macro antiga, então o login já feito continua valendo. Se
+  pedir login, faça no Edge; o HUB espera até 3 minutos.</li>
+<li><strong>Um lote por vez</strong>, entre as três telas. Depois do lote, o Edge <strong>fica aberto para você revisar</strong>.
+  Clique em <strong>Encerrar sessão</strong> antes de começar outro lote.</li>
+<li><strong>Interromper</strong> pede a parada: a operação atual termina, e o que já foi enviado não é desfeito.</li>
+<li><strong>"PICS not connected"</strong> interrompe o lote e mostra um aviso "PICS / interoperabilidade".</li>
+<li><strong>Históricos:</strong> o que já foi criado ou enviado (pela macro antiga ou pelo HUB) fica registrado e não é
+  repetido. Os históricos ficam em <code>%LOCALAPPDATA%\VPMTools</code>, os mesmos da macro.</li>
+<li><strong>Abrir pasta de resultados</strong> abre essa pasta, com o relatório de cada lote.</li>
+<li>O HUB não fecha com um lote rodando.</li>
+</ul>
+<h4>Status de cada PN na tabela</h4>
+<table>
+<thead>
+<tr>
+<th>Status</th>
+<th>Significado</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>PENDENTE</td>
+<td>Ainda não rodou.</td>
+</tr>
+<tr>
+<td>EM_EXECUCAO</td>
+<td>Rodando agora.</td>
+</tr>
+<tr>
+<td>CONFIRMADO</td>
+<td>PN criado e achado no VPM depois do Create.</td>
+</tr>
+<tr>
+<td>CONFIRMADO_HISTORICO_LOCAL</td>
+<td>Já tinha sido criado antes (histórico local). Não foi criado de novo.</td>
+</tr>
+<tr>
+<td>VALIDADO_SEM_CRIAR</td>
+<td>Modo "só preencher e conferir": formulário conferido e cancelado.</td>
+</tr>
+<tr>
+<td>CONFIRMADO_PELO_USUARIO_OU_HISTORICO</td>
+<td>Conteúdo enviado e confirmado por você, ou já confirmado antes.</td>
+</tr>
+<tr>
+<td>IGNORADO_HISTORICO_LOCAL</td>
+<td>Esse mesmo arquivo já tinha sido enviado e confirmado. Não foi enviado de novo.</td>
+</tr>
+<tr>
+<td>NAO_SOLICITADA / NAO_SOLICITADO</td>
+<td>A tela não pediu essa etapa.</td>
+</tr>
+<tr>
+<td>NAO_EXECUTADO</td>
+<td>Não rodou porque o lote parou antes.</td>
+</tr>
+<tr>
+<td>ERRO_ANTES_CREATE / ERRO_ANTES_UPLOAD</td>
+<td>Deu erro antes de enviar. Nada foi enviado nessa etapa.</td>
+</tr>
+<tr>
+<td><strong>CRIACAO_INCERTA</strong></td>
+<td>O Create foi enviado e algo falhou depois. <strong>O PN pode ter sido criado.</strong> Confira no VPM antes de repetir.</td>
+</tr>
+<tr>
+<td><strong>UPLOAD_INCERTO</strong></td>
+<td>O Upload foi acionado e não foi confirmado. Confira no VPM antes de repetir.</td>
+</tr>
+<tr>
+<td><strong>REVISAO_NECESSARIA</strong></td>
+<td>Um lote anterior deixou a criação incerta. O HUB não repete: confira no VPM.</td>
+</tr>
+</tbody>
+</table>
+<p>Verde: concluído. Amarelo: em andamento ou não executado. Vermelho: erro ou incerto.</p>
+<h3 id="62-criar-pns" class="ferramenta"><span class="num">6.2</span>Criar PNs<span class="pgm">@@6.2@@</span></h3>
+<div class="ficha"><div><b>Para que serve</b><span>cria PNs novos no VPM por <strong>Duplicate</strong> de um PN de origem, preenchendo e conferindo
+os atributos de cada linha do Excel.</span></div></div><figure><img src="guia/70_vpm_criar.png" alt="Criar PNs"><figcaption>Criar PNs</figcaption></figure>
+<h4>O Excel de entrada</h4>
+<ul>
+<li>aba <strong>Entrada_Python</strong>, com a primeira linha de cabeçalho;</li>
+<li>só rodam as linhas com <strong>executar = SIM</strong>;</li>
+<li>colunas obrigatórias: <code>executar</code>, <code>pn_origem</code>, <code>ambiente</code>, <code>part_number</code>, <code>part_instance</code>,
+  <code>conc_version</code>, <code>conf_type</code>, <code>english_description</code>, <code>portuguese_description</code>, <code>type</code>, <code>origin</code>,
+  <code>production</code>, <code>design</code>, <code>calculated_weight_g</code>, <code>ata_code</code>, <code>dbt_code</code>, <code>drawing_class</code>, <code>class</code>,
+  <code>status</code>, <code>cpl</code>, <code>type_program</code>, <code>traceability</code>;</li>
+<li><strong>Gerar modelo Excel</strong> salva um modelo vazio, com as listas suspensas. Na primeira vez, se o modelo
+  ainda não estiver no PC, o HUB pede o arquivo <code>.py</code> da macro antiga do VPM, tira o modelo de dentro
+  dele (sem executar a macro) e guarda para as próximas vezes.</li>
+</ul>
+<p><strong>A prévia recusa o lote</strong> (e lista tudo o que precisa corrigir) quando: falta coluna ou ela está
+repetida, campo obrigatório vazio, PN novo igual ao de origem, PN repetido no lote, peso que não é
+número (use ponto decimal) ou Conc. Version que não é inteiro positivo.</p>
+<h4>Passo a passo</h4>
+<ol>
+<li><strong>Selecionar Excel</strong>.</li>
+<li>Se quiser só testar, marque <strong>Só preencher e conferir, sem criar</strong>: o HUB preenche e confere cada
+   formulário e <strong>cancela</strong>, sem criar nada.</li>
+<li><strong>VALIDAR E MONTAR PRÉVIA</strong> e confira a tabela.</li>
+<li><strong>EXECUTAR PLANO</strong> e confirme.</li>
+<li>Para cada PN, o HUB: abre o VPM, escolhe o ambiente, pesquisa o PN de origem, faz Edit › Duplicate,
+   preenche os campos, <strong>lê cada campo de volta</strong> e só então clica em Create, <strong>uma vez só</strong>. Depois
+   pesquisa o PN novo para confirmar.</li>
+</ol>
+<p>Se uma opção do Excel não existir na lista do VPM, o lote para com "Opção inválida em (campo)", listando
+as opções disponíveis. Não há consulta prévia completa de existência do PN no servidor: o controle é o
+histórico local.</p>
+<h3 id="63-update-content" class="ferramenta"><span class="num">6.3</span>Update Content<span class="pgm">@@6.3@@</span></h3>
+<div class="ficha"><div><b>Para que serve</b><span>atualiza o conteúdo (Edit › Update Content) de PNs que <strong>já existem</strong> no VPM, com os
+arquivos CATIA de uma pasta. O PN sai do nome do arquivo.</span></div></div><figure><img src="guia/71_vpm_update.png" alt="Update Content"><figcaption>Update Content</figcaption></figure>
+<h4>Os arquivos</h4>
+<ul>
+<li>só a pasta escolhida; subpastas não entram;</li>
+<li>cada nome de arquivo precisa ter <strong>um PN só</strong> (por exemplo <code>171-52382-001.CATDrawing</code>,
+  <code>SPD171-52382-001…</code>). Nome sem PN, ou com dois, recusa a prévia;</li>
+<li>dois arquivos do mesmo PN e tipo recusam a prévia;</li>
+<li>tipos: <strong>2D · CATDrawing</strong> (assistido) e <strong>3D · CATPart / CATProduct (experimental)</strong>. No 3D, o
+  documento DOCCAD do tipo certo precisa já existir no VPM; o HUB não cria documentos nem importa
+  dependências;</li>
+<li><strong>Ambiente</strong>: padrão <code>EGN2ENG</code>. Só letras maiúsculas, números e sublinhado.</li>
+</ul>
+<h4>Passo a passo</h4>
+<ol>
+<li><strong>Selecionar pasta</strong>, marque os tipos e confira o ambiente.</li>
+<li><strong>VALIDAR E MONTAR PRÉVIA</strong>. A prévia guarda uma assinatura de cada arquivo: se um arquivo mudar depois
+   da prévia, o lote para ("Arquivo alterado desde a prévia").</li>
+<li><strong>EXECUTAR PLANO</strong> e confirme. O CATIA precisa estar aberto: o HUB usa o CATIA que já está aberto.</li>
+<li>Para cada arquivo, o HUB abre (ou usa) o documento no CATIA, que precisa estar <strong>salvo</strong>; pesquisa o
+   PN no VPM, abre o documento na árvore e entra em Edit › Update Content, Source = CATIA V5.</li>
+<li>O HUB confere o destino (PN, documento e tipo) e desmarca "Save as New Document". Uma janela pede a
+   sua confirmação: <strong>confira no CATIA o documento e o destino</strong> antes de clicar em Sim.</li>
+<li>O HUB clica em <strong>Upload uma vez só</strong>. Outra janela pede para você conferir o resultado no VPM.
+   <strong>Clique Sim só se a atualização terminou certo.</strong> Não interrompe o lote como resultado incerto.</li>
+<li><strong>O Commit não é automático.</strong> Se o VPM exigir Commit, faça à mão.</li>
+</ol>
+<p>Se o HUB não achar o documento na árvore ou o menu Update Content, ele grava um arquivo de diagnóstico e
+pede que você abra o menu à mão (só Edit › Update Content, parando na janela Source = CATIA V5) antes de
+clicar em Sim. Nesses casos nenhum Upload é enviado sem a sua confirmação.</p>
+<p><strong>O Upload é bloqueado</strong> se o documento ativo no CATIA mudar, se o documento for alterado depois da
+conferência, se o destino mudar ou se "Save as New Document" estiver marcado.</p>
+<h3 id="64-criar-e-atualizar" class="ferramenta"><span class="num">6.4</span>Criar e atualizar<span class="pgm">@@6.4@@</span></h3>
+<div class="ficha"><div><b>Para que serve</b><span>para cada PN do Excel, cria o PN e logo em seguida faz o Update Content dos arquivos
+dele, antes de passar ao próximo.</span></div></div><figure><img src="guia/72_vpm_sequencia.png" alt="Criar e atualizar"><figcaption>Criar e atualizar</figcaption></figure>
+<h4>Passo a passo</h4>
+<ol>
+<li><strong>Selecionar Excel</strong> (o mesmo formato do Criar PNs) e <strong>Selecionar pasta</strong> (as mesmas regras do
+   Update Content).</li>
+<li>Marque os tipos. <strong>Cada PN do Excel precisa de um arquivo para cada tipo marcado.</strong> Faltando um, a
+   prévia recusa: "Arquivo ausente: (PN) / (tipo)". Arquivos extras da pasta não são enviados.</li>
+<li><strong>VALIDAR E MONTAR PRÉVIA</strong>, <strong>EXECUTAR PLANO</strong> e confirme.</li>
+<li>Siga as confirmações de cada Upload como no <a href="#63-update-content">Update Content</a>.</li>
+</ol>
+<p>O ambiente de cada PN vem da coluna <code>ambiente</code> do Excel.</p>
+
+<div class="capitulo" id="7-instalação-e-atualização"><div class="num">07<span class="pgm">@@7@@</span></div><div><h2>Instalação e atualização</h2></div></div>
+<p>O programa fica numa pasta (por exemplo <code>E1DWGTOOLS</code>). Precisa de Python 3.10 ou mais novo.</p>
+<h3 id="conferir-a-instalação" class="solta">Conferir a instalação</h3>
+<p>Na pasta do programa, rode:</p>
+<pre><code class="language-bash">python verificar.py
+</code></pre>
+<p>O verificador não mexe no CATIA nem nos desenhos e pode rodar quantas vezes precisar. Ele:</p>
+<ol>
+<li>confere a versão do Python;</li>
+<li>confere <strong>cada arquivo</strong> do programa (número de linhas e conteúdo) e, para o que estiver errado, diz
+   o que fazer e dá o link do GitHub de onde copiar;</li>
+<li>confere as bibliotecas do HUB (pywin32 e PySide6) e instala o que faltar;</li>
+<li>abre a janela do HUB escondida para testar;</li>
+<li>confere as bibliotecas da aba VPM (openpyxl e playwright). Faltando, só a aba VPM fica sem funcionar:
+   é aviso, não erro;</li>
+<li>informa se o CATIA está aberto e se o Excel está instalado.</li>
+</ol>
+<p>No fim aparece <strong>TUDO CERTO. Para abrir, rode: python main_qt.py</strong> ou <strong>AINDA NÃO ESTÁ PRONTO</strong>. Nesse
+caso, resolva os itens <code>[ERRO]</code> e rode de novo.</p>
+<table>
+<thead>
+<tr>
+<th>Mensagem do verificador</th>
+<th>O que fazer</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>arquivo: não existe. Crie e cole de: (link)</td>
+<td>Crie o arquivo nesse caminho e cole o conteúdo do link.</td>
+</tr>
+<tr>
+<td>arquivo: está em (outra pasta). Mova para a pasta certa.</td>
+<td>O arquivo foi salvo no lugar errado.</td>
+</tr>
+<tr>
+<td>arquivo: tem N linhas e devia ter M. Cole de novo de: (link)</td>
+<td>A cópia veio incompleta. Copie de novo.</td>
+</tr>
+<tr>
+<td>arquivo: o conteúdo está diferente. Cole de novo de: (link)</td>
+<td>A cópia veio diferente. Copie de novo.</td>
+</tr>
+<tr>
+<td>arquivo: salvo na codificação errada. Salve como UTF-8.</td>
+<td>Salve de novo, escolhendo UTF-8.</td>
+</tr>
+<tr>
+<td>Peça à TI para liberar pypi.org e files.pythonhosted.org…</td>
+<td>A rede bloqueou a instalação das bibliotecas.</td>
+</tr>
+<tr>
+<td>Peça à TI para instalar o Microsoft Visual C++ Redistributable.</td>
+<td>Uma biblioteca precisa desse componente do Windows.</td>
+</tr>
+<tr>
+<td>CATIA fechado. O HUB abre, mas as ferramentas precisam dele aberto.</td>
+<td>Só um aviso.</td>
+</tr>
+<tr>
+<td>Excel não encontrado…</td>
+<td>O Position and Zone precisa do Excel para ler o Part List.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="atualizar-o-programa" class="solta">Atualizar o programa</h3>
+<p>Para atualizar no PC da empresa, copie arquivo por arquivo dos links do GitHub (branch
+<code>migracao-dwgtools</code>) e rode <code>python verificar.py</code> no fim: ele aponta qualquer arquivo que ficou faltando
+ou diferente. O caminho do Compare DWG, o OK manual do Position and Zone e os históricos do VPM ficam
+fora da pasta do programa e não se perdem na atualização.</p>
+<h3 id="quando-as-macros-do-catia-travam" class="solta">Quando as macros do CATIA travam</h3>
+<p>Se as macros do CATIA pararem de responder depois de usar o HUB (mesmo com ele fechado), rode:</p>
+<pre><code class="language-bash">python verificar.py --catia
+</code></pre>
+<p>Ele mostra o estado do CATIA (interação, alertas e tela ligados ou não, documentos e janelas abertos,
+documento ativo, itens selecionados e quantos Python, CATIA e Excel estão rodando), tira a seleção e
+religa alertas, tela e interação. <strong>O desenho não muda.</strong> Depois, clique na macro e, se não voltar,
+mande uma foto da tela.</p>
+<p>A causa desse travamento ainda não foi encontrada: não se repetiu nos testes.</p>
+
+<div class="capitulo" id="8-arquivos-de-diagnóstico-e-onde-ficam"><div class="num">08<span class="pgm">@@8@@</span></div><div><h2>Arquivos de diagnóstico e onde ficam</h2></div></div>
+<p><code>%APPDATA%</code> e <code>%LOCALAPPDATA%</code> são pastas do seu usuário no Windows. Para abrir, digite o nome (com os
+<code>%</code>) na barra de endereço do Explorer.</p>
+<p><strong>Em <code>%APPDATA%\E1DWGTools\</code>:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Arquivo</th>
+<th>Gravado por</th>
+<th>Conteúdo</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>config.json</code></td>
+<td>Compare DWG</td>
+<td>Caminho do programa Compare DWG.</td>
+</tr>
+<tr>
+<td><code>poszone_ok.json</code></td>
+<td>Position and Zone</td>
+<td>OK manual de cada posição, por desenho. Apagar zera todos os OK manuais deste PC.</td>
+</tr>
+<tr>
+<td><code>poszone_grade.txt</code></td>
+<td>Position and Zone, a cada mapeamento</td>
+<td>De onde veio a grade de cada folha, posição das colunas e linhas, comparação com a grade desenhada, posição e zona de cada balão. Use quando uma zona parecer errada.</td>
+</tr>
+<tr>
+<td><code>update_vinculos.txt</code></td>
+<td>Update Template, a cada conversão</td>
+<td>O que cada campo da legenda achou e recriou, e os textos da folha 1 depois da conversão.</td>
+</tr>
+<tr>
+<td><code>update_tempos.txt</code></td>
+<td>Update Template</td>
+<td>Quanto cada fase da última conversão levou. Não aparece na tela.</td>
+</tr>
+<tr>
+<td><code>templates_lidos.json</code></td>
+<td>Update Template</td>
+<td>Leitura guardada de cada template, para acelerar. Vale enquanto o arquivo do template tiver o mesmo tamanho e data. Pode ser apagado: é refeito na próxima conversão.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Em <code>%LOCALAPPDATA%\VPMTools\</code></strong> (a mesma pasta da macro antiga):</p>
+<table>
+<thead>
+<tr>
+<th>Arquivo</th>
+<th>Conteúdo</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>historico_criacao_vpm.json</code></td>
+<td>PNs criados (ou com criação iniciada). <strong>Não apague sem revisar o que já foi enviado.</strong></td>
+</tr>
+<tr>
+<td><code>historico_upload_unificado.json</code></td>
+<td>Arquivos enviados por Update Content. <strong>Não apague sem revisar.</strong></td>
+</tr>
+<tr>
+<td><code>sequencia_vpm_(data e hora).json</code></td>
+<td>Relatório de cada lote, com o status de cada PN.</td>
+</tr>
+<tr>
+<td><code>erro_unificado.txt</code></td>
+<td>Detalhe do último erro de lote.</td>
+</tr>
+<tr>
+<td><code>diagnostico_vpm.json</code>, <code>diagnostico_arvore_vpm.json</code>, <code>diagnostico_menu_vpm.json</code></td>
+<td>O que o HUB achou na página do VPM quando não conseguiu identificar o formulário, a árvore ou o menu.</td>
+</tr>
+<tr>
+<td><code>resultado_criacao_vpm.json</code></td>
+<td>A linha do VPM encontrada depois do último Create.</td>
+</tr>
+<tr>
+<td><code>perfil_edge_vpm\</code></td>
+<td>Perfil do Edge que guarda o login do VPM.</td>
+</tr>
+<tr>
+<td><code>vpm_modelo.xlsx</code></td>
+<td>Modelo do Excel tirado da macro antiga.</td>
+</tr>
+</tbody>
+</table>
+<h4>Outros lugares</h4>
+<ul>
+<li><strong>ABRIR NO EXCEL</strong> do Position and Zone grava a planilha na pasta temporária do Windows (<code>%TEMP%</code>), a
+  partir do modelo <code>_Callouts.xlsm</code> da rede, e deixa aberta no Excel.</li>
+<li><strong>Split 2D:</strong> <code>Downloads\(PN)\</code>. <strong>Split 3D:</strong> <code>SPLIT_PARTS\</code>, ao lado do CATPart.</li>
+</ul>
+
+<div class="capitulo" id="9-problemas-comuns"><div class="num">09<span class="pgm">@@9@@</span></div><div><h2>Problemas comuns</h2></div></div>
+<table>
+<thead>
+<tr>
+<th>Problema</th>
+<th>O que fazer</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>O HUB diz "CATIA fechado" com o CATIA aberto</td>
+<td>Espere alguns segundos ou clique em PROCURAR DE NOVO. Se continuar, feche e abra o HUB.</td>
+</tr>
+<tr>
+<td>A ferramenta não libera com o desenho aberto</td>
+<td>Confira o chip com o nome do documento no alto. Clique na janela do desenho no CATIA para ele ficar ativo.</td>
+</tr>
+<tr>
+<td>"Item não encontrado: foi apagado ou o desenho foi fechado"</td>
+<td>O item mudou depois da análise. Rode a ferramenta de novo. Renomear um item depois da análise também causa isso.</td>
+</tr>
+<tr>
+<td>O Update Template deu erro no meio</td>
+<td>Leia a mensagem. Se disser que o desenho pode ter ficado parcialmente convertido, feche <strong>sem salvar</strong> e abra de novo.</td>
+</tr>
+<tr>
+<td>Zona errada no Position and Zone</td>
+<td>Abra o <code>poszone_grade.txt</code> e veja de onde saiu a grade da folha. Se o mapeamento avisou "caminho de reserva", confira um balão de cada folha citada.</td>
+</tr>
+<tr>
+<td>Callout com zona N/A</td>
+<td>O CATIA não informou a posição da vista ou do texto, ou a folha não tem grade. O aviso do fim do mapeamento diz qual.</td>
+</tr>
+<tr>
+<td>"As abas 'COMPONENT' e 'PSA' não foram encontradas"</td>
+<td>O arquivo escolhido não é o Part List do SAP.</td>
+</tr>
+<tr>
+<td>Check de Flags não compara com o Part List</td>
+<td>O arquivo não tem a aba DWG_NOTES com a coluna Note Code.</td>
+</tr>
+<tr>
+<td>Macros do CATIA travadas</td>
+<td><code>python verificar.py --catia</code>, veja a <a href="#quando-as-macros-do-catia-travam">seção 7</a>.</td>
+</tr>
+<tr>
+<td>Lote do VPM com status INCERTO</td>
+<td>Confira o PN no VPM antes de repetir. O HUB não repete sozinho uma criação ou Upload incerto.</td>
+</tr>
+</tbody>
+</table></body></html>
