@@ -1,0 +1,35 @@
+E1 Tools – o que mudou desde 13/11
+
+NOVO
+• Aba VPM: cria PN por Duplicate a partir do Excel, faz o Update Content (CATDrawing; CATPart/CATProduct experimental) e os dois em sequência, PN por PN. Usa o mesmo login e os mesmos históricos da macro antiga. Tem o modo "Só preencher e conferir", que testa sem criar nada.
+• Check de Flags x Part List: compara as flags do desenho com a aba DWG_NOTES do Part List (o mesmo arquivo do Position and Zone) e aponta "flags sem nota" e "notas sem flag".
+• Guia do usuário em PDF, com prints de todas as ferramentas.
+• Vídeos curtos (1 a 1,5 min) da Sequência de aplicação, Update Template, Symbol Shape Converter, Fix Flags, Font Size Fix, Pos and Zone Fix e Visão geral do Check.
+• Executável: o "python compilar.py" gera o "E1 Tools.exe", que roda sem Python instalado (leve a pasta dist\E1 Tools inteira).
+• Ícone próprio do E1 Tools na janela e na barra de tarefas.
+
+UPDATE TEMPLATE
+• A legenda não fica mais ligada ao arquivo do template (Edit > Links vazio). Os campos são religados aos parâmetros do próprio desenho.
+• SHEET/OF: a folha 1 mostra 1/total e acompanha o No_of_Sheets. Da folha 2 em diante aparece só o número da folha. Corrigido o "1 XX" nos templates A0 e A1.
+• Reconhece o "1/XX" na mesma linha do rótulo e os textos ligados a parâmetros com unidade.
+• Não mostra mais o aviso falso de "desenho ainda ligado ao template" (o CATIA da empresa mantém o template carregado mesmo sem link). O detalhe fica no update_vinculos.txt.
+• E3: a grade de zonas antiga (ZONE_E3_SHT1) sai, e a nova ganha a dezena da folha.
+
+POSITION AND ZONE / POS AND ZONE FIX
+• A grade sai dos rótulos da margem (mesma letra dos dois lados, mesmo número em cima e embaixo), sem depender do tamanho do papel. Um número da legenda não desloca mais as colunas.
+• Uma vista cuja posição o CATIA recusa (caso do 3A0) não derruba mais o mapeamento: os balões dela ficam N/A, com aviso.
+• No fim aparece um aviso único com o que pode ter deixado zona errada ou vazia.
+• Mover, desfazer e navegar não travam mais a tela por erro.
+
+GERAL
+• Desenho aberto pelo VPM/SmarTeam, com nome sem ".CATDrawing", agora é reconhecido em todas as ferramentas, e o PN sai do nome.
+• O verificar.py instala as bibliotecas da aba VPM. Se a rede bloquear, só essa aba fica indisponível.
+• "python verificar.py --catia" agora mostra a folha e a vista ativas, para investigar os botões do CATIA que ficam cinza depois de usar o HUB.
+
+AINDA NÃO TESTADO NO AMBIENTE REAL
+• Aba VPM no VPM da empresa (sugestão: começar com "Só preencher e conferir" e um PN só).
+• Update Content de CATPart/CATProduct (experimental).
+• Ferramentas rodando pelo executável (só a abertura foi testada).
+• Causa dos botões cinza do CATIA, ainda em investigação.
+
+Para atualizar: pegue a versão nova da branch migracao-dwgtools e rode "python verificar.py". O programa deve mostrar "TUDO CERTO".
