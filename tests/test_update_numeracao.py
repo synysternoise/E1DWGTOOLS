@@ -341,7 +341,8 @@ class TextoColado(unittest.TestCase):
 
     def test_folha_1_ganha_o_1_barra_na_frente_do_total(self):
         # Template real: so o XX ligado a No_of_Sheets, sem "1/" (23/11/2026). A folha 1 tem que mostrar 1/3.
-        v = self.vista(("XX", 1168.62, 28.25, "Text.149"), ("SHEET / OF", 1160.0, 40.0, "Text.5"))
+        v = self.vista(("XX", 1168.62, 28.25, "Text.149"), ("SHEET / OF", 1160.0, 40.0, "Text.5"),
+                       ("1", 1140.0, 24.0, "Text.40"), ("11", 1150.0, 20.0, "Text.41"))
         link = at.TextLink("|", "|", ["No_of_Sheets"], 1168.32, 28.25, "Text.83", "XX")
         conv = self.conversao()
         conv._parametro = lambda _cache, _nome: "No_of_Sheets"

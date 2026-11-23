@@ -475,7 +475,7 @@ def sheet_field_prefixes(fundo, link: TextLink) -> List[Tuple[float, float]]:
         try:
             t = textos.Item(i)
             valor = str(t.Text).strip(" ").replace(" ", "")
-            if valor and not valor.replace("1", "").replace("/", ""):
+            if "/" in valor and not valor.replace("1", "").replace("/", ""):  # um "1" solto e da margem
                 x, y = t.x, t.y
                 # A esquerda do campo ou no mesmo ponto dele (A0 real: "1/" e "XX" com a mesma posicao).
                 if abs(y - link.y) <= 10.0 and x - link.x <= TOLERANCIA_COLADO and link.x - x <= 40.0:
@@ -488,9 +488,29 @@ def sheet_field_prefixes(fundo, link: TextLink) -> List[Tuple[float, float]]:
 def campo_da_folha_1(fundo, link: TextLink) -> TextLink:
     """Folha 1 mostra 1/<total>. O template real traz so o XX ligado a No_of_Sheets, sem o "1/": ele entra
     na frente do total, no mesmo texto. Fica como esta se o texto ja tem "/" ou se ha um "1/" separado na linha."""
-    if "/" in link.template_text or sheet_field_prefixes(fundo, link):
+    if "/" in link.template_text or tem_1_barra_separado(fundo, link):
         return link
     return replace(link, template_text="1/" + link.template_text)
+
+
+def tem_1_barra_separado(fundo, link: TextLink) -> bool:
+    """So um texto "1/" de verdade, a esquerda do campo na mesma linha. Um "1" solto (numero da margem,
+    escala) nao conta: contava, e a folha 1 ficava so com o total (171-50904-401, 23/11/2026)."""
+    try:
+        textos = fundo.Texts
+        total = textos.Count
+    except COM_ERROR:
+        return False
+    for i in range(1, total + 1):
+        try:
+            t = textos.Item(i)
+            if str(t.Text).replace(" ", "") != "1/":
+                continue
+            if abs(t.y - link.y) <= 3.0 and -RAIO_DO_ORIGINAL <= link.x - t.x <= 40.0:
+                return True
+        except COM_ERROR:
+            continue
+    return False
 
 
 # Template sem texto ligado a No_of_Sheets: o campo SHEET/OF e um texto so com X (XX, X/XX, 1/XX).
@@ -1288,7 +1308,7 @@ class _Conversao:
                     perto = max(abs(t.x - x), abs(t.y - y)) <= TOLERANCIA_COLADO
                 except COM_ERROR:
                     continue
-                if perto and valor and not valor.replace("1", "").replace("/", "") and not _mesmo(t, campo):
+                if perto and "/" in valor and not valor.replace("1", "").replace("/", "") and not _mesmo(t, campo):
                     try:
                         _apagar(sel, t)
                     except COM_ERROR:
