@@ -14,7 +14,7 @@ import os
 import re
 import time
 from contextlib import contextmanager
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from typing import Callable, Dict, List, Optional, Tuple
 
 import pywintypes
@@ -483,6 +483,14 @@ def sheet_field_prefixes(fundo, link: TextLink) -> List[Tuple[float, float]]:
         except COM_ERROR:
             continue
     return saida
+
+
+def campo_da_folha_1(fundo, link: TextLink) -> TextLink:
+    """Folha 1 mostra 1/<total>. O template real traz so o XX ligado a No_of_Sheets, sem o "1/": ele entra
+    na frente do total, no mesmo texto. Fica como esta se o texto ja tem "/" ou se ha um "1/" separado na linha."""
+    if "/" in link.template_text or sheet_field_prefixes(fundo, link):
+        return link
+    return replace(link, template_text="1/" + link.template_text)
 
 
 # Template sem texto ligado a No_of_Sheets: o campo SHEET/OF e um texto so com X (XX, X/XX, 1/XX).
@@ -1071,7 +1079,11 @@ class _Conversao:
             with self.fase("Refazer os vínculos da legenda"):
                 if posicao == 1:
                     self._apagar_numero_antigo(sel, folha.Views.Item(1))
-                self._refazer_vinculos(sel, indice, links, chave_total if posicao >= 2 else "", parametros, f["nome"])
+                links_da_folha = links
+                if posicao == 1 and chave_total:
+                    links_da_folha = dict(links)
+                    links_da_folha[chave_total] = campo_da_folha_1(fundo, links[chave_total])
+                self._refazer_vinculos(sel, indice, links_da_folha, chave_total if posicao >= 2 else "", parametros, f["nome"])
             with self.fase("Numerar a folha e a margem"):
                 if posicao >= 2 and chave_total:
                     self._numerar_folha(sel, indice, folha.Views.Item(1), links[chave_total], prefixos, posicao, f["nome"])

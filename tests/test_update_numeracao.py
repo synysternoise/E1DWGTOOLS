@@ -339,6 +339,25 @@ class TextoColado(unittest.TestCase):
         conv._numerar_folha(_Sel(), at._IndiceTextos(v), principal, link, [(1168.32, 28.25)], 3, "Sheet.3")
         self.assertEqual(v.Texts.itens, [])
 
+    def test_folha_1_ganha_o_1_barra_na_frente_do_total(self):
+        # Template real: so o XX ligado a No_of_Sheets, sem "1/" (23/11/2026). A folha 1 tem que mostrar 1/3.
+        v = self.vista(("XX", 1168.62, 28.25, "Text.149"), ("SHEET / OF", 1160.0, 40.0, "Text.5"))
+        link = at.TextLink("|", "|", ["No_of_Sheets"], 1168.32, 28.25, "Text.83", "XX")
+        conv = self.conversao()
+        conv._parametro = lambda _cache, _nome: "No_of_Sheets"
+        conv._refazer_vinculos(_Sel(), at._IndiceTextos(v), {"Text.83": at.campo_da_folha_1(v, link)}, "", {}, "Sheet.1")
+        campo = [t for t in v.Texts.itens if t.Name == "Text.149"][0]
+        self.assertEqual(campo.Text, "1/|")
+        self.assertEqual(campo.variaveis, [(3, 1, "No_of_Sheets")])
+        self.assertEqual(link.template_text, "|")  # o link guardado nao muda
+
+    def test_folha_1_com_1_barra_separado_nao_duplica(self):
+        v = self.vista(("1/", 1160.0, 28.25, "Text.6"), ("XX", 1168.32, 28.25, "Text.149"))
+        link = at.TextLink("|", "|", ["No_of_Sheets"], 1168.32, 28.25, "Text.83", "XX")
+        self.assertIs(at.campo_da_folha_1(v, link), link)
+        com_barra = at.TextLink("1/|", "|", ["No_of_Sheets"], 1168.32, 28.25, "Text.83", "1/XX")
+        self.assertIs(at.campo_da_folha_1(self.vista(), com_barra), com_barra)
+
     def test_longe_demais_nao_acha_e_avisa(self):
         v = self.vista(("XX", 821.0, 27.62, "Text.150"))
         self.assertIsNone(at._IndiceTextos(v).localizar("Text.78", 820.45, 27.62))
