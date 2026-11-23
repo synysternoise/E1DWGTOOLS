@@ -14,7 +14,7 @@ import os
 import re
 import time
 from contextlib import contextmanager
-from dataclasses import asdict, dataclass, field, replace
+from dataclasses import asdict, dataclass, field
 from typing import Callable, Dict, List, Optional, Tuple
 
 import pywintypes
@@ -485,12 +485,27 @@ def sheet_field_prefixes(fundo, link: TextLink) -> List[Tuple[float, float]]:
     return saida
 
 
-def campo_da_folha_1(fundo, link: TextLink) -> TextLink:
-    """Folha 1 mostra 1/<total>. O template real traz so o XX ligado a No_of_Sheets, sem o "1/": ele entra
-    na frente do total, no mesmo texto. Fica como esta se o texto ja tem "/" ou se ha um "1/" separado na linha."""
-    if "/" in link.template_text or tem_1_barra_separado(fundo, link):
-        return link
-    return replace(link, template_text="1/" + link.template_text)
+def precisa_1_barra(fundo, link: TextLink) -> bool:
+    """Folha 1 mostra 1/<total>. O template real traz so o XX ligado a No_of_Sheets, sem o "1/" (23/11/2026):
+    um texto "1/" separado entra a esquerda do total. Nao entra se o campo ja tem "/" ou se ja ha um "1/"."""
+    return "/" not in link.template_text and not tem_1_barra_separado(fundo, link)
+
+
+LARGURA_DO_CARACTERE = 0.7  # largura media de um caractere em relacao ao tamanho da fonte
+
+
+def posicao_do_1_barra(ancora: int, x: float, tamanho: float, texto: str) -> Tuple[float, int]:
+    """Onde fica o "1/" (x e ancora) para terminar logo a esquerda do campo.
+
+    CatTextAnchorPosition: 1-3 / 11-13 esquerda, 4-6 / 14-16 centro, 7-9 / 17-19 direita (topo, meio, base).
+    O "1/" recebe a ancora a direita na mesma altura, no comeco do campo menos um respiro."""
+    grupo, resto = (ancora // 10) * 10, ancora % 10
+    if not 1 <= resto <= 9:
+        grupo, resto = 0, 3
+    coluna, linha = (resto - 1) // 3, (resto - 1) % 3
+    largura = max(len(texto.strip()), 1) * tamanho * LARGURA_DO_CARACTERE
+    inicio = x - (0.0, largura / 2, largura)[coluna]
+    return inicio - 0.15 * tamanho, grupo + 7 + linha
 
 
 def tem_1_barra_separado(fundo, link: TextLink) -> bool:
@@ -1099,11 +1114,9 @@ class _Conversao:
             with self.fase("Refazer os vínculos da legenda"):
                 if posicao == 1:
                     self._apagar_numero_antigo(sel, folha.Views.Item(1))
-                links_da_folha = links
-                if posicao == 1 and chave_total:
-                    links_da_folha = dict(links)
-                    links_da_folha[chave_total] = campo_da_folha_1(fundo, links[chave_total])
-                self._refazer_vinculos(sel, indice, links_da_folha, chave_total if posicao >= 2 else "", parametros, f["nome"])
+                novos = self._refazer_vinculos(sel, indice, links, chave_total if posicao >= 2 else "", parametros, f["nome"])
+                if posicao == 1 and chave_total and chave_total in novos and precisa_1_barra(fundo, links[chave_total]):
+                    self._por_1_barra(sel, fundo, novos[chave_total], f["nome"])
             with self.fase("Numerar a folha e a margem"):
                 if posicao >= 2 and chave_total:
                     self._numerar_folha(sel, indice, folha.Views.Item(1), links[chave_total], prefixos, posicao, f["nome"])
@@ -1219,18 +1232,18 @@ class _Conversao:
                 )
         return cache[chave]
 
-    def _refazer_vinculos(self, sel, indice: _IndiceTextos, links: Dict[str, TextLink], pular: str, cache: dict, folha: str) -> None:
+    def _refazer_vinculos(self, sel, indice: _IndiceTextos, links: Dict[str, TextLink], pular: str, cache: dict, folha: str) -> dict:
         """Cada reserva vira o parametro de mesmo nome do desenho, da direita para a esquerda.
 
         O texto colado e recriado antes: senao ele continua ligado ao parametro do template.
         """
-        alvos = []
+        alvos, novos = [], {}
         for chave, link in links.items():
             if chave.lower() == pular.lower():
                 continue
             t = indice.localizar(link.nome, link.x, link.y, link.original)
             if t is not None:
-                alvos.append((link, t))
+                alvos.append((chave, link, t))
             else:  # antes era pulado em silencio, e o campo ficava ligado ao template
                 self._registro.append(f"{folha} | {'+'.join(link.parametros)} | template {link.nome} "
                                       f"({link.x:.4f}, {link.y:.4f}) | NAO ACHADO")
@@ -1238,7 +1251,7 @@ class _Conversao:
                     f"Folha {folha}: o campo ligado a {', '.join(link.parametros)} não foi achado depois de colar o "
                     "formato e pode ter ficado ligado ao template (confira em Edit > Links)."
                 )
-        for link, velho in alvos:
+        for chave, link, velho in alvos:
             achados = [self._parametro(cache, n) for n in link.parametros]
             try:
                 colado, vx, vy, vnome = str(velho.Text), velho.x, velho.y, str(velho.Name)
@@ -1252,6 +1265,7 @@ class _Conversao:
                     f"Folha {folha}: o texto {link.nome} continua ligado ao template (Edit > Links > Isolate)."
                 )
                 continue
+            novos[chave] = t
             # Uma copia identica no mesmo lugar ficaria ligada ao template por baixo do campo novo.
             apagadas = 0
             for o in copias:
@@ -1278,6 +1292,23 @@ class _Conversao:
             except COM_ERROR:
                 continue
         indice.esquecer()
+        return novos
+
+    def _por_1_barra(self, sel, vista, campo, folha: str) -> None:
+        """Texto "1/" separado, com o formato do campo, terminando logo a esquerda dele."""
+        try:
+            ancora = int(_ler(campo, "AnchorPosition") or 1)
+            tamanho = float(_ler(campo, "GetFontSize", 0, 0) or 3.5)
+            x, y = campo.x, campo.y
+            x_barra, ancora_barra = posicao_do_1_barra(ancora, x, tamanho, str(campo.Text))
+            novo = vista.Texts.Add("1/", x_barra, y)
+            _copiar_formato(sel, campo, novo)
+            novo.AnchorPosition = ancora_barra
+            self._registro.append(f"{folha} | SHEET/OF folha 1 | \"1/\" posto em ({x_barra:.4f}, {y:.4f}), "
+                                  f"ancora {ancora_barra}; campo ancora {ancora}, fonte {tamanho}")
+        except COM_ERROR as exc:
+            self._registro.append(f"{folha} | SHEET/OF folha 1 | \"1/\" NAO POSTO: {exc}")
+            self.report.warnings.append(f"Folha {folha}: não foi possível pôr o \"1/\" antes do total no SHEET/OF.")
 
     def _numerar_folha(self, sel, indice, vista_principal, link, prefixos, numero, nome) -> None:
         """Folhas 2 em diante: o numero fica sem vinculo, para nenhum Update voltar a mostrar o total."""

@@ -339,25 +339,38 @@ class TextoColado(unittest.TestCase):
         conv._numerar_folha(_Sel(), at._IndiceTextos(v), principal, link, [(1168.32, 28.25)], 3, "Sheet.3")
         self.assertEqual(v.Texts.itens, [])
 
-    def test_folha_1_ganha_o_1_barra_na_frente_do_total(self):
+    def test_folha_1_ganha_um_texto_1_barra_a_esquerda_do_total(self):
         # Template real: so o XX ligado a No_of_Sheets, sem "1/" (23/11/2026). A folha 1 tem que mostrar 1/3.
         v = self.vista(("XX", 1168.62, 28.25, "Text.149"), ("SHEET / OF", 1160.0, 40.0, "Text.5"),
                        ("1", 1140.0, 24.0, "Text.40"), ("11", 1150.0, 20.0, "Text.41"))
         link = at.TextLink("|", "|", ["No_of_Sheets"], 1168.32, 28.25, "Text.83", "XX")
+        self.assertTrue(at.precisa_1_barra(v, link))  # o "1" solto da margem nao conta
         conv = self.conversao()
         conv._parametro = lambda _cache, _nome: "No_of_Sheets"
-        conv._refazer_vinculos(_Sel(), at._IndiceTextos(v), {"Text.83": at.campo_da_folha_1(v, link)}, "", {}, "Sheet.1")
-        campo = [t for t in v.Texts.itens if t.Name == "Text.149"][0]
-        self.assertEqual(campo.Text, "1/|")
-        self.assertEqual(campo.variaveis, [(3, 1, "No_of_Sheets")])
-        self.assertEqual(link.template_text, "|")  # o link guardado nao muda
+        novos = conv._refazer_vinculos(_Sel(), at._IndiceTextos(v), {"Text.83": link}, "", {}, "Sheet.1")
+        campo = novos["Text.83"]
+        self.assertEqual((campo.Text, campo.variaveis), ("|", [(1, 1, "No_of_Sheets")]))
+        conv._por_1_barra(_Sel(), v, campo, "Sheet.1")
+        [barra] = [t for t in v.Texts.itens if t.Text == "1/"]
+        self.assertLess(barra.x, campo.x)
+        self.assertEqual(barra.y, campo.y)
+        self.assertEqual(barra.AnchorPosition, 7)  # campo ancora 1 (topo esquerda) -> topo direita
+
+    def test_posicao_do_1_barra_por_ancora(self):
+        self.assertEqual(at.posicao_do_1_barra(1, 100.0, 4.0, "3")[1], 7)
+        self.assertEqual(at.posicao_do_1_barra(12, 100.0, 4.0, "3")[1], 18)
+        x_esq, _ = at.posicao_do_1_barra(2, 100.0, 4.0, "3")
+        x_cen, _ = at.posicao_do_1_barra(5, 100.0, 4.0, "3")
+        x_dir, a_dir = at.posicao_do_1_barra(8, 100.0, 4.0, "3")
+        self.assertTrue(x_dir < x_cen < x_esq < 100.0)
+        self.assertEqual(a_dir, 8)
 
     def test_folha_1_com_1_barra_separado_nao_duplica(self):
         v = self.vista(("1/", 1160.0, 28.25, "Text.6"), ("XX", 1168.32, 28.25, "Text.149"))
         link = at.TextLink("|", "|", ["No_of_Sheets"], 1168.32, 28.25, "Text.83", "XX")
-        self.assertIs(at.campo_da_folha_1(v, link), link)
+        self.assertFalse(at.precisa_1_barra(v, link))
         com_barra = at.TextLink("1/|", "|", ["No_of_Sheets"], 1168.32, 28.25, "Text.83", "1/XX")
-        self.assertIs(at.campo_da_folha_1(self.vista(), com_barra), com_barra)
+        self.assertFalse(at.precisa_1_barra(self.vista(), com_barra))
 
     def test_longe_demais_nao_acha_e_avisa(self):
         v = self.vista(("XX", 821.0, 27.62, "Text.150"))
